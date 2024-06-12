@@ -1,0 +1,26 @@
+{
+    "hyprland/window": {
+        "format": " {}",
+        "separate-outputs": true,
+        "rewrite": {
+            "${USER}@${set_sysname}:(.*)": "$1 ",
+            "(.*) — Mozilla Firefox": "$1 󰈹",
+            "(.*)Mozilla Firefox": "Firefox 󰈹",
+            "(.*)Google Chrome": "Google Chrome ",
+            "(.*) - Google Chrome": "$1 ",
+            "(.*)Discord Updater": "Discord Updater  ",
+            "(.*) - Discord": "$1  ",
+            "(.*) - Visual Studio Code": "$1 󰨞",
+            "(.*)Visual Studio Code": "Code 󰨞",
+            "(.*) — Dolphin": "$1 󰉋",
+            "(.*)Spotify": "Spotify 󰓇",
+            "(.*)Steam": "Steam 󰓓",
+            "(.*)nvim": "$1 nvim ",
+            "(.*)Instagram - (.*) • (?!Instagram)(.*)": "$1 $2 • $3 ",
+            "(.*)Instagram - (.*) • Instagram": "$1 $2 ",
+            "(.*)Instagram - (.*) • Instagram (.*)": "$1 $2 • $3 ",
+            "^(.*)Instagram": "Instagram "
+        },
+        "max-length": 1000
+    }
+}
