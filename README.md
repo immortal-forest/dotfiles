@@ -19,3 +19,9 @@ Inspired by [Hyde](https://github.com/prasanthrangan/hyprdots)
  - [cliphist](https://github.com/sentriz/cliphist) - clipboard
 
  - and many more....
+
+## Screenshots
+
+<img src="/assets/screen.png">
+<img src="/assets/rofi.png">
+<img src="/assets/lockscreen.png">
