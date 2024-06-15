@@ -1,1 +1,74 @@
-/home/immortalforest/dotfiles/.config/starship/format-2.toml
+command_timeout = 5000
+add_newline = true
+
+format = '''$directory$git_branch$git_status$fill$python$java$kotlin$nodejs$c$cmd_duration
+$character'''
+
+# character
+[character]
+format = '$symbol '
+success_symbol = '[✘](bold green)'
+error_symbol = '[✘](bold red)'
+
+# Directory
+[directory]
+truncation_length = 3
+truncation_symbol = ''
+style = 'bold cyan'
+read_only = '  '
+
+# git
+[git_branch]
+symbol = ' '
+style = 'bold green'
+format = "on [$symbol$branch]($style) "
+
+[git_status]
+conflicted = ' '
+up_to_date = ' '
+untracked = ' '
+ahead = '⇡$count'
+diverged = '⇅ ⇡${ahead_count}⇣${behind_count}'
+behind = '⇣$count'
+stashed = '󰏗 '
+modified = '󰷈 '
+staged = '[++$count ](green)'
+renamed = ' '
+deleted = ' '
+style = 'bold green'
+format = '\([($all_status$ahead_behind)]($style)\)'
+
+# languages
+[python]
+symbol = ' '
+style = 'bold yellow'
+format = '[$symbol$virtualenv]($style) '
+
+[java]
+symbol = ' '
+style = 'bold red'
+format = '[$symbol]($style) '
+
+[kotlin]
+symbol = ' '
+style = 'bold purple'
+format = '[$symbol]($style) '
+
+[nodejs]
+symbol = ' '
+format = '[$symbol](bold dimmed green) '
+
+[c]
+symbol = ' '
+style = 'bold dimmed purple'
+format = '[$symbol]($style) '
+
+
+# right prompt
+[fill]
+symbol = ' '
+
+[cmd_duration]
+min_time = 1
+format="[$duration]($style)"
+style = "bold purple"
