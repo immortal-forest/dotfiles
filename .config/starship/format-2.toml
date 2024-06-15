@@ -1,0 +1,102 @@
+command_timeout = 5000
+add_newline = false
+
+format = '''$os$directory$git_branch$git_status$python$kotlin$java$nodejs$c$fill$cmd_duration$time
+$character'''
+
+
+# username
+[username]
+show_always = true
+style_root = 'bold red'
+style_user = 'bold fg:#8700ff'
+format = '[$user]($style) on '
+
+# OS
+[os]
+disabled = false
+style = 'bold blue'
+format = '[$symbol]($style) in '
+
+[os.symbols]
+Arch = ' ' 
+
+# character
+[character]
+format = '$symbol '
+success_symbol = '[](bold green)'
+error_symbol = '[](bold red)'
+
+
+# Directory
+[directory]
+truncation_length = 3
+truncation_symbol = '…/'
+style = 'bold cyan'
+read_only = '  '
+
+# git
+[git_branch]
+symbol = ' '
+style = 'bold green'
+format = "on [$symbol$branch]($style) "
+
+[git_status]
+conflicted = ' '
+up_to_date = ' '
+untracked = ' '
+# ahead = '$count'
+ahead = '⇡$count'
+diverged = '⇅  ⇡${ahead_count} ⇣${behind_count}'
+#behind = '$count'
+behind = '⇣$count'
+stashed = '󰏗 '
+modified = '󰷈 '
+staged = '[++$count ](green)'
+renamed = ' '
+deleted = ' '
+style = 'bold green'
+format = '[($all_status$ahead_behind) ]($style)'
+
+# languages
+[python]
+symbol = ' '
+style = 'bold yellow'
+format = '[$symbol$virtualenv $version]($style) '
+
+[java]
+symbol = '☕ '
+style = 'bold red'
+format = '[$symbol$version]($style) '
+
+[kotlin]
+symbol = ' '
+style = 'bold purple'
+format = '[$symbol$version]($style) '
+
+[nodejs]
+symbol = ' '
+format = '[$symbol$version](bold dimmed green) '
+
+[c]
+symbol = ' '
+style = 'bold dimmed purple'
+format = '[$symbol$version]($style) '
+
+# right prompt
+
+
+[fill]
+symbol = ' '
+
+
+[time]
+disabled = false
+use_12hr = true
+time_format = '%I:%M %p'
+format = '[󰥔 $time]($style)'
+
+[cmd_duration]
+min_time = 10
+style = "bold purple"
+
