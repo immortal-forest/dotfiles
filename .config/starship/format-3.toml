@@ -55,7 +55,7 @@ style = 'bold purple'
 format = '[$symbol]($style) '
 
 [nodejs]
-symbol = ' '
+symbol = ' '
 format = '[$symbol](bold dimmed green) '
 
 [c]
