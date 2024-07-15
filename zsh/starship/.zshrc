@@ -73,4 +73,9 @@ eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"
 
 # starship
+function starship_transient_prompt_func {
+  starship module character
+}
+
 eval "$(starship init zsh)"
+enable_transience
