@@ -39,10 +39,7 @@
   
   
   #custom-icon {
-    background: linear-gradient(-45deg, @color5, @color2, @color6, @color3);
-    animation: gradient 10s ease infinite;
-  
-    background-size: 400% 400%;  
+    background: @background;
     color: rgba(0, 255, 255, 0.6);
     font-size: 15px;
     padding-left: 8px;
@@ -52,7 +49,7 @@
   
   #custom-icon:hover {
     color: rgba(0, 255, 255, 0.8);
-    transition: all 0.3s cubic-bezier(.55,0.0,.28,1.682);
+    transition: all 0.3s ease-out;
   }
   
   #workspaces {
@@ -85,7 +82,7 @@
   
   
   #custom-spotify {
-    background: linear-gradient(-45deg, @color3, @color4, @color5, @color6);
+    background: linear-gradient(-45deg, @color1, @color2, @color3, @color4, @color5, @color6);
     animation: gradient 10s ease infinite;
     background-size: 400% 400%;
     padding-left: 10px;

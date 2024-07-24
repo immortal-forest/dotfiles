@@ -39,9 +39,8 @@
   
   
   #custom-icon {
-    background: linear-gradient(-45deg, @color5, @color2, @color6, @color3);
+    background: linear-gradient(-45deg, @color5, @color4, @color6, @color3);
     animation: gradient 10s ease infinite;
-  
     background-size: 400% 400%;  
     color: rgba(0, 255, 255, 0.6);
     font-size: 15px;
@@ -85,7 +84,7 @@
   
   
   #custom-spotify {
-    background: linear-gradient(-45deg, @color3, @color4, @color5, @color6);
+    background: linear-gradient(-45deg, @color1, @color2, @color3, @color4, @color5, @color6);
     animation: gradient 10s ease infinite;
     background-size: 400% 400%;
     padding-left: 10px;
