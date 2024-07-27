@@ -38,6 +38,5 @@ vim.schedule(function()
   require "mappings"
 end)
 
-
-require("configs.auto-cmd")
-
+require("mini.icons").setup()
+require "configs.auto-cmd"

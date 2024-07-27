@@ -1,48 +1,27 @@
 return {
 
-  -- {
-  --   "andweeb/presence.nvim",
-  --   lazy = false,
-  --   init = function()
-  --     local wk = require "which-key"
-  --     wk.register {
-  --       ["d"] = {
-  --         name = "Discord",
-  --         ["p"] = {
-  --           function()
-  --             require "custom.discord"
-  --           end,
-  --           "Discord Rich Presence",
-  --         },
-  --       },
-  --     }
-  --   end,
-  --   config = function()
-  --     require "custom.discord"
-  --   end,
-  -- },
-
   {
     "IogaMaster/neocord",
     event = "VeryLazy",
     init = function()
       local wk = require "which-key"
-      wk.register {
-        ["d"] = {
-          name = "Discord",
-          ["p"] = {
-            function()
-              require "custom.discord"
-            end,
-            "Discord Rich Presence",
-          },
+      wk.add {
+        { "<leader>d", group = "discord" },
+        {
+          "<leader>dp",
+          function()
+            require "configs.discord"
+          end,
+          desc = "Discord Rich Presence",
         },
       }
     end,
     config = function()
-      require "custom.discord"
+      require "configs.discord"
     end,
   },
+
+  { "echasnovski/mini.nvim", version = false },
 
   {
     "stevearc/conform.nvim",
@@ -97,29 +76,31 @@ return {
     cmd = "Silicon",
     init = function()
       local wk = require "which-key"
-      wk.register({
-        ["s"] = {
-          name = "Silicon",
-          ["s"] = {
-            function()
-              require("nvim-silicon").shoot()
-            end,
-            "Create code screenshot",
-          },
-          ["f"] = {
-            function()
-              require("nvim-silicon").file()
-            end,
-            "Save code screenshot as file",
-          },
-          ["c"] = {
-            function()
-              require("nvim-silicon").clip()
-            end,
-            "Copy code screenshot to clipboard",
-          },
+      wk.add {
+        mode = { "v" },
+        { "<leader>s", group = "Silicon" },
+        {
+          "<leader>sc",
+          function()
+            require("nvim-silicon").clip()
+          end,
+          desc = "Copy code screenshot to clipboard",
         },
-      }, { prefix = "<leader>", mode = "v" })
+        {
+          "<leader>sf",
+          function()
+            require("nvim-silicon").file()
+          end,
+          desc = "Save code screenshot as file",
+        },
+        {
+          "<leader>ss",
+          function()
+            require("nvim-silicon").shoot()
+          end,
+          desc = "Create code screenshot",
+        },
+      }
     end,
     config = function()
       require("silicon").setup {
