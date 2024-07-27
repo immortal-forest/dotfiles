@@ -2,4 +2,5 @@
 .config/spicetify/Backup
 .config/spicetify/Extracted
 .config/spicetify/config-xpui.ini
+.config/cava/shaders
 .stow-local-ignore
