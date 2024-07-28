@@ -6,7 +6,7 @@ require("neocord").setup {
   log_level = nil,
   debounce_timeout = 10,
   show_time = true, -- Show the timer
-  global_timer = false, -- if set true, timer won't update when any event are triggered
+  global_timer = true, -- if set true, timer won't update when any event are triggered
 
   -- Rich Presence text options
   editing_text = "Editing %s",
