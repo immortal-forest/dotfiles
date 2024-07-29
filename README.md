@@ -4,8 +4,6 @@ Repo for my dotfiles for Arch Linux with [Hyprland](https://hyprland.org)
 
 Inspired by [Hyde](https://github.com/prasanthrangan/hyprdots)
 
-> Scripts will be added soonnnnnnnnnnn!!!!!!!!!!
-
 ### Stuffs used
 
  - [hyprlock](https://github.com/hyprwm/hyprlock) - lock screen
@@ -18,7 +16,7 @@ Inspired by [Hyde](https://github.com/prasanthrangan/hyprdots)
  - [wlogout](https://github.com/ArtsyMacaw/wlogout) - logout menu
  - [cliphist](https://github.com/sentriz/cliphist) - clipboard
 
- - and many more....
+ - and more....
 
 ## Screenshots
 
