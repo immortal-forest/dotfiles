@@ -67,6 +67,7 @@ return {
         "ruff",
         "black",
         "isort",
+        "shfmt",
       },
     },
   },

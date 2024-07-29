@@ -1,8 +1,10 @@
-local slow_format_filetypes = { "python" }
+local slow_format_filetypes = { "python", "sh" }
 
 local options = {
   formatters_by_ft = {
     lua = { "stylua" },
+    bash = { "shfmt" },
+    sh = { "shfmt" },
     -- python = { "black" },
     python = function(bufnr)
       if require("conform").get_formatter_info("ruff_format", bufnr).available then
