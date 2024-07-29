@@ -66,6 +66,7 @@ return {
         "mypy",
         "ruff",
         "black",
+        "isort",
       },
     },
   },
