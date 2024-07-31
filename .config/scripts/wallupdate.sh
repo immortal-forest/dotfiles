@@ -23,6 +23,9 @@ fi
 # waybar
 cp "$colorsDir/colors-waybar.css" "$confDir/waybar/theme.css"
 
+# wlogout
+cp "$colorsDir/colors-waybar.css" "$confDir/wlogout/theme.css"
+
 # spicetify
 cp "$colorsDir/colors-spotify.ini" "$confDir/spicetify/Themes/Sleek/color.ini"
 
