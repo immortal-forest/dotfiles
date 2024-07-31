@@ -25,7 +25,7 @@ def themes():
 
 def wallpapers(theme: str):
     w = [wal for wal in os.listdir(f"{WALL_DIR}/{theme}")]
-    w.sort()
+    # w.sort()
     return w
 
 
