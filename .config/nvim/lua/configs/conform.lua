@@ -1,4 +1,4 @@
-local slow_format_filetypes = { "python", "sh" }
+local slow_format_filetypes = { "python", "sh", "css" }
 
 local options = {
   formatters_by_ft = {
