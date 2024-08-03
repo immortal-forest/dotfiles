@@ -1,4 +1,4 @@
-local slow_format_filetypes = { "python", "sh", "css" }
+local slow_format_filetypes = { "python", "sh", "css", "json", "jsonc" }
 
 local options = {
   formatters_by_ft = {
@@ -11,6 +11,8 @@ local options = {
         return { "isort", "black" }
       end
     end,
+    json = { "fixjson" },
+    jsonc = { "fixjson" },
     css = { "prettier" },
     -- html = { "prettier" },
   },
