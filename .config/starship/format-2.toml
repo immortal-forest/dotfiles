@@ -98,5 +98,6 @@ format = '[󰥔 $time]($style)'
 
 [cmd_duration]
 min_time = 10
+show_milliseconds = true
 style = "bold purple"
 

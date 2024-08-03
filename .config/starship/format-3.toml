@@ -70,5 +70,6 @@ symbol = ' '
 
 [cmd_duration]
 min_time = 1
+show_milliseconds = true
 format="[$duration]($style)"
 style = "bold purple"
