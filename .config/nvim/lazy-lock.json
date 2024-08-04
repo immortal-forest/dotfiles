@@ -13,7 +13,7 @@
   "indent-blankline.nvim": { "branch": "master", "commit": "65e20ab94a26d0e14acac5049b8641336819dfc7" },
   "lazy.nvim": { "branch": "main", "commit": "077102c5bfc578693f12377846d427f49bc50076" },
   "mason.nvim": { "branch": "main", "commit": "e2f7f9044ec30067bc11800a9e266664b88cda22" },
-  "mini.nvim": { "branch": "main", "commit": "42a58673bc86359b006f83fecd971ecb95ee8bf8" },
+  "mini.nvim": { "branch": "main", "commit": "af673d8523c5c2c5ff0a53b1e42a296ca358dcc7" },
   "neocord": { "branch": "main", "commit": "aa7a58023166533da83ca7b11c0d2569e45d7381" },
   "none-ls.nvim": { "branch": "main", "commit": "cfa65d86e21eeb60544d5e823f6db43941322a53" },
   "nvim-autopairs": { "branch": "master", "commit": "e38c5d837e755ce186ae51d2c48e1b387c4425c6" },
