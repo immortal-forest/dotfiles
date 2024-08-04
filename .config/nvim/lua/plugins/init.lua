@@ -3,19 +3,6 @@ return {
   {
     "IogaMaster/neocord",
     event = "VeryLazy",
-    init = function()
-      local wk = require "which-key"
-      wk.add {
-        { "<leader>d", group = "discord" },
-        {
-          "<leader>dp",
-          function()
-            require "configs.discord"
-          end,
-          desc = "Discord Rich Presence",
-        },
-      }
-    end,
     config = function()
       require "configs.discord"
     end,
