@@ -53,7 +53,9 @@ if [[ "$reload" == "r" ]]; then
   hyprctl dispatch exec dunst &>/dev/null
 
   if ! pgrep -x spicetify > /dev/null ; then
-    spicetify -n -q watch -s &
+    if pgrep -x spotify > /dev/null ; then
+      spicetify -n -q watch -s &
+    fi
   fi
 
 fi
