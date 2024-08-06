@@ -8,7 +8,7 @@ return {
     end,
   },
 
-  { "echasnovski/mini.nvim", version = false },
+  { "echasnovski/mini.icons", version = false },
 
   {
     "stevearc/conform.nvim",
