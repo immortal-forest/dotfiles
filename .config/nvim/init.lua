@@ -36,7 +36,5 @@ require "nvchad.autocmds"
 
 vim.schedule(function()
   require "mappings"
+  require "configs.auto-cmd"
 end)
-
-require("mini.icons").setup()
-require "configs.auto-cmd"
