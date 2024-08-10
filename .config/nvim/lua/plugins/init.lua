@@ -28,7 +28,7 @@ return {
 
   {
     "nvimtools/none-ls.nvim",
-    ft = { "python" },
+    ft = { "python", "c" },
     opts = function()
       return require "configs.none-ls"
     end,
