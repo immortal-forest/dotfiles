@@ -33,7 +33,7 @@ def format_history(history):
         for notification in history["data"][0]:
             body = notification.get("message", {}).get("data", "")
             if body != "":
-                body = re.sub(CLEAN, "", body.strip().replace("\n", " "))
+                body = re.sub(CLEAN, "", body.strip().replace("\n", " - "))
                 tooltip.append(body)
                 break
         tooltip_text = "\n".join(tooltip_click) + "\n\n " + "\n".join(tooltip)
