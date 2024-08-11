@@ -2,7 +2,6 @@
 
 import os
 import sys
-from itertools import batched
 
 
 WALL_DIR = f"{os.environ['HOME']}/wallpapers"
@@ -25,7 +24,6 @@ def themes():
 
 def wallpapers(theme: str):
     w = [wal for wal in os.listdir(f"{WALL_DIR}/{theme}")]
-    # w.sort()
     return w
 
 
