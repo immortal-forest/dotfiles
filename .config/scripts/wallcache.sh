@@ -5,7 +5,7 @@ mkdir -p $thmbDir
 
 # hyprlock doesn't support gif image..
 if [[ $1 =~ \.gif$ ]]; then
-  convert "$1"[0] -resize 1920x1080 "$thmbDir/wall.set.png"
+  convert "$1"[0] -resize 1280x720 "$thmbDir/wall.set.png"
 else
   cp "$1" "$thmbDir/wall.set.png"
 fi
