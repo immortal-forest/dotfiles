@@ -2,6 +2,7 @@
 
 import os
 import sys
+from itertools import batched
 
 
 WALL_DIR = f"{os.environ['HOME']}/wallpapers"
