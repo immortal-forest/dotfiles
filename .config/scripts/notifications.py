@@ -35,10 +35,16 @@ def format_history(history):
         for notification in history["data"][0][:10]:
             body = notification.get("body", {}).get("data", "")
             app = notification.get("appname", {}).get("data", "")
-            if app == "t2":
-                app = ""
             if body != "":
-                tooltip.append(f" {body}  {app}".strip())
+                _tp = f" {body}"
+                if app != "" and app != "t2":
+                    _tp += f"  {app}"
+                else:
+                    val = notification.get("summary", {}).get("data", "")
+                    if val != "":
+                        _tp += " - " + val
+
+                tooltip.append(_tp)
 
         tooltip_text = "\n".join(tooltip_click) + "\n\n" + "\n".join(tooltip)
 
