@@ -115,6 +115,4 @@ element-icon {
 element-text {
     cursor:                      inherit;
     background-color:            transparent;
-    horizontal-align:            0.0;
-    vertical-align:              0.5; 
 }
