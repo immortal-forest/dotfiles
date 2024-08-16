@@ -1,0 +1,120 @@
+@theme "~/.config/rofi/colors.rasi"
+
+
+configuration {
+    modi:                        "drun";
+    font:                        "JetBrains Mono Nerd Font 14";
+    show-icons:                  true;
+    drun-display-format:         "{name}";
+    window-format:               "{w} · {c} · {t}";
+}
+
+window {
+    enabled:                     true;
+    fullscreen:                  false;
+    transparency:                "real";
+    cursor:                      "default";
+    spacing:                     0px;
+    border-radius:               10px;
+    location:                    center;
+    anchor:                      center;
+    width:                       100%;
+    background-color:            #0000001a;
+}
+
+mainbox {
+    enabled:                     true;
+    children:                    [ "inputbar", "listview"  ];
+    background-color:            transparent;
+}
+
+// Inputs //
+
+inputbar {
+    enabled:                      true;
+    spacing:                      0em;
+    padding:                      0em;
+    background-color:             transparent;
+    children:                     [ "entry" ];
+}
+
+entry {
+    enabled:                      false;
+}
+
+listview {
+    enabled:                     true;
+    columns:                     5;
+    lines:                       1;
+    padding:                     26px 36px;
+    cycle:                       true;
+    dynamic:                     true;
+    scrollbar:                   false;
+    layout:                      vertical;
+    reverse:                     false;
+    fixed-height:                true;
+    fixed-columns:               true;
+
+    text-color:                  @foreground;
+    background-color:            transparent;
+    spacing:                     20px;
+    border:                      0px;
+}
+
+element {
+    enabled:                     true;
+    orientation:                 vertical;
+    expand:                      false;
+    spacing:                     0px;
+    padding:                     5px 10px;
+    border-radius:               16px;
+    cursor:                      pointer;
+}
+
+
+
+element normal.normal {
+    background-color:            #00000033;
+    text-color:                  inherit;
+}
+
+element normal.active {
+    background-color:            @selected-active-background;
+    text-color:                  @selected-active-foreground;
+}
+
+element selected.normal {
+    background-color:            @selected-normal-background;
+    text-color:                  @selected-normal-foreground;
+}
+
+element selected.active {
+    background-color:            @selected-normal-background;
+    text-color:                  @selected-normal-foreground;
+}
+
+element alternate.normal {
+    background-color:            #00000033;
+    text-color:                  inherit;
+}
+
+element alternate.active {
+    background-color:            @alternate-active-background;
+    text-color:                  @alternate-active-foreground;
+}
+
+
+element-icon {
+    size:                        10em;
+    cursor:                      inherit;
+    expand:                      false;
+    padding:                     0px;
+    background-color:            #00000000;
+}
+
+element-text {
+    cursor:                      inherit;
+    background-color:            transparent;
+    horizontal-align:            0.0;
+    vertical-align:              0.5; 
+}
