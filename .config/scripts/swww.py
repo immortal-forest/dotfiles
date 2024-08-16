@@ -86,7 +86,9 @@ def main(args: list[str]):
         if opt == "t":
             if ac in _themes:
                 theme_index = _themes.index(ac)
-                wall_index = 0
+        elif opt == "w":
+            if ac in _wallpapers:
+                wall_index = _wallpapers.index(ac)
         else:
             print_help(1)
     else:
