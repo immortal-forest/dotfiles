@@ -3,6 +3,7 @@ export PYENV_ROOT="$HOME/dev/pyenv"
 [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
 
+export EDITOR=nvim
 export GPG_TTY=$(tty)
 export PATH="$PATH:$HOME/.local/share/spotify-launcher/install/usr/share/spotify/"
 export PATH="$PATH:/home/immortalforest/.local/share/JetBrains/Toolbox/scripts"
