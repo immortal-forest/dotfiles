@@ -14,7 +14,12 @@ Inspired by [Hyde](https://github.com/prasanthrangan/hyprdots)
 
 See [assets](/assets) for more
 
-### Stuffs used
+
+## Wallpapers
+Check this [repo](../../../wallpapers)
+
+
+## Stuffs used
 
  - [hyprlock](https://github.com/hyprwm/hyprlock) - lock screen
  - [hypridle](https://github.com/hyprwm/hypridle) - idle management
