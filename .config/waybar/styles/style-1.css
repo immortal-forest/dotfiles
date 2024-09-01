@@ -175,7 +175,7 @@ tooltip {
 }
 
 #clock {
-  background-color: @color6;
+  background-color: @color1;
   color: @foreground;
   margin-right: 4px;
   padding-left: 8px;
@@ -201,4 +201,3 @@ tooltip {
   color: @color5;
   transition: all 0.3s ease-out;
 }
-
