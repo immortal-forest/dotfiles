@@ -44,7 +44,9 @@ def main(args: list[str]):
     if args[0] == "-th" or args[0] == "--themes":
         for theme in batched(themes(), 3):
             try:
-                print("{:<25}{:<25}{:<25}".format(*theme))
+                t = list(theme)
+                t.extend(["", ""])
+                print("{:<25}{:<25}{:<25}".format(*t).strip())
             except Exception as _:
                 pass
         return
@@ -76,6 +78,8 @@ def main(args: list[str]):
             elif ac == "p":
                 theme_index = _themes.index(config["Theme"]) - 1
                 direction = "p"
+            elif ac in _themes:
+                theme_index = _themes.index(ac)
             else:
                 print_help(1)
         else:
