@@ -38,7 +38,6 @@ tooltip {
 }
 
 #custom-icon {
-  background: linear-gradient(-45deg, @color5, @color4, @color6, @color3);
   animation: gradient 10s ease infinite;
   background-size: 400% 400%;
   color: rgba(0, 255, 255, 0.6);

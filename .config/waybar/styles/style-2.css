@@ -38,7 +38,6 @@ tooltip {
 }
 
 #custom-icon {
-  background: @background;
   color: rgba(0, 255, 255, 0.6);
   font-size: 15px;
   padding-left: 8px;
