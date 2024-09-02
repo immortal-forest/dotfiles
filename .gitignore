@@ -2,4 +2,16 @@
 .config/spicetify/Extracted
 .config/spicetify/config-xpui.ini
 .config/cava/shaders
+.config/baloofileinformationrc
+.config/dconf/
+.config/discord/
+.config/kde.org/
+.config/kiorc
+.config/pulse/
+.config/session/
+.config/spotify/
+.config/trashrc
+.config/xsettingsd/
+.local/share/dolphin/view_properties/global/
+.local/share/dolphin/view_properties/trash/
 .stow-local-ignore
