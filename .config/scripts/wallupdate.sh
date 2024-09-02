@@ -42,8 +42,11 @@ cp "$colorsDir/dunstrc" "$confDir/dunst/dunstrc"
 if [[ "$reload" == "r" ]]; then
   pkill -x rofi
 
-  pkill -x waybar
-  hyprctl dispatch exec waybar &>/dev/null
+  # don't start waybar if its not running
+  if pgrep -x waybar > /dev/null ; then
+    pkill -x waybar
+    hyprctl dispatch exec waybar &>/dev/null
+  fi
 
   pkill -USR2 cava
 
