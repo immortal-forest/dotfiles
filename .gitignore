@@ -14,4 +14,3 @@
 .config/xsettingsd/
 .local/share/dolphin/view_properties/global/
 .local/share/dolphin/view_properties/trash/
-.stow-local-ignore
