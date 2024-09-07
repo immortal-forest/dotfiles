@@ -1,6 +1,6 @@
 #! /usr/bin/sh
 
-languages=$(echo "bash kotlin lua python python3 java c js" | tr ' ' '\n' | sort)
+languages=$(echo "bash awk kotlin lua python python3 java c js" | tr ' ' '\n' | sort)
 other=$(echo "git flask django" | tr ' ' '\n' | sort)
 core="$(compgen -c | grep -v '^_' | tr ' ' '\n')"
 
