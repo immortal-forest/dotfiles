@@ -46,22 +46,6 @@ return {
   },
 
   {
-    "williamboman/mason.nvim",
-    opts = {
-      ensure_installed = {
-        "pyright",
-        "mypy",
-        "ruff",
-        "black",
-        "isort",
-        "shfmt",
-        "fixjson",
-        "prettier",
-      },
-    },
-  },
-
-  {
     "michaelrommel/nvim-silicon",
     lazy = true,
     cmd = "Silicon",

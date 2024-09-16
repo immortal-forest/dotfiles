@@ -21,4 +21,17 @@ M.ui = {
   },
 }
 
+M.mason = {
+  pkgs = {
+    "pyright",
+    "mypy",
+    "ruff",
+    "black",
+    "isort",
+    "shfmt",
+    "fixjson",
+    "prettier",
+  },
+}
+
 return M
