@@ -3,7 +3,6 @@
     "format": "󰣇",
     "on-click": "rofi -show drun",
     "on-click-right": "hyprctl dispatch exec 'systemupdate.sh'",
-    "tooltip": true,
-    "toottip-format": "Arch Linux"
-  } 
+    "tooltip": false
+  }
 }
