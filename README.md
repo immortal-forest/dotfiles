@@ -6,11 +6,10 @@ Inspired by [Hyde](https://github.com/prasanthrangan/hyprdots)
 
 ## How it looks?
 
-![screen](/assets/screen.png)
+![screen](/assets/new-screen.png)
+![screen-ii](/assets/new-screen-ii.png)
 ![rofi](/assets/rofi.png)
 ![lockscreen](/assets/lockscreen.png) 
-![waybar](/assets/waybar-1-1.png)
-![waybar](/assets/waybar-1-2.png)
 
 See [assets](/assets) for more
 
