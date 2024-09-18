@@ -3,6 +3,6 @@
     "exec": "weather.py",
     "format": "{}",
     "return-type": "json",
-    "interval": 1800
+    "interval": 300
   }
 }
