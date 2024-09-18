@@ -31,7 +31,7 @@ tooltip {
   margin-top: 4px;
   padding-top: 4px;
   padding-bottom: 4px;
-  border-radius: 12px;
+  border-radius: 16px;
 }
 
 .modules-right {
@@ -39,7 +39,7 @@ tooltip {
   margin-top: 4px;
   padding-top: 4px;
   padding-bottom: 4px;
-  border-radius: 12px 0px 0px 12px;
+  border-radius: 16px 0px 0px 16px;
 }
 
 #custom-icon {
@@ -89,7 +89,7 @@ tooltip {
   padding-left: 5px;
   padding-right: 5px;
   background-color: @color7;
-  border-radius: 10px;
+  border-radius: 12px;
   color: @color2;
 }
 
@@ -206,7 +206,7 @@ tooltip {
   margin-right: 5px;
   padding-left: 5px;
   padding-right: 5px;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 #clock:hover {
@@ -223,7 +223,7 @@ tooltip {
   margin-right: 5px;
   padding-left: 5px;
   padding-right: 5px;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 #custom-weather:hover {
