@@ -1,1 +1,232 @@
-styles/style-2.css
+* {
+  font-family: "Maple Mono";
+  font-size: 12px;
+  min-height: 10px;
+  background-color: transparent;
+}
+
+@import "theme.css";
+
+window#waybar {
+  background-color: transparent;
+}
+
+tooltip {
+  background-color: @background;
+  color: @foreground;
+  border-radius: 7px;
+  border-width: 0px;
+}
+
+.modules-left {
+  background-color: @background;
+  margin-top: 4px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-radius: 0px 16px 16px 0px;
+}
+
+.modules-center {
+  background-color: @background;
+  margin-top: 4px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-radius: 12px;
+}
+
+.modules-right {
+  background-color: @background;
+  margin-top: 4px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-radius: 12px 0px 0px 12px;
+}
+
+#custom-icon {
+  color: rgba(0, 255, 255, 0.6);
+  font-size: 20px;
+  padding-left: 18px;
+  padding-right: 8px;
+}
+
+#custom-icon:hover {
+  color: rgba(0, 255, 255, 0.8);
+  transition: all 0.3s ease-out;
+}
+
+#workspaces {
+  padding-right: 5px;
+  padding-left: 5px;
+  margin-left: 5px;
+  margin-right: 5px;
+}
+
+#workspaces button {
+  padding-left: 4px;
+  padding-right: 0px;
+  color: @color3;
+  transition: color 0.25s ease-out;
+}
+
+#workspaces button.empty {
+  color: @color4;
+}
+
+#workspaces button.active {
+  color: @foreground;
+}
+
+#workspaces button:hover {
+  color: @color2;
+  transition: color 0.25s ease-in;
+}
+
+#custom-spotify {
+  margin-right: 5px;
+  margin-left: 5px;
+  margin-top: 1px;
+  margin-bottom: 1px;
+  padding-left: 5px;
+  padding-right: 5px;
+  background-color: @color7;
+  border-radius: 10px;
+  color: @color2;
+}
+
+#custom-power {
+  color: @color3;
+  font-size: 15px;
+  padding-left: 5px;
+  padding-right: 18px;
+}
+
+#custom-power:hover {
+  color: @color1;
+  transition: all 0.2s ease-out;
+}
+
+.not-machine {
+  color: @color3;
+}
+
+#battery {
+  background-color: @color7;
+  color: @color2;
+  margin-top: 1px;
+  margin-bottom: 1px;
+  margin-right: 5px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-radius: 12px;
+}
+
+#battery:hover {
+  color: @color3;
+  transition: all 0.25s ease-out;
+}
+
+#memory {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#cpu {
+  padding-right: 5px;
+}
+
+#pulseaudio {
+  color: @color4;
+  margin-right: 5px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#pulseaudio:hover {
+  color: @color6;
+  transition: all 0.3s ease-out;
+}
+
+#custom-arrow {
+  background-color: @color7;
+  color: @color3;
+  font-size: 15px;
+  margin-top: 1px;
+  margin-bottom: 1px;
+  margin-right: 5px;
+  padding-left: 7px;
+  padding-right: 10px;
+  border-radius: 12px;
+}
+
+#custom-arrow:hover {
+  color: @color2;
+  transition: all 0.25s ease-out;
+}
+
+#tray {
+  color: @foreground;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#tray menu {
+  background-color: @background;
+}
+
+#tray menu * {
+  color: @foreground;
+  min-height: 16px;
+}
+
+#tray menu separator {
+  color: @foreground;
+  min-height: 10px;
+  background-color: @color2;
+}
+
+#custom-notifications {
+  color: @color5;
+  margin-left: 5px;
+  margin-right: 5px;
+  padding-right: 5px;
+  padding-left: 5px;
+}
+
+#custom-notifications:hover {
+  color: @color1;
+  transition: all 0.3s ease-out;
+}
+
+#clock {
+  background-color: @color1;
+  color: @foreground;
+  margin-top: 1px;
+  margin-bottom: 1px;
+  margin-left: 5px;
+  margin-right: 5px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-radius: 8px;
+}
+
+#clock:hover {
+  color: @color4;
+  transition: all 0.3s ease-out;
+}
+
+#custom-weather {
+  background-color: @color1;
+  color: @foreground;
+  margin-top: 1px;
+  margin-bottom: 1px;
+  margin-left: 5px;
+  margin-right: 5px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-radius: 8px;
+}
+
+#custom-weather:hover {
+  color: @color4;
+  transition: all 0.3s ease-out;
+}
