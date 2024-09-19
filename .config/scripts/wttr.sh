@@ -1,30 +1,34 @@
 #!/usr/bin/sh
 
-printf '\n\n'
+print_weather() {
+  printf '\n\n'
+  curl "wttr.in/$1"
+  printf '\n\n'
+}
 
 case $1 in
 c) # current weather
-  curl "wttr.in/?0QF"
+  print_weather "?0QF"
   ;;
 
 t) # current weather + today's forecast
-  curl "wttr.in/?1QF"
+  print_weather "?1QF"
   ;;
 
 tn) # same as above but shows only day and night
-  curl "wttr.in/?1nQF"
+  print_weather "?1nQF"
   ;;
 
 tt) # + tomorrow's forecast
-  curl "wttr.in/?2QF"
+  print_weather "?2QF"
   ;;
 
 ttn) # same as above but shows only day and night
-  curl "wttr.in/?2nQF"
+  print_weather "?2nQF"
   ;;
 
 m) # moon phase
-  curl "wttr.in/moon?F"
+  print_weather "moon?F"
   ;;
 
 *) # show error
@@ -32,5 +36,3 @@ m) # moon phase
   exit 0
   ;;
 esac
-
-printf '\n\n'
