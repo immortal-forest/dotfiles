@@ -1,0 +1,7 @@
+{
+  "image": {
+    "path": "/home/immortalforest/.config/waybar/progress.svg",
+    "size": 20,
+    "interval": 1
+  }
+}

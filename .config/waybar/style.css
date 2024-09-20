@@ -83,14 +83,21 @@ tooltip {
 
 #custom-spotify {
   margin-right: 5px;
-  margin-left: 5px;
   margin-top: 1px;
   margin-bottom: 1px;
-  padding-left: 5px;
   padding-right: 5px;
   background-color: @color7;
-  border-radius: 12px;
+  border-radius: 0px 12px 12px 0px;
   color: @color2;
+}
+
+#image {
+  margin-top: 1px;
+  margin-bottom: 1px;
+  margin-left: 5px;
+  padding-left: 5px;
+  background-color: @color7;
+  border-radius: 12px 0px 0px 12px;
 }
 
 #custom-power {

@@ -12,8 +12,20 @@ import gi
 import json
 import os
 from typing import List
+import time, threading
 
 logger = logging.getLogger(__name__)
+
+
+def every(delay, task, args: list):
+    next_time = time.time() + delay
+    while True:
+        time.sleep(max(0, next_time - time.time()))
+        try:
+            task(*args)
+        except Exception:
+            pass
+        next_time += (time.time() - next_time) // delay * delay + delay
 
 
 def signal_handler(sig, frame):
@@ -60,6 +72,12 @@ class PlayerManager:
         player.connect("metadata", self.on_metadata_changed, None)
         self.manager.manage_player(player)
         self.on_metadata_changed(player, player.props.metadata)
+        self.tt = threading.Thread(
+            target=lambda: every(
+                1, self.player_progress, [player, player.props.metadata]
+            )
+        )
+        self.tt.start()
 
     def get_players(self) -> List[Player]:
         return self.manager.props.players
@@ -161,7 +179,15 @@ class PlayerManager:
 
     def on_player_vanished(self, _, player):
         logger.info(f"Player {player.props.player_name} has vanished")
+        os.remove(f"{os.environ['HOME']}/.config/waybar/progress.svg")
         self.show_most_important_player()
+
+    def player_progress(self, player, metadata):
+        pos = player.get_position()
+        dur = metadata["mpris:length"]
+        pr = (dur - pos) / dur
+        val = 565.48 * pr
+        threading.Thread(target=os.system, args=(f"playerprogress.py {val}",)).start()
 
 
 def parse_arguments():
@@ -205,4 +231,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

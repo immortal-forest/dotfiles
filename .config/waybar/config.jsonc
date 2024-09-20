@@ -5,6 +5,7 @@
   "include": [
     "~/.config/waybar/modules/icon.jsonc",
     "~/.config/waybar/modules/workspaces.jsonc",
+    "~/.config/waybar/modules/progress.jsonc",
     "~/.config/waybar/modules/spotify.jsonc",
     "~/.config/waybar/modules/clock.jsonc",
     "~/.config/waybar/modules/weather.jsonc",
@@ -20,6 +21,7 @@
   "modules-left": [
     "custom/icon",
     "hyprland/workspaces",
+    "image",
     "custom/spotify"
   ],
   "modules-center": [
