@@ -2,7 +2,7 @@
 # Any customization should be done in ~/.gtkrc-2.0.mine instead.
 
 include "/home/immortalforest/.gtkrc-2.0.mine"
-gtk-theme-name="adw-gtk3-dark"
+gtk-theme-name="catppuccin-mocha-lavender"
 gtk-icon-theme-name="Tela-purple-dark"
 gtk-font-name="Cantarell 10"
 gtk-cursor-theme-name="catppuccin-mocha-lavender-cursors"
