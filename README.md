@@ -8,8 +8,8 @@ Inspired by [Hyde](https://github.com/prasanthrangan/hyprdots)
 
 ![screen](/assets/new-screen.png)
 ![screen-ii](/assets/new-screen-ii.png)
-![rofi](/assets/rofi.png)
-![lockscreen](/assets/lockscreen.png) 
+![rofi](/assets/rofi-new.png)
+![lockscreen](/assets/hyprlock.png) 
 
 See [assets](/assets) for more
 
