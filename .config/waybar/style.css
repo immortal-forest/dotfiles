@@ -91,6 +91,12 @@ tooltip {
   background-color: @color7;
   border-radius: 12px;
   color: @color2;
+  transition: all 0.2s ease-out;
+}
+
+#custom-spotify.paused {
+  background-color: @color4;
+  color: @color7;
 }
 
 #custom-power {
@@ -110,8 +116,8 @@ tooltip {
 }
 
 #battery {
-  background-color: @color7;
-  color: @color2;
+  background-color: @color2;
+  color: @color7;
   margin-top: 1px;
   margin-bottom: 1px;
   margin-left: 5px;
@@ -122,7 +128,7 @@ tooltip {
 }
 
 #battery:hover {
-  color: @color3;
+  color: @color5;
   transition: all 0.25s ease-out;
 }
 
@@ -149,8 +155,8 @@ tooltip {
 }
 
 #custom-arrow {
-  background-color: @color7;
-  color: @color3;
+  background-color: @color3;
+  color: @color7;
   font-size: 15px;
   margin-top: 1px;
   margin-bottom: 1px;
@@ -162,7 +168,7 @@ tooltip {
 }
 
 #custom-arrow:hover {
-  color: @color2;
+  color: @color4;
   transition: all 0.25s ease-out;
 }
 
