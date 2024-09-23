@@ -66,10 +66,17 @@ class PlayerManager:
 
     def write_output(self, text, player, tooltip):
         logger.debug(f"Writing output: {text}")
+        status = player.props.playback_status
+        if status == Playerctl.PlaybackStatus.PLAYING:
+            cls = "playing"
+        elif status == Playerctl.PlaybackStatus.PAUSED:
+            cls = "paused"
+        else:
+            cls = "stopped"
 
         output = {
             "text": text,
-            "class": "custom-" + player.props.player_name,
+            "class": ["custom-" + player.props.player_name, cls],
             "alt": player.props.player_name,
             "tooltip": tooltip,
         }
@@ -205,4 +212,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
