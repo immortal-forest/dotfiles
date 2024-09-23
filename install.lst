@@ -1,0 +1,177 @@
+# core
+git
+git-lfs
+zoxide
+zsh
+starship
+stow
+sudo
+npm
+meson
+ninja
+
+
+# network stuff
+networkmanager
+iwd
+network-manager-applet
+blueman
+bluez
+bluez-utils
+
+
+# audio stuff
+wireplumber
+pamixer
+pavucontrol
+pipewire
+pipewire-alsa
+pipewire-audio
+pipewire-jack
+pipewire-pulse
+cava-git
+
+
+# notification and brightness
+libnotify
+dunst
+brightnessctl
+
+
+# keyring and polkit
+gnome-keyring
+polkit-gnome
+
+
+# qt stuff
+qt5-wayland
+qt5ct
+qt6-wayland
+qt6ct
+kvantum
+kvantum-qt5
+
+
+# file explorer
+dolphin
+kde-cli-tools
+
+
+# gtk stuff
+nwg-look
+
+
+# hyprland stuff
+hyprwayland-scanner-git
+aquamarine-git
+hyprland-git
+hyprlock-git
+hypridle-git
+hyprpicker-git
+xdg-desktop-portal-gtk
+xdg-desktop-portal-hyprland-git
+
+
+# bar
+waybar-git
+
+
+# wallpaper and colors stuff
+swww-git
+pywal-git
+python-pywalfox
+mpvpaper
+imagemagick
+
+
+# app and logout menu
+rofi-lbonn-wayland-git
+wlogout-git
+
+
+# screenshot and clip
+grimblast-git
+cliphist
+
+
+# cpu freq control
+auto-cpufreq
+power-profiles-daemon
+
+
+# archive stuff
+p7zip
+unzip
+
+
+# fonts
+ttf-cascadia-code-nerd
+ttf-cascadia-mono-nerd
+ttf-firacode-nerd
+ttf-font-awesome
+ttf-jetbrains-mono-nerd
+ttf-maple
+ttf-mononoki-nerd
+noto-fonts
+noto-fonts-cjk
+noto-fonts-emoji
+
+
+# drivers stuff
+libva-utils
+vdpauinfo
+nvidia
+nvidia-prime
+libva-nvidia-driver
+intel-media-driver
+
+
+# screen recordin and sharing
+wl-screenrec-git
+v4l2loopback-utils
+
+
+# java
+jdk17-openjdk
+jdk8-openjdk
+
+
+# apps
+jetbrains-toolbox
+kitty
+spotify-launcher
+visual-studio-code-bin
+obsidian
+discord
+firefox
+google-chrome
+miru-bin
+
+
+# extra
+pacman-contrib
+htop
+nvtop
+cmatrix
+pipes.sh
+fastfetch
+neovim
+fzf
+fd
+ripgrep
+pv
+silicon
+mypy
+astyle
+less
+man-db
+tealdeer
+tree
+wget
+woof
+uncrustify
+fdupes
+spicetify-cli
+docker
+eww-git
+
