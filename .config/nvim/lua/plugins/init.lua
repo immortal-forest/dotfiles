@@ -1,6 +1,11 @@
 return {
 
   {
+    "christoomey/vim-tmux-navigator",
+    lazy = false,
+  },
+
+  {
     "IogaMaster/neocord",
     event = "VeryLazy",
     config = function()
@@ -79,7 +84,8 @@ return {
     end,
     config = function()
       require("silicon").setup {
-        font = "JetBrainsMono Nerd Font=34;Noto Color Emoji=34",
+        background = "#89b4fa",
+        font = "Maple Mono NF=34;Noto Color Emoji=34",
         theme = "Coldark-Dark",
         output = function()
           return "~/Pictures/Snapshots/" .. os.date "!%Y-%m-%dT%H-%M-%SZ" .. "_code.png"
