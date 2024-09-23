@@ -12,5 +12,6 @@
 .config/spotify/
 .config/trashrc
 .config/xsettingsd/
+.config/tmux/plugins
 .local/share/dolphin/view_properties/global/
 .local/share/dolphin/view_properties/trash/
