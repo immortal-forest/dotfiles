@@ -26,3 +26,4 @@ _darcs
 assets
 zsh
 .config/tmux/plugins
+install.lst
