@@ -63,6 +63,7 @@ nwg-look
 
 # hyprland stuff
 hyprwayland-scanner-git
+hyprutils-git
 aquamarine-git
 hyprland-git
 hyprlock-git
@@ -174,4 +175,4 @@ fdupes
 spicetify-cli
 docker
 eww-git
-
+tmux
