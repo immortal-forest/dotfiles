@@ -32,14 +32,6 @@ return {
   },
 
   {
-    "nvimtools/none-ls.nvim",
-    ft = { "python", "c" },
-    opts = function()
-      return require "configs.none-ls"
-    end,
-  },
-
-  {
     "mfussenegger/nvim-lint",
     enabled = true,
     event = "VeryLazy",
