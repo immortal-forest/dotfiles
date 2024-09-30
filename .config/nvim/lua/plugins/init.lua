@@ -23,6 +23,13 @@ return {
   },
 
   {
+    "folke/todo-comments.nvim",
+    dependencies = { "nvim-lua/plenary.nvim" },
+    opts = {},
+    event = { "BufReadPost", "BufWritePost", "BufNewFile" },
+  },
+
+  {
     "stevearc/conform.nvim",
     event = "BufWritePre",
     config = function()

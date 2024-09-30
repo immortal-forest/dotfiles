@@ -6,6 +6,17 @@ local wk = require "which-key"
 map("n", ";", ":", { desc = "CMD enter command mode" })
 map("i", "jk", "<ESC>")
 
+-- Todo comments
+wk.add {
+  mode = { "n" },
+  { "<leader>td", group = "Todo comments" },
+  {
+    "<leader>tdt",
+    "<cmd> TodoTelescope<cr>",
+    desc = "Todo Telescope",
+  },
+}
+
 -- Trouble
 wk.add {
   mode = { "n" },
