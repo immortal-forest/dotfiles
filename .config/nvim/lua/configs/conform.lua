@@ -1,4 +1,4 @@
-local slow_format_filetypes = { "python", "sh", "css", "json", "jsonc", "uncrustify" }
+local slow_format_filetypes = { "lua", "python", "sh", "css", "json", "jsonc", "c" }
 
 local options = {
   formatters_by_ft = {
