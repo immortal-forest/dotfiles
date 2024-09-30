@@ -30,6 +30,15 @@ return {
   },
 
   {
+    "MeanderingProgrammer/render-markdown.nvim",
+    opts = {},
+    dependencies = { "nvim-treesitter/nvim-treesitter", "echasnovski/mini.icons" },
+    config = function()
+      require "configs.markdown"
+    end,
+  },
+
+  {
     "stevearc/conform.nvim",
     event = "BufWritePre",
     config = function()

@@ -48,6 +48,19 @@ wk.add {
   },
 }
 
+-- Markdown
+wk.add {
+  mode = { "n" },
+  { "<leader>m", group = "Markdown" },
+  {
+    "<leader>mt",
+    function()
+      require("render-markdown").toggle()
+    end,
+    desc = "Toggle render markdown",
+  },
+}
+
 -- Silicon
 wk.add {
   mode = { "v" },
