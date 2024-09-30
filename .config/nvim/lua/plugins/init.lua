@@ -8,12 +8,15 @@ return {
   {
     "IogaMaster/neocord",
     event = "VeryLazy",
-    config = function()
-      require "configs.discord"
-    end,
   },
 
   { "echasnovski/mini.icons", version = false },
+
+  {
+    "folke/trouble.nvim",
+    opts = {},
+    cmd = "Trouble",
+  },
 
   {
     "stevearc/conform.nvim",
@@ -36,9 +39,7 @@ return {
     enabled = true,
     event = "VeryLazy",
     config = function()
-      require("lint").linters_by_ft = {
-        python = { "ruff" },
-      }
+      require "configs.lint"
     end,
   },
 
