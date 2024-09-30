@@ -6,6 +6,37 @@ local wk = require "which-key"
 map("n", ";", ":", { desc = "CMD enter command mode" })
 map("i", "jk", "<ESC>")
 
+-- Trouble
+wk.add {
+  mode = { "n" },
+  { "<leader>t", group = "Trouble" },
+  {
+    "<leader>tt",
+    "<cmd>Trouble diagnostics toggle<cr>",
+    desc = "Toggle Diagnostics",
+  },
+  {
+    "<leader>tb",
+    "<cmd>Trouble diagnostics toggle filter.buf=0<cr>",
+    desc = "Buffer Diagnostics",
+  },
+  {
+    "<leader>ts",
+    "<cmd>Trouble symbols toggle focus=false<cr>",
+    desc = "Toggle Symbols",
+  },
+  {
+    "<leader>tl",
+    "<cmd>Trouble lsp toggle focus=false win.position=right<cr>",
+    desc = "LSP Definitions, references & more",
+  },
+  {
+    "<leader>tq",
+    "<cmd>Trouble qflist toggle<cr>",
+    desc = "Quickfix List",
+  },
+}
+
 -- Silicon
 wk.add {
   mode = { "v" },
@@ -56,5 +87,18 @@ wk.add {
     "<C-k>",
     "<cmd> TmuxNavigateUp<cr>",
     desc = "Tmux window up",
+  },
+}
+
+-- neocord
+wk.add {
+  mode = "n",
+  { "<leader>d", group = "Discord" },
+  {
+    "<leader>dl",
+    function()
+      require "configs.discord"
+    end,
+    desc = "Enable discord rich presence",
   },
 }
