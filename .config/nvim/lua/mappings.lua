@@ -90,15 +90,33 @@ wk.add {
   },
 }
 
--- neocord
+-- cord
 wk.add {
   mode = "n",
   { "<leader>d", group = "Discord" },
   {
-    "<leader>dl",
-    function()
-      require "configs.discord"
-    end,
-    desc = "Enable discord rich presence",
+    "<leader>dc",
+    "<cmd> CordConnect<cr>",
+    desc = "Connect to Discord",
+  },
+  {
+    "<leader>dd",
+    "<cmd> CordDisconnect<cr>",
+    desc = "Disconnect from Discord",
+  },
+  {
+    "<leader>dr",
+    "<cmd> CordReconnect<cr>",
+    desc = "Reconnect to Discord",
+  },
+  {
+    "<leader>dp",
+    "<cmd> CordTogglePresence<cr>",
+    desc = "Toggle presence",
+  },
+  {
+    "<leader>di",
+    "<cmd> CordToggleIdle<cr>",
+    desc = "Toggle idle status",
   },
 }
