@@ -6,8 +6,12 @@ return {
   },
 
   {
-    "IogaMaster/neocord",
+    "vyfor/cord.nvim",
+    build = "./build || .\\build",
     event = "VeryLazy",
+    config = function()
+      require "configs.discord"
+    end,
   },
 
   { "echasnovski/mini.icons", version = false },
