@@ -28,6 +28,7 @@ M.mason = {
     "ruff",
     "black",
     "isort",
+    "stylua",
     "shfmt",
     "fixjson",
     "prettier",
