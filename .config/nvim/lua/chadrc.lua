@@ -27,7 +27,7 @@ M.mason = {
     "mypy",
     "ruff",
     "black",
-    "isort",
+    "lua-language-server",
     "stylua",
     "shfmt",
     "fixjson",
