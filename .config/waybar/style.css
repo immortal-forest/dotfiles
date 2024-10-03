@@ -95,7 +95,7 @@ tooltip {
 }
 
 #custom-spotify.paused {
-  background-color: @color4;
+  background-color: @color2;
   color: @color7;
 }
 
@@ -139,6 +139,7 @@ tooltip {
 
 #cpu {
   padding-right: 5px;
+  margin-left: 5px;
 }
 
 #pulseaudio {
