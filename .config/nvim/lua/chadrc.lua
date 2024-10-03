@@ -28,6 +28,8 @@ M.mason = {
     "ruff",
     "black",
     "lua-language-server",
+    "typescript-language-server",
+    "biome",
     "stylua",
     "shfmt",
     "fixjson",

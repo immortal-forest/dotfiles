@@ -1,4 +1,4 @@
-local slow_format_filetypes = { "lua", "python", "sh", "css", "json", "jsonc", "c" }
+local slow_format_filetypes = { "lua", "python", "sh", "css", "json", "jsonc", "c", "javascript", "typescript" }
 
 local options = {
   formatters_by_ft = {
@@ -8,6 +8,8 @@ local options = {
     c = { "astyle", "uncrustify" },
     json = { "fixjson" },
     jsonc = { "fixjson" },
+    javascript = { "prettier" },
+    typescript = { "prettier" },
     css = { "prettier" },
     -- html = { "prettier" },
   },
