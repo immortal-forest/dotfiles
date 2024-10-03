@@ -1,9 +1,9 @@
-require("nvchad.configs.lspconfig").defaults()
-
+local nvlsp = require "nvchad.configs.lspconfig"
 local lspconfig = require "lspconfig"
 
+nvlsp.defaults() -- loads nvchad's defaults
+
 local servers = { "ts_ls" }
-local nvlsp = require "nvchad.configs.lspconfig"
 
 -- lsps with default config
 for _, lsp in ipairs(servers) do

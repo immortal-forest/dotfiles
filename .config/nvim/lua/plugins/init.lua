@@ -59,7 +59,7 @@ return {
     enabled = true,
     event = "VeryLazy",
     config = function()
-      require "configs.lints"
+      require "configs.lint"
     end,
   },
 
