@@ -20,8 +20,33 @@ M.ui = {
     style = "bordered",
   },
   statusline = {
-    theme = "default",
+    theme = "minimal",
     separator_style = "round",
+    order = { "mode", "file", "git", "f", "lsp_msg", "f", "linters", "diagnostics", "lsp", "cwd", "cursor" },
+    modules = {
+      linters = function()
+        local linters = require("lint").get_running()
+        if #linters == 0 then
+          return "󰦕 "
+        end
+        return "󱉶 " .. table.concat(linters, ", ") .. " "
+      end,
+      f = "%=",
+      lsp = function()
+        local stbufnr = function()
+          return vim.api.nvim_win_get_buf(vim.g.statusline_winid or 0)
+        end
+        if rawget(vim, "lsp") and vim.version().minor >= 10 then
+          for _, client in ipairs(vim.lsp.get_clients()) do
+            if client.attached_buffers[stbufnr()] then
+              return (vim.o.columns > 100 and "   " .. client.name .. " ") or "   LSP "
+            end
+          end
+        end
+
+        return ""
+      end,
+    },
   },
 }
 
