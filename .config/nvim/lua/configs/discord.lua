@@ -47,5 +47,10 @@ require("cord").setup {
       url = "git", -- URL where the button leads to ('git' = automatically fetch Git repository URL)
     },
   },
-  assets = nil, -- Custom file icons, see the wiki*
+  assets = {
+    nvdash = {
+      icon = "https://raw.githubusercontent.com/vyfor/cord.nvim/refs/heads/master/assets/editor/nvchad.png",
+      tooltip = "Nvdash",
+    },
+  }, -- Custom file icons, see the wiki*
 }
