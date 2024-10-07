@@ -60,21 +60,21 @@ data = {}
 def degToIcon(num):
     val = int((float(num) / 22.5) + 0.5)
     arr = [
-        "",
+        "N",
         "NNE",
-        "",
+        "NE",
         "ENE",
-        "",
+        "E",
         "ESE",
-        "",
+        "SE",
         "SSE",
-        "",
+        "S",
         "SSW",
-        "",
+        "SW",
         "WSW",
-        "",
+        "W",
         "WNW",
-        "",
+        "NW",
         "NNW",
     ]
     return arr[(val % 16)]
