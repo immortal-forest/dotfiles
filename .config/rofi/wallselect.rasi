@@ -115,4 +115,5 @@ element-icon {
 element-text {
     cursor:                      inherit;
     background-color:            transparent;
+    text-color:                  @foreground;
 }
