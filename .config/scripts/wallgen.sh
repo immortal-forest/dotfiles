@@ -10,7 +10,7 @@ if awk -v fxb="${fxb}" 'BEGIN {exit !(fxb < 0.72)}'; then
 else
   # light
   theme="light"
-  wal -i "$wall_path" -n -e &>/dev/null
+  wal -i "$wall_path" -l -n -e &>/dev/null
 fi
 
 wallupdate.sh $2 $theme  &>/dev/null
