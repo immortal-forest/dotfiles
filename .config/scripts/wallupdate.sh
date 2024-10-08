@@ -8,6 +8,7 @@ confDir="$HOME/.config"
 # copying files
 
 # hyprland
+mkdir -p "$confDir/hypr/theme"
 cp "$colorsDir/hypr-colors.conf" "$confDir/hypr/theme/colors.conf"
 
 # kitty
@@ -30,9 +31,11 @@ cp "$colorsDir/colors-waybar.css" "$confDir/wlogout/theme.css"
 cp "$colorsDir/colors-spotify.ini" "$confDir/spicetify/Themes/Sleek/color.ini"
 
 # cava
+mkdir -p "$confDir/cava"
 cp "$colorsDir/colors-cava" "$confDir/cava/config"
 
 # kvantum
+mkdir -p "$confDir/Kvantum/pywal"
 cp "$colorsDir/pywal.kvconfig" "$confDir/Kvantum/pywal/pywal.kvconfig"
 cp "$colorsDir/pywal.svg" "$confDir/Kvantum/pywal/pywal.svg"
 
