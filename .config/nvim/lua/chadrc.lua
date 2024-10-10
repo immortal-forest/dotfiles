@@ -27,9 +27,9 @@ M.ui = {
       linters = function()
         local linters = require("lint").get_running()
         if #linters == 0 then
-          return "󰦕 "
+          return "󰦕 " .. " "
         end
-        return "󱉶 " .. table.concat(linters, ", ")
+        return "󱉶 " .. table.concat(linters, ", ") .. " "
       end,
       f = "%=",
       lsp = function()
@@ -39,7 +39,7 @@ M.ui = {
         if rawget(vim, "lsp") and vim.version().minor >= 10 then
           for _, client in ipairs(vim.lsp.get_clients()) do
             if client.attached_buffers[stbufnr()] then
-              return (vim.o.columns > 100 and "   " .. client.name .. " ") or "   LSP "
+              return (vim.o.columns > 100 and "  " .. client.name .. " ") or "  LSP "
             end
           end
         end
@@ -60,10 +60,10 @@ M.ui = {
         local hints = #vim.diagnostic.get(stbufnr(), { severity = vim.diagnostic.severity.HINT })
         local info = #vim.diagnostic.get(stbufnr(), { severity = vim.diagnostic.severity.INFO })
 
-        err = (err and err > 0) and (" %#St_lspError#" .. " " .. err) or ""
-        warn = (warn and warn > 0) and (" %#St_lspWarning#" .. " " .. warn) or ""
-        hints = (hints and hints > 0) and (" %#St_lspHints#" .. "󰛩 " .. hints) or ""
-        info = (info and info > 0) and (" %#St_lspInfo#" .. "󰋼 " .. info) or ""
+        err = (err and err > 0) and ("%#St_lspError#" .. " " .. err .. " ") or ""
+        warn = (warn and warn > 0) and ("%#St_lspWarning#" .. " " .. warn .. " ") or ""
+        hints = (hints and hints > 0) and ("%#St_lspHints#" .. "󰛩 " .. hints .. " ") or ""
+        info = (info and info > 0) and ("%#St_lspInfo#" .. "󰋼 " .. info .. " ") or ""
 
         return err .. warn .. hints .. info
       end,
