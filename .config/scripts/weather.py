@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import json
+
 import requests
 
 WEATHER_CODES = {
@@ -57,7 +58,7 @@ WEATHER_CODES = {
 data = {}
 
 
-def degToIcon(num):
+def degToSym(num):
     val = int((float(num) / 22.5) + 0.5)
     arr = [
         "N",
@@ -87,6 +88,7 @@ tempint = int(weather["current_condition"][0]["FeelsLikeC"])
 data["text"] = (
     " "
     + WEATHER_CODES[weather["current_condition"][0]["weatherCode"]]
+    + " "
     + weather["current_condition"][0]["FeelsLikeC"]
     + "°"
     + " | "
@@ -99,9 +101,9 @@ data["tooltip"] = (
 )
 data["tooltip"] += f"Feels like: {weather['current_condition'][0]['FeelsLikeC']}°C\n"
 data["tooltip"] += f"Location: {weather['nearest_area'][0]['areaName'][0]['value']}\n"
-data["tooltip"] += (
-    f"Wind: {weather['current_condition'][0]['windspeedKmph']}Km/h {degToIcon(weather['current_condition'][0]['winddirDegree'])}\n"
-)
+data[
+    "tooltip"
+] += f"Wind: {weather['current_condition'][0]['windspeedKmph']}Km/h {degToSym(weather['current_condition'][0]['winddirDegree'])}\n"
 data["tooltip"] += f"Humidity: {weather['current_condition'][0]['humidity']}%\n"
 data["tooltip"] += f"Visibility: {weather['current_condition'][0]['visibility']}Km"
 
