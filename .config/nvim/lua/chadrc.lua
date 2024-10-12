@@ -75,20 +75,4 @@ M.nvdash = {
   load_on_startup = true,
 }
 
-M.mason = {
-  pkgs = {
-    "pyright",
-    -- "mypy",
-    "ruff",
-    "black",
-    "lua-language-server",
-    "typescript-language-server",
-    "biome",
-    "stylua",
-    "shfmt",
-    "fixjson",
-    "prettier",
-  },
-}
-
 return M
