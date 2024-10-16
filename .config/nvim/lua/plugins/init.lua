@@ -77,4 +77,10 @@ return {
       }
     end,
   },
+
+  {
+    "nvchad/minty",
+    cmd = { "Shades", "Huefy" },
+    opts = { huefy = { border = false } },
+  },
 }
