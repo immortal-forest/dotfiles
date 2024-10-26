@@ -12,7 +12,7 @@ M.base46 = {
     Comment = { italic = true },
     ["@comment"] = { italic = true },
   },
-  theme_toggle = { "catppuccin", "chadracula-evondev" },
+  theme_toggle = { "catppuccin", "gatekeeper" },
 }
 
 M.ui = {
