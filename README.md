@@ -46,6 +46,9 @@ git clone https://github.com/immortal-forest/dotfiles.git ~/dotfiles && cd ~/dot
 > [!WARNING]
 > Make sure you have an AUR helper installed on your system before proceeding to the next step. Next step uses `yay` but you can use any.
 
+> [!TIP]
+> Add '#' at the beginning of the package in [install.lst](/install.lst) will ignore it
+
 ```bash
 cat install.lst | grep -v "^#" | sed '/^$/d' | yay -S --removemake -
 ```
@@ -54,37 +57,10 @@ This will install all the required packages.
 > [!TIP]
 > Installing all the packages will take time. You will be prompted for password and confirmation multiple times during this process. Adding `--noconfirm --sudoloop` after `-S` will skip confirmation and further need to type in the password.
 
-> [!TIP]
-> Add '#' at the beginning of the package in [install.lst](/install.lst) will ignore it
 
 ```bash
 cat install.lst | grep -v "^#" | sed '/^$/d' | yay -S --removemake --noconfirm --sudoloop -
 ```
-
-### Configuring shell
-
-Next, copy the file/s from either p10k or starship inside the zsh directory
-
-```bash
-cp zsh/p10k/.p10k.zsh ~
-cp zsh/p10k/.zshrc ~
-```
-or 
-
-```bash
-cp zsh/starship/.zshrc ~
-```
-
-If you're using p10k then you can safely proceed to next step.
-If not, then you need to create a symlink to a file inside `.config/starship`. 
-
-
-```bash
-ln -sf .config/starship/format-3.toml .config/starship.toml
-```
-
-There are three formats to choose from, try each and pick the one you like.
-
 
 ### Stow
 
