@@ -2,16 +2,17 @@
 import gi
 
 gi.require_version("Playerctl", "2.0")
-from gi.repository import Playerctl, GLib
-from gi.repository.Playerctl import Player
 import argparse
-import logging
-import sys
-import signal
-import gi
 import json
+import logging
 import os
+import signal
+import sys
 from typing import List
+
+import gi
+from gi.repository import GLib, Playerctl
+from gi.repository.Playerctl import Player
 
 logger = logging.getLogger(__name__)
 

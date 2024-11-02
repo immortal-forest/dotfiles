@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # Check release
-if [ ! -f /etc/arch-release ] ; then
-    exit 0
+if [ ! -f /etc/arch-release ]; then
+  exit 0
 fi
 
 # Check for AUR updates

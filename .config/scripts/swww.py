@@ -4,7 +4,6 @@ import os
 import sys
 from itertools import batched
 
-
 WALL_DIR = f"{os.environ['HOME']}/wallpapers"
 
 
@@ -121,5 +120,5 @@ def main(args: list[str]):
 if __name__ == "__main__":
     try:
         main(sys.argv[1:])
-    except Exception as e:
+    except Exception:
         pass
