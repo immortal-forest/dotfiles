@@ -24,6 +24,5 @@ _darcs
 .icons
 .themes
 assets
-zsh
 .config/tmux/plugins
 install.lst
