@@ -1,4 +1,5 @@
-local slow_format_filetypes = { "lua", "python", "sh", "css", "json", "jsonc", "c", "javascript", "typescript" }
+local slow_format_filetypes =
+  { "lua", "python", "sh", "css", "json", "jsonc", "c", "javascript", "typescript", "markdown" }
 
 local options = {
   formatters_by_ft = {
@@ -15,6 +16,7 @@ local options = {
     css = { "prettier" },
     scss = { "prettier" },
     -- html = { "prettier" },
+    markdown = { "mdformat" },
   },
 
   format_on_save = function(bufnr)
