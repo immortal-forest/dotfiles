@@ -1,8 +1,0 @@
-{
-  "custom/icon": {
-    "format": "󰣇",
-    "on-click": "rofi -show drun",
-    "on-click-right": "hyprctl dispatch exec 'systemupdate.sh'",
-    "tooltip": false
-  }
-}
