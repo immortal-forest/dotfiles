@@ -17,23 +17,6 @@ EOF
   exit 1
 }
 
-notify_vol() {
-  angle="$(((($vol + 2) / 5) * 5))"
-  ico="${icodir}/vol-${angle}.svg"
-  bar=$(seq -s "." $(($vol / 15)) | sed 's/[0-9]//g')
-  notify-send -a "t2" -r 91190 -t 800 -i "${ico}" "${vol}${bar}" "${nsink}"
-}
-
-notify_mute() {
-  mute=$(pamixer "${srce}" --get-mute | cat)
-  [ "${srce}" == "--default-source" ] && dvce="mic" || dvce="speaker"
-  if [ "${mute}" == "true" ]; then
-    notify-send -a "t2" -r 91190 -t 800 -i "${icodir}/muted-${dvce}.svg" "muted" "${nsink}"
-  else
-    notify-send -a "t2" -r 91190 -t 800 -i "${icodir}/unmuted-${dvce}.svg" "unmuted" "${nsink}"
-  fi
-}
-
 action_pamixer() {
   pamixer "${srce}" -"${1}" "${step}"
   vol=$(pamixer "${srce}" --get-volume | cat)
@@ -95,7 +78,6 @@ done
 
 # set default variables
 
-icodir="$HOME/.config/dunst/icons/vol"
 shift $((OPTIND - 1))
 step="${2:-5}"
 
@@ -104,9 +86,6 @@ step="${2:-5}"
 case "${1}" in
 i) action_${ctrl} i ;;
 d) action_${ctrl} d ;;
-m) "${ctrl}" "${srce}" -t && notify_mute && exit 0 ;;
+m) "${ctrl}" "${srce}" -t && exit 0 ;;
 *) print_error ;;
 esac
-
-notify_vol
-

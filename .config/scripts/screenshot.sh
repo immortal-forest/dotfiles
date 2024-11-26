@@ -35,5 +35,5 @@ m) # print focused monitor
 esac
 
 if [ -f "${save_dir}/${save_file}" ]; then
-  notify-send -t 800 -a "t1" -i "${save_dir}/${save_file}" "saved in ${save_dir}"
+  notify-send -u low -i "${save_dir}/${save_file}" "Screenshot" "$save_file"
 fi
