@@ -1,6 +1,17 @@
 # envs
 # export PYENV_ROOT="$HOME/dev/pyenv"
 # [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+
+if ! pgrep -u "$USER" ssh-agent > /dev/null; then
+    ssh-agent -t 4h > "$XDG_RUNTIME_DIR/ssh-agent.env"
+fi
+if [[ ! -f "$SSH_AUTH_SOCK" ]]; then
+    source "$XDG_RUNTIME_DIR/ssh-agent.env" >/dev/null
+fi
+
+export EDITOR=nvim
+export GPG_TTY=$(tty)
+export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
 export UV_CACHE_DIR="$HOME/dev/uv/cache/"
 export UV_PYTHON_PREFERENCE=only-managed
 export UV_PYTHON_INSTALL_DIR="$HOME/dev/uv/python/"
@@ -8,8 +19,6 @@ export UV_TOOL_DIR="$HOME/dev/uv/tools/"
 export UV_TOOL_BIN_DIR="$HOME/dev/uv/bin/"
 export UV_LINK_MODE=symlink
 export PATH="$UV_TOOL_BIN_DIR:$PATH"
-export EDITOR=nvim
-export GPG_TTY=$(tty)
 export PATH="$PATH:$HOME/.local/share/spotify-launcher/install/usr/share/spotify/"
 export PATH="$PATH:$HOME/go/bin/"
 
