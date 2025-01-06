@@ -7,15 +7,15 @@ configuration {
     display-window:              " ";
     drun-display-format:         "{name}";
     window-format:               "{w}{t}";
-    font:                        "JetBrainsMono Nerd Font 10";
+    font:                        "JetBrainsMono Nerd Font 11";
     icon-theme:                  "Tela-circle-dracula";
 }
 
 @theme "~/.config/rofi/colors.rasi"
 
 window {
-    height:                      25em;
-    width:                       18em;
+    height:                      27em;
+    width:                       20em;
     transparency:                "real";
     fullscreen:                  false;
     enabled:                     true;
@@ -109,7 +109,7 @@ element selected.normal {
 }
 
 element-icon {
-    size:                        2em;
+    size:                        2.2em;
     cursor:                      inherit;
     background-color:            transparent;
     text-color:                  inherit;
