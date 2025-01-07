@@ -14,6 +14,9 @@ cp "$colorsDir/hypr-colors.conf" "$confDir/hypr/theme/colors.conf"
 # kitty
 cp "$colorsDir/colors-kitty.conf" "$confDir/kitty/theme.conf"
 
+# ghostty
+cp "$colorsDir/ghostty" "$confDir/ghostty/themes/wal"
+
 # rofi
 if [[ "$2" == "light" ]]; then
   cp "$colorsDir/colors-rofi-light.rasi" "$confDir/rofi/colors.rasi"
