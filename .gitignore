@@ -6,6 +6,7 @@
 .config/dunst/dunstrc
 .config/hypr/theme/colors.conf
 .config/kitty/theme.conf
+.config/ghostty/themes/
 .config/rofi/colors.rasi
 .config/waybar/theme.css
 .config/wlogout/theme.css
