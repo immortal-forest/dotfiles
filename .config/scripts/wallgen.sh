@@ -2,7 +2,7 @@
 
 wall_path=$1
 
-theme=$(sed -n 's/.*"theme.matugen_settings.mode": "\(.*\)".*/\1/p' .cache/ags/hyprpanel/options.json)
+theme=$(sed -n 's/.*"theme.matugen_settings.mode": "\(.*\)".*/\1/p' ~/.config/hyprpanel/config.json)
 if [[ "$theme" == "dark" ]]; then
   # dark
   wal -i "$wall_path" -n -e &>/dev/null
