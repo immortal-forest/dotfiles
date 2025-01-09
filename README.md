@@ -126,6 +126,11 @@ Theme=Wal
 wallpaper=shorekeeper_illus_2.jpeg
 ```
 
+Finally, run this to generate the theme files (waybar, rofi, etc)
+```bash
+swww.py
+```
+
 ### Updating dotfiles
 
 ```bash
