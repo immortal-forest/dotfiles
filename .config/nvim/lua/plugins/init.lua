@@ -7,8 +7,9 @@ return {
 
   {
     "vyfor/cord.nvim",
-    build = "./build || .\\build",
+    branch = "client-server",
     event = "VeryLazy",
+    build = ":Cord fetch",
     config = function()
       require "configs.discord"
     end,
