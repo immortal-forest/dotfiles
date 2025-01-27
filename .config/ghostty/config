@@ -52,5 +52,5 @@ font-size = 16
 window-padding-x = 10
 window-padding-y = 10
 window-padding-balance = true
-shell-integration-features = no-cursor,sudo
+shell-integration-features = no-cursor,sudo,title
 shell-integration = detect
