@@ -120,7 +120,7 @@ wk.add {
   { "<leader>d", group = "Discord" },
   {
     "<leader>dc",
-    "<cmd> Cord clear_presence<cr>",
+    "<cmd> Cord presence suppress<cr>",
     desc = "Clear presence",
   },
   {
@@ -130,12 +130,12 @@ wk.add {
   },
   {
     "<leader>dp",
-    "<cmd> Cord toggle_presence<cr>",
+    "<cmd> Cord presence toggle<cr>",
     desc = "Toggle presence",
   },
   {
     "<leader>di",
-    "<cmd> Cord toggle_idle<cr>",
+    "<cmd> Cord idle toggle<cr>",
     desc = "Toggle idle status",
   },
 }

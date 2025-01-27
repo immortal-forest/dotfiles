@@ -9,7 +9,7 @@ return {
     "vyfor/cord.nvim",
     branch = "client-server",
     event = "VeryLazy",
-    build = ":Cord fetch",
+    build = ":Cord update",
     config = function()
       require "configs.discord"
     end,
