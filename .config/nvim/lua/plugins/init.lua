@@ -7,7 +7,7 @@ return {
 
   {
     "vyfor/cord.nvim",
-    branch = "client-server",
+    branch = "master",
     event = "VeryLazy",
     build = ":Cord update",
     config = function()
