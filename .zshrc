@@ -67,7 +67,8 @@ zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
 zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'
 
 # Aliases
-alias ls='ls --color'
+# alias ls='ls --color'
+alias ls='eza --icons=auto --color=auto'
 alias grep='grep --color=auto'
 alias neofetch='fastfetch'
 
