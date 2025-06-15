@@ -6,7 +6,7 @@ require("cord").setup {
   },
   editor = {
     client = "neovim",
-    icon = "https://raw.githubusercontent.com/vyfor/icons/refs/heads/master/icons/onyx/nvchad.png",
+    icon = "https://raw.githubusercontent.com/vyfor/icons/refs/heads/master/icons/default/accent/nvchad.png",
     tooltip = "Hmm...",
   },
   display = {
