@@ -1,0 +1,102 @@
+# shell and terminal
+zsh
+tmux
+neovim
+starship
+
+# fun cli tools
+cava
+cmatrix
+sl
+pipes.sh
+fastfetch
+htop
+nvtop
+
+# utility
+git
+less
+eza
+fzf
+zoxide
+ripgrep
+silicon
+stow
+wget
+zoxide
+luarocks
+ncdu
+mpv
+npm
+uv
+brightnessctl
+spicetify-cli
+
+# audio/sharing stuff
+wireplumber
+pavucontrol
+pamixer
+pipewire-alsa
+pipewire-jack
+pipewire-pulse
+
+# apps
+firefox
+zen-browser-bin
+alacritty
+kitty
+ghostty
+spotify-launcher
+
+# qt
+qt5ct
+qt6ct
+qt5-wayland
+qt6-wayland
+
+# network
+iwd
+networkmanager
+bluez
+bluez-utils
+
+# keyring
+gnome-keyring
+
+# drivers
+nvidia
+libva-nvidia-driver
+
+# fonts
+noto-fonts
+noto-fonts-cjk
+noto-fonts-emoji
+ttf-cascadia-code-nerd
+ttf-jetbrains-mono-nerd
+ttf-mononoki-nerd
+ttf-font-awesome
+
+# wallpaper
+swww-git
+
+# screenshot and clipbord
+grimblast-git
+clipse
+wl-clipboard
+
+# notification
+dunst
+
+# bar
+waybar-git
+
+# Hypr*
+aquamarine-git
+hypridle-git
+hyprland-git
+hyprlock-git
+hyprpicker-git
+hyprsunset-git
+hyprutils-git
+hyprwayland-scanner-git
+xdg-desktop-portal-hyprland-git
