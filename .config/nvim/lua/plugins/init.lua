@@ -70,7 +70,7 @@ return {
     config = function()
       require("silicon").setup {
         background = "#89b4fa",
-        font = "Maple Mono NF=34;Noto Color Emoji=34",
+        font = "Maple Mono=34;Noto Color Emoji=34",
         theme = "Coldark-Dark",
         output = function()
           return "~/Pictures/Snapshots/" .. os.date "!%Y-%m-%dT%H-%M-%SZ" .. "_code.png"
