@@ -1,12 +1,11 @@
 local nvlsp = require "nvchad.configs.lspconfig"
-local lspconfig = require "lspconfig"
 
 nvlsp.defaults() -- loads nvchad's defaults
 
-local servers = { "ruff", "ts_ls", "pyright", "cssls" }
+local servers = { "ruff", "ts_ls", "pyright", "r_language_server" }
 
 -- single server setup
-lspconfig.pyright.setup {
+vim.lsp.config("pyright", {
   settings = {
     pyright = {
       -- use ruff instead
@@ -19,6 +18,14 @@ lspconfig.pyright.setup {
       },
     },
   },
-}
+})
+
+vim.lsp.config("r_language_server", {
+  cmd = { "R", "--no-echo", "-e", "languageserver::run()" },
+  filetypes = { "r", "rmd", "quarto" },
+  root_dir = function(bufnr, on_dir)
+    on_dir(vim.fs.root(bufnr, ".git") or vim.uv.os_homedir())
+  end,
+})
 
 vim.lsp.enable(servers)

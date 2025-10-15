@@ -4,6 +4,12 @@ return {
     "christoomey/vim-tmux-navigator",
     lazy = false,
   },
+  {
+    "R-nvim/R.nvim",
+    config = function()
+      require "configs.rnvim"
+    end,
+  },
 
   {
     "vyfor/cord.nvim",
