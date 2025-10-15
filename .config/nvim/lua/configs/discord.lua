@@ -10,8 +10,8 @@ require("cord").setup {
     tooltip = "Hmm...",
   },
   display = {
-    theme = "default",
-    falvor = "accent",
+    theme = "classic",
+    flavor = "accent",
   },
   idle = {
     enabled = false,
