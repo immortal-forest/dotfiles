@@ -21,8 +21,6 @@ _darcs
 ^/README.*
 ^/LICENSE.*
 ^/COPYING
-.icons
-.themes
-assets
-.config/tmux/plugins
+
 install.lst
+.config/starship.toml

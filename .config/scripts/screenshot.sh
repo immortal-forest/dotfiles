@@ -5,7 +5,7 @@ if [ -z "$XDG_PICTURES_DIR" ]; then
 fi
 
 save_dir="${2:-$XDG_PICTURES_DIR/Screenshots}"
-save_file=$(date +'%Y-%m-%d_%H-%M-%S.png')
+save_file=$(date +'%y%m%d_%Hh%Mm%Ss_screenshot.png')
 
 mkdir -p $save_dir
 
@@ -35,5 +35,5 @@ m) # print focused monitor
 esac
 
 if [ -f "${save_dir}/${save_file}" ]; then
-  notify-send -u low -i "${save_dir}/${save_file}" "Screenshot" "$save_file"
+  notify-send -t 800 -a "t1" -i "${save_dir}/${save_file}" "saved in ${save_dir}"
 fi

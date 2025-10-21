@@ -1,4 +1,4 @@
-local user, api_key = "lastfm-username", "lastfm-api"
+local user, api_key = "", ""
 SONG = nil
 ARTIST = nil
 local timer = vim.uv.new_timer()

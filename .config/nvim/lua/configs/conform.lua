@@ -6,6 +6,7 @@ local options = {
     lua = { "stylua" },
     sh = { "shfmt" },
     python = { "ruff_organize_imports", "ruff_fix", "ruff_format" },
+    r = { "air" },
     c = { "astyle", "uncrustify" },
     json = { "fixjson" },
     jsonc = { "fixjson" },
@@ -20,6 +21,9 @@ local options = {
   },
 
   format_on_save = function(bufnr)
+    if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
+      return
+    end
     if slow_format_filetypes[vim.bo[bufnr].filetype] then
       return
     end
@@ -32,6 +36,9 @@ local options = {
     return { timeout_ms = 2000, lsp_format = "fallback" }, on_format
   end,
   format_after_save = function(bufnr)
+    if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
+      return
+    end
     if not slow_format_filetypes[vim.bo[bufnr].filetype] then
       return
     end

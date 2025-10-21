@@ -4,15 +4,20 @@
 export EDITOR=nvim
 export GPG_TTY=$(tty)
 export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket
-export UV_CACHE_DIR="$HOME/dev/uv/cache/"
-export UV_PYTHON_PREFERENCE=only-managed
-export UV_PYTHON_INSTALL_DIR="$HOME/dev/uv/python/"
-export UV_TOOL_DIR="$HOME/dev/uv/tools/"
-export UV_TOOL_BIN_DIR="$HOME/dev/uv/bin/"
-export UV_LINK_MODE=symlink
-export PATH="$UV_TOOL_BIN_DIR:$PATH"
+
+# only if uv is installed
+if command -v uv &> /dev/null; then
+  export UV_CACHE_DIR="$HOME/dev/uv/cache/"
+  export UV_PYTHON_PREFERENCE=only-managed
+  export UV_PYTHON_INSTALL_DIR="$HOME/dev/uv/python/"
+  export UV_TOOL_DIR="$HOME/dev/uv/tools/"
+  export UV_TOOL_BIN_DIR="$HOME/dev/uv/bin/"
+  export UV_LINK_MODE=symlink
+  export PATH="$UV_TOOL_BIN_DIR:$PATH"
+fi
+
+# spicetify
 export PATH="$PATH:$HOME/.local/share/spotify-launcher/install/usr/share/spotify/"
-export PATH="$PATH:$HOME/go/bin/"
 
 
 # Set the zinit home directory
@@ -71,6 +76,7 @@ zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'
 alias ls='eza --icons=auto --color=auto'
 alias grep='grep --color=auto'
 alias neofetch='fastfetch'
+alias launch='hyprctl dispatch exec'
 
 
 # never beep

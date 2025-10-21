@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 sleep 1
 killall xdg-desktop-portal-hyprland
 killall xdg-desktop-portal-gnome
