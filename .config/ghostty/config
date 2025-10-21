@@ -1,0 +1,22 @@
+theme = ~/.cache/wal/ghostty
+
+cursor-style = block
+
+font-family = CaskaydiaCove Nerd Font
+font-feature = calt, liga, dlig
+font-size = 16
+
+custom-shader = shaders/blaze.glsl
+alpha-blending = linear-corrected
+
+
+background-opacity = 0.80
+
+window-decoration = false
+window-padding-x = 10
+window-padding-y = 10
+window-padding-balance = true
+window-save-state = always
+
+shell-integration-features = no-cursor,sudo,title
+shell-integration = detect
