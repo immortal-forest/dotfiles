@@ -1,4 +1,4 @@
-theme = ~/.cache/wal/ghostty
+theme = wal
 
 cursor-style = block
 
