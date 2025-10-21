@@ -120,27 +120,22 @@ wk.add {
   { "<leader>d", group = "Discord" },
   {
     "<leader>dc",
-    "<cmd> CordConnect<cr>",
-    desc = "Connect to Discord",
-  },
-  {
-    "<leader>dd",
-    "<cmd> CordDisconnect<cr>",
-    desc = "Disconnect from Discord",
+    "<cmd> Cord presence suppress<cr>",
+    desc = "Clear presence",
   },
   {
     "<leader>dr",
-    "<cmd> CordReconnect<cr>",
+    "<cmd> Cord restart<cr>",
     desc = "Reconnect to Discord",
   },
   {
     "<leader>dp",
-    "<cmd> CordTogglePresence<cr>",
+    "<cmd> Cord presence toggle<cr>",
     desc = "Toggle presence",
   },
   {
     "<leader>di",
-    "<cmd> CordToggleIdle<cr>",
+    "<cmd> Cord idle toggle<cr>",
     desc = "Toggle idle status",
   },
 }

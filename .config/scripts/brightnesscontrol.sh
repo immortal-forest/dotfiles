@@ -10,15 +10,6 @@ cat << "EOF"
 EOF
 }
 
-function send_notification {
-    brightness=`brightnessctl info | grep -oP "(?<=\()\d+(?=%)" | cat`
-    brightinfo=$(brightnessctl info | awk -F "'" '/Device/ {print $2}')
-    angle="$(((($brightness + 2) / 5) * 5))"
-    ico="$HOME/.config/dunst/icons/vol/vol-${angle}.svg"
-    bar=$(seq -s "." $(($brightness / 15)) | sed 's/[0-9]//g')
-    notify-send -a "t2" -r 91190 -t 800 -i "${ico}" "${brightness}${bar}" "${brightinfo}"
-}
-
 function get_brightness {
     brightnessctl -m | grep -o '[0-9]\+%' | head -c-2
 }
@@ -32,7 +23,7 @@ i)  # increase the backlight
         # increase the backlight by 5% otherwise
         brightnessctl set +5%
     fi
-    send_notification ;;
+    ;;
 d)  # decrease the backlight
     if [[ $(get_brightness) -le 1 ]] ; then
         # avoid 0% brightness
@@ -44,7 +35,7 @@ d)  # decrease the backlight
         # decrease the backlight by 5% otherwise
         brightnessctl set 5%-
     fi
-    send_notification ;;
+    ;;
 *)  # print error
     print_error ;;
 esac

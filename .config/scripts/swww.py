@@ -94,8 +94,6 @@ def main(args: list[str]):
                 wall_index = _wallpapers.index(ac)
         else:
             print_help(1)
-    else:
-        print_help(1)
 
     if theme_index is not None:
         if theme_index >= len(_themes):
@@ -109,6 +107,9 @@ def main(args: list[str]):
             wall_index = 0
         theme_name = config["Theme"]
         wall_name = _wallpapers[wall_index]
+    elif args[0] == "current":
+        theme_name = config["Theme"]
+        wall_name = config["wallpaper"]
     else:
         print_help(1)
 
@@ -119,6 +120,7 @@ def main(args: list[str]):
 
 if __name__ == "__main__":
     try:
-        main(sys.argv[1:])
+        args = sys.argv[1:]
+        main(["current"] if not args else args)
     except Exception:
-        pass
+        print_help(1)
