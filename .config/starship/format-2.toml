@@ -1,5 +1,5 @@
 command_timeout = 5000
-add_newline = false
+add_newline = true 
 
 format = '''$os$directory$git_branch$git_status$python$kotlin$java$nodejs$c$fill$cmd_duration$time
 $character'''
@@ -31,10 +31,9 @@ error_symbol = '[](bold red)'
 # Directory
 [directory]
 truncation_length = 3
-truncation_symbol = '…/'
+# truncation_symbol = '…/'
 style = 'bold cyan'
 read_only = '  '
-
 # git
 [git_branch]
 symbol = ' '
@@ -43,12 +42,10 @@ format = "on [$symbol$branch]($style) "
 
 [git_status]
 conflicted = ' '
-up_to_date = ' '
+up_to_date = ' '
 untracked = ' '
-# ahead = '$count'
 ahead = '⇡$count'
-diverged = '⇅  ⇡${ahead_count} ⇣${behind_count}'
-#behind = '$count'
+diverged = '⇅ ⇡${ahead_count}⇣${behind_count}'
 behind = '⇣$count'
 stashed = '󰏗 '
 modified = '󰷈 '
@@ -56,7 +53,7 @@ staged = '[++$count ](green)'
 renamed = ' '
 deleted = ' '
 style = 'bold green'
-format = '[($all_status$ahead_behind) ]($style)'
+format = '\([($all_status$ahead_behind)]($style)\)'
 
 # languages
 [python]
@@ -97,7 +94,8 @@ time_format = '%I:%M %p'
 format = '[󰥔 $time]($style)'
 
 [cmd_duration]
-min_time = 10
+min_time = 1
 show_milliseconds = true
+format="[$duration]($style) "
 style = "bold purple"
 

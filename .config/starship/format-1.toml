@@ -5,7 +5,7 @@ command_timeout = 6000
 # prompt
 format = '''
 [╭╴](#808080)$username$os$directory$git_branch$git_status$python$java$kotlin$nodejs$fill$cmd_duration
-[╰─](#808080) '''
+[╰─](#808080)$character'''
 
 
 [fill]
@@ -16,9 +16,18 @@ symbol = ' '
 [username]
 show_always = true
 style_root = 'bold red'
-style_user = 'bold fg:#8700ff'
+style_user = 'bold purple'
 format = '[$user]($style) '
 
+# character
+[character]
+format = '$symbol '
+error_symbol = "[󰰲](red)"
+success_symbol = "[󰊱](green)"
+vimcmd_symbol = "[󰚕](dim green)"
+vimcmd_replace_one_symbol = "[󰚕](dim purple)"
+vimcmd_replace_symbol = "[󰚕](dim purple)"
+vimcmd_visual_symbol = "[󰚕](dim yellow)"
 
 # OS
 [os]
@@ -45,21 +54,18 @@ format = "on [$symbol$branch]($style) "
 
 [git_status]
 conflicted = ' '
-up_to_date = ' '
+up_to_date = ' '
 untracked = ' '
-# ahead = '$count'
-ahead = '󰁝$count'
-diverged = '⇕ 󰁝${ahead_count} 󰁅${behind_count}'
-#behind = '$count'
-behind = '󰁅$count'
+ahead = '⇡$count'
+diverged = '⇅ ⇡${ahead_count}⇣${behind_count}'
+behind = '⇣$count'
 stashed = '󰏗 '
 modified = '󰷈 '
 staged = '[++$count ](green)'
 renamed = ' '
 deleted = ' '
 style = 'bold green'
-format = '[($all_status$ahead_behind) ]($style)'
-
+format = '[\(](dimmed white)[($all_status$ahead_behind)]($style)[\)](dimmed white) '
 
 # languages
 [python]
