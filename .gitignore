@@ -1,3 +1,4 @@
 **/colors.conf
 **/wal
+.config/ghostty/themes/*
 .config/tmux/plugins
