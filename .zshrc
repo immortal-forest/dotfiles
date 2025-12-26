@@ -10,8 +10,9 @@ if command -v uv &> /dev/null; then
   export UV_CACHE_DIR="$HOME/dev/uv/cache/"
   export UV_PYTHON_PREFERENCE=only-managed
   export UV_PYTHON_INSTALL_DIR="$HOME/dev/uv/python/"
+  export UV_PYTHON_BIN_DIR="$HOME/dev/uv/bin/"
   export UV_TOOL_DIR="$HOME/dev/uv/tools/"
-  export UV_TOOL_BIN_DIR="$HOME/dev/uv/bin/"
+  export UV_TOOL_BIN_DIR="$HOME/dev/uv/tbin/"
   export UV_LINK_MODE=symlink
   export PATH="$UV_TOOL_BIN_DIR:$PATH"
 fi
