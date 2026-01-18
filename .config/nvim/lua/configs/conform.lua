@@ -1,5 +1,13 @@
-local slow_format_filetypes =
-  { "lua", "python", "sh", "css", "json", "jsonc", "c", "javascript", "typescript", "markdown" }
+local slow_format_filetypes = {
+  lua = true,
+  python = true,
+  sh = true,
+  json = true,
+  jsonc = true,
+  c = true,
+  cpp = true,
+  markdown = true,
+}
 
 local options = {
   formatters_by_ft = {
@@ -7,15 +15,16 @@ local options = {
     sh = { "shfmt" },
     python = { "ruff_organize_imports", "ruff_fix", "ruff_format" },
     r = { "air" },
-    c = { "astyle", "uncrustify" },
+    c = { "clang-format" }, -- Add this line
+    cpp = { "clang-format" }, -- Add this line
     json = { "fixjson" },
     jsonc = { "fixjson" },
-    javascript = { "biome", "biome-check" },
-    typescript = { "biome", "biome-check" },
-    javascriptreact = { "biome", "biome-check" },
-    typescriptreact = { "biome", "biome-check" },
-    css = { "prettier" },
-    scss = { "prettier" },
+    -- javascript = { "biome", "biome-check" },
+    -- typescript = { "biome", "biome-check" },
+    -- javascriptreact = { "biome", "biome-check" },
+    -- typescriptreact = { "biome", "biome-check" },
+    -- css = { "prettier" },
+    -- scss = { "prettier" },
     -- html = { "prettier" },
     markdown = { "mdformat" },
   },
@@ -32,7 +41,6 @@ local options = {
         slow_format_filetypes[vim.bo[bufnr].filetype] = true
       end
     end
-
     return { timeout_ms = 2000, lsp_format = "fallback" }, on_format
   end,
   format_after_save = function(bufnr)

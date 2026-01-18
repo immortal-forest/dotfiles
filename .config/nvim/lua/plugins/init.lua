@@ -13,8 +13,8 @@ return {
       local opts = {
         hook = {
           on_filetype = function()
-            vim.api.nvim_buf_set_keymap(0, "n", "<Enter>", "<Plug>RDSendLine", {})
-            vim.api.nvim_buf_set_keymap(0, "v", "<Enter>", "<Plug>RSendSelection", {})
+            vim.keymap.set("n", "<Enter>", "<Plug>RDSendLine", { buffer = 0 })
+            vim.keymap.set("v", "<Enter>", "<Plug>RSendSelection", { buffer = 0 })
           end,
         },
         R_args = { "--quiet", "--no-save" },
@@ -56,7 +56,13 @@ return {
     end,
   },
 
-  { "echasnovski/mini.icons", version = false },
+  {
+    "echasnovski/mini.icons",
+    version = false,
+    config = function()
+      require("mini.icons").setup()
+    end,
+  },
 
   {
     "folke/trouble.nvim",
@@ -73,6 +79,7 @@ return {
 
   {
     "MeanderingProgrammer/render-markdown.nvim",
+    ft = { "markdown", "quarto", "rmd" },
     dependencies = { "nvim-treesitter/nvim-treesitter", "echasnovski/mini.icons" },
     config = function()
       require "configs.markdown"
@@ -90,7 +97,6 @@ return {
   {
     "neovim/nvim-lspconfig",
     config = function()
-      require("nvchad.configs.lspconfig").defaults()
       require "configs.lspconfig"
     end,
   },
@@ -108,16 +114,15 @@ return {
     "michaelrommel/nvim-silicon",
     lazy = true,
     cmd = "Silicon",
-    config = function()
-      require("silicon").setup {
-        background = "#89b4fa",
-        font = "Maple Mono=34;Noto Color Emoji=34",
-        theme = "Coldark-Dark",
-        output = function()
-          return "~/Pictures/Snapshots/" .. os.date "!%Y-%m-%dT%H-%M-%SZ" .. "_code.png"
-        end,
-      }
-    end,
+    opts = {
+      background = "#89b4fa",
+      font = "Maple Mono NF=34;Noto Color Emoji=34",
+      num_separator = "\u{258f} ",
+      theme = "Coldark-Dark",
+      output = function()
+        return vim.fn.expand "~/Pictures/Snapshots/" .. os.date "!%Y-%m-%dT%H-%M-%SZ" .. "_code.png"
+      end,
+    },
   },
 
   {

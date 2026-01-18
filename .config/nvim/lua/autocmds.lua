@@ -3,7 +3,7 @@ require "nvchad.autocmds"
 local autocmd = vim.api.nvim_create_autocmd
 local usercmd = vim.api.nvim_create_user_command
 
-autocmd({ "BufWritePost" }, {
+autocmd({ "BufWritePost", "BufReadPost" }, {
   callback = function()
     require("lint").try_lint()
   end,

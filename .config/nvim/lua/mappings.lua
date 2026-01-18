@@ -1,7 +1,10 @@
 require "nvchad.mappings"
 
 local map = vim.keymap.set
-local wk = require "which-key"
+local ok, wk = pcall(require, "which-key")
+if not ok then
+  return
+end
 
 map("n", ";", ":", { desc = "CMD enter command mode" })
 map("i", "jk", "<ESC>")
@@ -91,7 +94,6 @@ wk.add {
 -- Tmux Navigation
 wk.add {
   mode = "n",
-  { "", group = "TmuxNav" },
   {
     "<C-h>",
     "<cmd> TmuxNavigateLeft<cr>",

@@ -1,8 +1,5 @@
-local nvlsp = require "nvchad.configs.lspconfig"
-
-nvlsp.defaults() -- loads nvchad's defaults
-
 local servers = {
+  clangd = {},
   ruff = {},
   ts_ls = {},
   pyright = {
