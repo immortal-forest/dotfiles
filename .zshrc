@@ -14,6 +14,7 @@ if command -v uv &> /dev/null; then
   export UV_TOOL_DIR="$HOME/dev/uv/tools/"
   export UV_TOOL_BIN_DIR="$HOME/dev/uv/tbin/"
   export UV_LINK_MODE=symlink
+  export PATH="$UV_PYTHON_BIN_DIR:$PATH"
   export PATH="$UV_TOOL_BIN_DIR:$PATH"
 fi
 
