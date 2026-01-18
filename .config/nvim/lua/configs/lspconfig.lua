@@ -1,7 +1,6 @@
 local servers = {
   clangd = {},
   ruff = {},
-  ts_ls = {},
   pyright = {
     settings = {
       pyright = {

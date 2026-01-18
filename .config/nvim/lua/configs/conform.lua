@@ -15,17 +15,10 @@ local options = {
     sh = { "shfmt" },
     python = { "ruff_organize_imports", "ruff_fix", "ruff_format" },
     r = { "air" },
-    c = { "clang-format" }, -- Add this line
-    cpp = { "clang-format" }, -- Add this line
+    c = { "clang-format" },
+    cpp = { "clang-format" },
     json = { "fixjson" },
     jsonc = { "fixjson" },
-    -- javascript = { "biome", "biome-check" },
-    -- typescript = { "biome", "biome-check" },
-    -- javascriptreact = { "biome", "biome-check" },
-    -- typescriptreact = { "biome", "biome-check" },
-    -- css = { "prettier" },
-    -- scss = { "prettier" },
-    -- html = { "prettier" },
     markdown = { "mdformat" },
   },
 

@@ -6,6 +6,4 @@ lint.linters_by_ft = {
   c = { "cppcheck" },
   cpp = { "cppcheck" },
   sh = { "bash" },
-  javascript = { "biomejs" },
-  typescript = { "biomejs" },
 }
