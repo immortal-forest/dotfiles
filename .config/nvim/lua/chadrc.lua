@@ -7,6 +7,7 @@ local M = {}
 
 M.base46 = {
   theme = "catppuccin",
+  integrations = { "trouble", "todo", "render-markdown" },
 
   hl_override = {
     Comment = { italic = true },
@@ -15,7 +16,16 @@ M.base46 = {
   theme_toggle = { "catppuccin", "gatekeeper" },
 }
 
+M.lsp = {
+  signature = true,
+}
+
 M.ui = {
+  cmp = {
+    icons = true,
+    lspkind_text = true,
+    style = "atom_colored",
+  },
   telescope = {
     style = "bordered",
   },

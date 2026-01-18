@@ -1,27 +1,23 @@
 local servers = {
-  clangd = {},
-  ruff = {},
-  pyright = {
-    settings = {
-      pyright = {
-        -- use ruff instead
-        disableOrganizeImports = true,
-      },
-      python = {
-        analysis = {
-          -- Ignore all files for analysis to exclusively use Ruff for linting
-          ignore = { "*" },
-        },
-      },
+  clangd = {
+    cmd = {
+      "clangd",
+      "--background-index",
+      "--clang-tidy",
+      "--header-insertion=iwyu",
+      "--completion-style=detailed",
+      "--function-arg-placeholders",
+      "--fallback-style=llvm",
+    },
+    init_options = {
+      usePlaceholders = true,
+      completeUnimported = true,
+      clangdFileStatus = true,
     },
   },
-  r_language_server = {
-    cmd = { "R", "--no-echo", "-e", "languageserver::run()" },
-    filetypes = { "r", "rmd", "quarto" },
-    root_dir = function(bufnr, on_dir)
-      on_dir(vim.fs.root(bufnr, ".git") or vim.uv.os_homedir())
-    end,
-  },
+  r_language_server = {},
+  ruff = {},
+  ty = {},
 }
 
 for name, opts in pairs(servers) do

@@ -5,6 +5,22 @@ return {
     lazy = false,
   },
   {
+    "nvchad/nvim-colorizer.lua",
+    event = "User FilePost",
+    opts = {
+      user_default_options = {
+        names = false, -- disable color names like "red"
+      },
+    },
+    config = function(_, opts)
+      require("colorizer").setup(opts)
+      -- attach to current buffer on load
+      vim.defer_fn(function()
+        require("colorizer").attach_to_buffer(0)
+      end, 0)
+    end,
+  },
+  {
     "R-nvim/R.nvim",
     lazy = false,
     config = function()
@@ -97,6 +113,7 @@ return {
   {
     "neovim/nvim-lspconfig",
     config = function()
+      require("nvchad.configs.lspconfig").defaults()
       require "configs.lspconfig"
     end,
   },
