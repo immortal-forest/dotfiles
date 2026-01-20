@@ -6,14 +6,14 @@
 local M = {}
 
 M.base46 = {
-  theme = "catppuccin",
+  theme = "yoru",
   integrations = { "trouble", "todo", "render-markdown" },
 
   hl_override = {
     Comment = { italic = true },
     ["@comment"] = { italic = true },
   },
-  theme_toggle = { "catppuccin", "gatekeeper" },
+  theme_toggle = { "yoru", "eldritch" },
 }
 
 M.lsp = {
