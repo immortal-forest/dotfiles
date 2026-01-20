@@ -4,9 +4,10 @@ local servers = {
       "clangd",
       "--background-index",
       "--clang-tidy",
-      "--header-insertion=iwyu",
+      "--query-driver=/usr/bin/gcc,/usr/bin/g++",
+      "--header-insertion=never",
       "--completion-style=detailed",
-      "--function-arg-placeholders",
+      "--function-arg-placeholders=true",
       "--fallback-style=llvm",
     },
     init_options = {
