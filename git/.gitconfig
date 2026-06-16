@@ -1,0 +1,21 @@
+[user]
+	name = immortal-forest
+	email = ali.salman.sa.01@gmail.com
+	signingkey = 680A8AF15C738DDB
+[commit]
+	gpgsign = true
+[gpg]
+	program = /usr/bin/gpg
+[credential]
+	helper = /usr/lib/git-core/git-credential-libsecret
+[init]
+	defaultBranch = main
+[core]
+	autocrlf = input
+[http]
+	postBuffer = 524288000
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
