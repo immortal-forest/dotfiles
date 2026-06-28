@@ -60,12 +60,12 @@ hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))
 hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
 hl.bind("ALT + Tab",            hl.dsp.focus({ direction = "down" }))
 
--- Workspaces 1–10 on current monitor (r~N = relative monitor workspace)
+-- Workspaces 1–10 on current monitor (r~N = workspace slot N on this monitor)
 for i = 1, 10 do
 	local key = tostring(i % 10)
 	hl.bind(mainMod .. " + " .. key,         hl.dsp.focus({ workspace = "r~" .. i }))
 	hl.bind(mainMod .. " + SHIFT + " .. key, hl.dsp.window.move({ workspace = "r~" .. i }))
-	hl.bind(mainMod .. " + ALT + " .. key,   hl.dsp.exec_raw("movetoworkspacesilent " .. i))
+	hl.bind(mainMod .. " + ALT + " .. key,   hl.dsp.window.move({ workspace = "r~" .. i, follow = false }))
 end
 
 -- Relative workspace navigation
@@ -73,11 +73,11 @@ hl.bind(mainMod .. " + CTRL + right", hl.dsp.focus({ workspace = "r+1" }))
 hl.bind(mainMod .. " + CTRL + left",  hl.dsp.focus({ workspace = "r-1" }))
 hl.bind(mainMod .. " + CTRL + down",  hl.dsp.focus({ workspace = "empty" }))
 
--- Resize windows (repeating)
-hl.bind(mainMod .. " + SHIFT + right", hl.dsp.exec_raw("resizeactive 30 0"),  { repeating = true })
-hl.bind(mainMod .. " + SHIFT + left",  hl.dsp.exec_raw("resizeactive -30 0"), { repeating = true })
-hl.bind(mainMod .. " + SHIFT + up",    hl.dsp.exec_raw("resizeactive 0 -30"), { repeating = true })
-hl.bind(mainMod .. " + SHIFT + down",  hl.dsp.exec_raw("resizeactive 0 30"),  { repeating = true })
+-- Resize windows (keyboard, repeating)
+hl.bind(mainMod .. " + SHIFT + right", hl.dsp.window.resize({ x = 30,  y = 0,   relative = true }), { repeating = true })
+hl.bind(mainMod .. " + SHIFT + left",  hl.dsp.window.resize({ x = -30, y = 0,   relative = true }), { repeating = true })
+hl.bind(mainMod .. " + SHIFT + up",    hl.dsp.window.resize({ x = 0,   y = -30, relative = true }), { repeating = true })
+hl.bind(mainMod .. " + SHIFT + down",  hl.dsp.window.resize({ x = 0,   y = 30,  relative = true }), { repeating = true })
 
 -- Move window to relative workspace
 hl.bind(mainMod .. " + CTRL + ALT + right", hl.dsp.window.move({ workspace = "r+1" }))
@@ -85,17 +85,17 @@ hl.bind(mainMod .. " + CTRL + ALT + left",  hl.dsp.window.move({ workspace = "r-
 
 -- Monitor workspace management
 hl.bind(mainMod .. " + CTRL + S", hl.dsp.workspace.swap_monitors({ monitor1 = 0, monitor2 = 1 }))
-hl.bind(mainMod .. " + CTRL + 0", hl.dsp.exec_raw("movecurrentworkspacetomonitor 0"))
-hl.bind(mainMod .. " + CTRL + 1", hl.dsp.exec_raw("movecurrentworkspacetomonitor 1"))
+hl.bind(mainMod .. " + CTRL + 0", hl.dsp.workspace.move({ monitor = 0 }))
+hl.bind(mainMod .. " + CTRL + 1", hl.dsp.workspace.move({ monitor = 1 }))
 
 -- Float-aware move: pixels for floating, tile direction for tiled (pure Lua, no shell)
 local function floatMove(dx, dy, dir)
 	return function()
 		local win = hl.get_active_window()
 		if win and win.floating then
-			hl.dispatch(hl.dsp.exec_raw(string.format("moveactive %d %d", dx, dy)))
+			hl.dispatch(hl.dsp.window.move({ x = dx, y = dy, relative = true }))
 		else
-			hl.dispatch(hl.dsp.exec_raw("movewindow " .. dir))
+			hl.dispatch(hl.dsp.window.move({ direction = dir }))
 		end
 	end
 end
@@ -115,5 +115,5 @@ hl.bind(mainMod .. " + Z",         hl.dsp.window.drag(),   { mouse = true })
 hl.bind(mainMod .. " + X",         hl.dsp.window.resize(), { mouse = true })
 
 -- Special workspace (scratchpad)
-hl.bind(mainMod .. " + S",       hl.dsp.workspace.toggle_special())
-hl.bind(mainMod .. " + ALT + S", hl.dsp.exec_raw("movetoworkspacesilent special"))
+hl.bind(mainMod .. " + S",       hl.dsp.workspace.toggle_special("scratch"))
+hl.bind(mainMod .. " + ALT + S", hl.dsp.window.move({ workspace = "special:scratch", follow = false }))

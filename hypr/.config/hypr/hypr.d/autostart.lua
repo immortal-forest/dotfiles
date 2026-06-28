@@ -9,7 +9,7 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("systemctl --user start hyprpolkitagent")
 
 	-- Wallpaper daemon
-	-- hl.exec_cmd("awww daemon --format argb")
+	hl.exec_cmd("awww daemon --format argb")
 
 	-- Clipboard history
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
