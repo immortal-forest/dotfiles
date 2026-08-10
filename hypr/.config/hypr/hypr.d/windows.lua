@@ -35,3 +35,49 @@ hl.window_rule({ name = "float-qt6ct",       match = { class = "^qt6ct$" },     
 -- Tearing (immediate mode for games)
 hl.window_rule({ name = "tear-lunar",     match = { class = "^Lunar Client" },      immediate = true })
 hl.window_rule({ name = "tear-minecraft", match = { class = "^Minecraft Launcher" }, immediate = true })
+
+-- Layer rules for the astralis shell (Quickshell layer-shell surfaces).
+-- The reserve window's exclusive zone already reserves the top strip — no Hyprland gap here.
+-- Pill overlay: blur behind, skip fully-transparent pixels, slide in from the top.
+hl.layer_rule({
+	name  = "astralis-pill",
+	match = { namespace = "^astralis-pill$" },
+	blur         = true,
+	ignore_alpha = true,
+	animation    = "slide top",
+})
+-- astralis: top-strip reserve spacer (fully transparent, exclusive zone only) —
+-- same blur/ignore-alpha treatment so it never tints or blurs anything visible.
+hl.layer_rule({
+	name  = "astralis-reserve",
+	match = { namespace = "^astralis-reserve$" },
+	blur         = true,
+	ignore_alpha = true,
+	animation    = "slide top",
+})
+-- Fullscreen visualizer (bottom layer): blur the wallpaper behind, skip transparent pixels.
+hl.layer_rule({
+	name  = "astralis-viz",
+	match = { namespace = "^astralis-viz$" },
+	blur         = true,
+	ignore_alpha = true,
+})
+-- Standalone wallpaper picker (full-width carousel overlay): frost the ENTIRE
+-- band. ignore_alpha is deliberately OFF (unlike the pill) so the blur renders
+-- behind the near-transparent scrim too — the whole window reads as blurred
+-- glass instead of a dark dim, and the carousel cards pop over it.
+hl.layer_rule({
+	name  = "astralis-wallpaper",
+	match = { namespace = "^astralis-wallpaper$" },
+	blur         = true,
+	ignore_alpha = false,
+})
+-- Standalone full-screen power/session menu overlay: same whole-screen frost
+-- treatment as the wallpaper picker (ignore_alpha OFF so the blur renders
+-- behind the menu's own light scrim too, instead of a hard dim).
+hl.layer_rule({
+	name  = "astralis-powermenu",
+	match = { namespace = "^astralis-powermenu$" },
+	blur         = true,
+	ignore_alpha = false,
+})

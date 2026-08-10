@@ -8,13 +8,14 @@ hl.on("hyprland.start", function()
 	-- Polkit agent
 	hl.exec_cmd("systemctl --user start hyprpolkitagent")
 
-	-- Wallpaper daemon
-	hl.exec_cmd("awww daemon --format argb")
+	-- Wallpaper daemon (awww) + restore last wallpaper & retheme (matugen)
+	hl.exec_cmd("awww-daemon --format argb")
+	hl.exec_cmd("~/.local/bin/restore-wallpaper.sh")
 
 	-- Clipboard history
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
 	hl.exec_cmd("wl-paste --type image --watch cliphist store")
 
-	-- Shell (TODO: add when quickshell config name is decided)
-	-- hl.exec_cmd("qs -c <name>")
+	-- Shell (astralis — Quickshell)
+	hl.exec_cmd("qs -c astralis")
 end)

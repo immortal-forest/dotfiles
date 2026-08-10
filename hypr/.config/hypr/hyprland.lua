@@ -9,6 +9,7 @@ local modules = {
 	"graphics",
 	"monitor",
 	"general",
+	"borders",
 	"decorations",
 	"animations",
 	"layout",
@@ -19,6 +20,9 @@ local modules = {
 	"windows",
 	"userpref",
 	"extra",
+	-- astralis shell-edited settings overlay — MUST stay last so it overrides
+	-- the hand-written values above (see hypr.d/astralis-settings.lua).
+	"astralis-settings",
 }
 
 for _, mod in ipairs(modules) do

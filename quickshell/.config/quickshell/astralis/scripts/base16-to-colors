@@ -1,0 +1,134 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.9"
+# ///
+"""
+astralis — base16 -> Colors.json shell remap (the "base16Shell" toggle).
+
+Reads:
+  argv[1]  the current M3 colors/Colors.json  (surfaces / neutrals to preserve)
+  stdin    matugen `--dry-run -j hex <SRC>` JSON  (the base16 palette)
+
+Writes (stdout):
+  a new Colors.json in which the M3 surfaces/neutrals are kept byte-for-byte and
+  ONLY the accent families are swapped to base16, with every on_*/container/fixed
+  variant synthesised by HSL math so the tonal relationships in the current M3
+  file are reproduced. Output is a superset-valid drop-in: every key present in
+  the input Colors.json is present in the output.
+
+Accent mapping (LOCKED): primary<-base0D, secondary<-base0C, tertiary<-base0E.
+error/danger is intentionally NOT remapped: it stays the M3 true-red so the
+danger role is unmistakable even when a base16 palette's base08 is a muddy or
+off red. surface_tint follows the new primary.
+
+The tonal model (read straight off the current M3 Colors.json, dark theme):
+  X_fixed_dim        == X            (the accent itself, tone ~80)
+  X_fixed            == on_X_container (a pale hue tint,  tone ~90)
+  on_X_fixed_variant == X_container   (a deep hue tint,   tone ~30)
+  on_X_fixed         : tone ~10   ·   X_container : tone ~30
+  on_X_container     : tone ~90   ·   on_X : auto-contrast (deep vs pale, WCAG)
+
+stdlib only (json, colorsys).
+"""
+import sys
+import json
+import colorsys
+
+
+def _hex_to_rgb(h):
+    h = h.lstrip("#")
+    return int(h[0:2], 16) / 255.0, int(h[2:4], 16) / 255.0, int(h[4:6], 16) / 255.0
+
+
+def _rgb_to_hex(r, g, b):
+    f = lambda c: max(0, min(255, round(c * 255)))
+    return "#%02x%02x%02x" % (f(r), f(g), f(b))
+
+
+def _hls(hexs):
+    r, g, b = _hex_to_rgb(hexs)
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    return h, s, l
+
+
+def _tone(h, s, l):
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return _rgb_to_hex(r, g, b)
+
+
+def _rel_lum(hexs):
+    def lin(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = _hex_to_rgb(hexs)
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def _contrast(a, b):
+    la, lb = _rel_lum(a), _rel_lum(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _clamp(x, lo, hi):
+    return max(lo, min(hi, x))
+
+
+def synth(family, accent):
+    """Build the 8 M3 roles for one accent family from a single base16 hue."""
+    h, s, _ = _hls(accent)
+    sd = _clamp(s, 0.25, 1.0)            # derived-tone saturation (floor keeps tints from muddying)
+    # on_X: pick deep-tinted near-black or pale-tinted near-white by WCAG contrast.
+    dark_on = _tone(h, sd, 0.15)
+    light_on = _tone(h, _clamp(sd, 0.0, 0.85), 0.95)
+    on_accent = dark_on if _contrast(accent, dark_on) >= _contrast(accent, light_on) else light_on
+    container = _tone(h, sd, 0.22)       # tone ~30 (deep, saturated)
+    on_container = _tone(h, sd, 0.88)    # tone ~90 (pale hue tint)
+    on_fixed = _tone(h, sd, 0.09)        # tone ~10 (near-black hue tint)
+    return {
+        family: accent,
+        "on_" + family: on_accent,
+        family + "_container": container,
+        "on_" + family + "_container": on_container,
+        family + "_fixed": on_container,                 # == on_X_container (tone 90)
+        family + "_fixed_dim": accent,                   # == X               (tone 80)
+        "on_" + family + "_fixed": on_fixed,             # tone 10
+        "on_" + family + "_fixed_variant": container,    # == X_container     (tone 30)
+    }
+
+
+# error is intentionally omitted so the danger role keeps the M3 true-red (see docstring).
+MAP = {"primary": "base0d", "secondary": "base0c", "tertiary": "base0e"}
+
+
+def main():
+    if len(sys.argv) < 2:
+        sys.stderr.write("usage: base16-to-colors <M3-Colors.json>  (base16 JSON on stdin)\n")
+        return 2
+    with open(sys.argv[1]) as f:
+        out = json.load(f)                # start from the M3 file: preserves every key
+    b16 = json.load(sys.stdin).get("base16", {})
+
+    def bval(key):
+        node = b16.get(key, {}).get("default", {})
+        return node.get("color") or node.get("hex")
+
+    for family, bk in MAP.items():
+        c = bval(bk)
+        if not c:
+            continue                      # base16 slot missing -> leave the M3 role untouched
+        # Only override roles the M3 file actually defines (e.g. `error` has no
+        # *_fixed family) so the output stays an exact-key drop-in, not a superset.
+        for role, val in synth(family, c).items():
+            if role in out:
+                out[role] = val
+
+    if bval("base0d") and "surface_tint" in out:
+        out["surface_tint"] = out["primary"]
+
+    json.dump(out, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

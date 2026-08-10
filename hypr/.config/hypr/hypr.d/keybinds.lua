@@ -1,6 +1,6 @@
 local apps = require("apps")
 local mainMod = "SUPER"
-local screenshot = "~/.config/scripts/screenshot.sh"
+local screenshot = "hyprshot -m"
 
 -- Window / session
 hl.bind(mainMod .. " + Q",      hl.dsp.window.close())
@@ -9,7 +9,6 @@ hl.bind(mainMod .. " + Delete", hl.dsp.exit())
 hl.bind(mainMod .. " + W",      hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + G",      hl.dsp.group.toggle())
 hl.bind("ALT + Return",         hl.dsp.window.fullscreen())
-hl.bind(mainMod .. " + L",      hl.dsp.exec_cmd("hyprlock"), { locked = true })
 -- TODO: shell — idle inhibitor toggle
 -- hl.bind(mainMod .. " + I", ...)
 -- TODO: shell — bar toggle
@@ -20,38 +19,71 @@ hl.bind(mainMod .. " + T",         hl.dsp.exec_cmd(apps.terminal .. " +new-windo
 hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("kitty -e"))
 hl.bind(mainMod .. " + F",         hl.dsp.exec_cmd(apps.browser))
 hl.bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd("firefox"))
--- TODO: shell — launcher
--- hl.bind(mainMod .. " + R", ...)
--- TODO: shell — clipboard picker
--- hl.bind(mainMod .. " + V", ...)
--- TODO: shell — control center
--- hl.bind(mainMod .. " + B", ...)
--- TODO: shell — settings panel
--- hl.bind(mainMod .. " + comma", ...)
--- TODO: shell — wallpaper picker
--- hl.bind(mainMod .. " + SHIFT + comma", ...)
+-- Shell (astralis — Quickshell IPC; see quickshell/astralis/shell.qml)
+--   bridge: qs -c astralis ipc call pill <surface> "<monitor>"
+--   astralis: qs IPC is arity-strict — the trailing "" (empty monitor arg,
+--   resolved shell-side to the focused monitor) is REQUIRED or the call
+--   errors out silently.
+hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd('qs -c astralis ipc call pill launcher ""'))      -- app launcher
+hl.bind(mainMod .. " + M",     hl.dsp.exec_cmd('qs -c astralis ipc call pill media ""'))         -- media / now-playing
+hl.bind(mainMod .. " + C",     hl.dsp.exec_cmd('qs -c astralis ipc call pill wallpaper ""'))     -- wallpaper picker
+hl.bind(mainMod .. " + V",     hl.dsp.exec_cmd('qs -c astralis ipc call pill clipboard ""'))     -- clipboard history
+hl.bind(mainMod .. " + L",      hl.dsp.exec_cmd("loginctl lock-session"))                        -- lock screen (astralis WlSessionLock)
+hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd('qs -c astralis ipc call power toggle'))          -- full-screen power / session menu
+hl.bind(mainMod .. " + N",     hl.dsp.exec_cmd('qs -c astralis ipc call pill notifications ""')) -- astralis: notification center
+hl.bind(mainMod .. " + A",     hl.dsp.exec_cmd('qs -c astralis ipc call pill mixer ""'))         -- astralis: audio mixer
+hl.bind(mainMod .. " + D",     hl.dsp.exec_cmd('qs -c astralis ipc call pill calendar ""'))      -- astralis: calendar
+hl.bind(mainMod .. " + K",     hl.dsp.exec_cmd('qs -c astralis ipc call pill link ""'))          -- astralis: link (wifi / bluetooth)
+hl.bind(mainMod .. " + B",     hl.dsp.exec_cmd("qs -c astralis ipc call visualizer toggle"))     -- fullscreen visualizer
+-- SHIFT because plain SUPER+S is the scratch special-workspace toggle below.
+hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd('qs -c astralis ipc call pill sysmon ""'))    -- astralis: system monitor
+hl.bind(mainMod .. " + comma",     hl.dsp.exec_cmd('qs -c astralis ipc call pill settings ""'))  -- astralis: settings
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("sh -c 'qs -c astralis kill; sleep 0.3; qs -c astralis -d'"))  -- astralis: relaunch the shell
+-- astralis: stash/restore the focused window on special:minimized — the pill's
+-- hover tray shows the stashed windows as app-icon chips that restore on click.
+hl.bind(mainMod .. " + SHIFT + M", hl.dsp.exec_cmd("~/.config/quickshell/astralis/scripts/special-toggle.sh minimized"))
 
--- Brightness
-hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%-"), { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("brightnessctl -e4 -n2 set 5%+"), { locked = true, repeating = true })
+-- Brightness — route through the shell (updates its state + flashes the OSD),
+-- falling back to raw brightnessctl if astralis isn't running.
+-- `locked` (bindl): keeps working from the lockscreen. `repeating` (binde):
+-- keeps stepping while the key is held. `dont_inhibit` (bindp): bypasses a
+-- fullscreen app/game's keybind-inhibit request, so brightness always
+-- responds like a real hardware key regardless of what's focused.
+hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("sh -c 'qs -c astralis ipc call brightness change -- -0.05 || brightnessctl -e4 -n2 set 5%-'"), { locked = true, repeating = true, dont_inhibit = true })
+hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("sh -c 'qs -c astralis ipc call brightness change 0.05 || brightnessctl -e4 -n2 set 5%+'"),    { locked = true, repeating = true, dont_inhibit = true })
 
--- Volume
-hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),      { locked = true })
-hl.bind("XF86AudioMicMute",     hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"),    { locked = true })
-hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),       { locked = true, repeating = true })
-hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
+-- Volume — same reasoning: locked + dont_inhibit so mute/level always
+-- respond; repeating only on the steppable up/down binds.
+hl.bind("XF86AudioMute",        hl.dsp.exec_cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"),      { locked = true, dont_inhibit = true })
+-- Mic mute — route through the shell (mutes the Pipewire default source and
+-- flashes the mic OSD), falling back to raw wpctl if astralis isn't running.
+hl.bind("XF86AudioMicMute",     hl.dsp.exec_cmd("sh -c 'qs -c astralis ipc call mic toggle || wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle'"), { locked = true, dont_inhibit = true })
+hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"),       { locked = true, repeating = true, dont_inhibit = true })
+hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1.5 @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true, dont_inhibit = true })
 
--- Media
-hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioStop", hl.dsp.exec_cmd("playerctl stop"),       { locked = true })
-hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"),       { locked = true })
-hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"),   { locked = true })
+-- Media — astralis: Play/Next/Prev route through the shell's GlobalShortcut
+-- handlers (shell.qml appid "quickshell" → Players singleton), replacing the
+-- playerctl exec binds (both on the same key would double-fire). Stop keeps
+-- playerctl (no shell handler for it). No `repeating` here — repeat-skipping
+-- tracks while a media key is held isn't wanted — but `dont_inhibit` still
+-- applies so a fullscreen game/video doesn't swallow play/pause/skip.
+hl.bind("XF86AudioPlay", hl.dsp.global("quickshell:mediaToggle"), { locked = true, dont_inhibit = true }) -- astralis
+hl.bind("XF86AudioStop", hl.dsp.exec_cmd("playerctl stop"),       { locked = true, dont_inhibit = true })
+hl.bind("XF86AudioNext", hl.dsp.global("quickshell:mediaNext"),   { locked = true, dont_inhibit = true }) -- astralis
+hl.bind("XF86AudioPrev", hl.dsp.global("quickshell:mediaPrev"),   { locked = true, dont_inhibit = true }) -- astralis
+-- pre-astralis playerctl forms, restore if the shell is retired:
+-- hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), { locked = true, dont_inhibit = true })
+-- hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"),       { locked = true, dont_inhibit = true })
+-- hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"),   { locked = true, dont_inhibit = true })
 
--- Screenshots
-hl.bind(mainMod .. " + P",        hl.dsp.exec_cmd(screenshot .. " s"))
-hl.bind(mainMod .. " + CTRL + P", hl.dsp.exec_cmd(screenshot .. " sf"))
-hl.bind(mainMod .. " + ALT + P",  hl.dsp.exec_cmd(screenshot .. " m"))
-hl.bind("Print",                   hl.dsp.exec_cmd(screenshot .. " p"), { locked = true })
+-- Screenshots — deliberately NOT `locked`: hyprshot's region/freeze pickers
+-- are interactive overlays that shouldn't be reachable from a locked
+-- session. Bare Print (no SUPER) stays `locked` so the lockscreen itself
+-- (e.g. its clock/wallpaper) can still be captured, same as before.
+hl.bind(mainMod .. " + P",        hl.dsp.exec_cmd(screenshot .. " region"))               -- s:  region (current monitor)
+hl.bind(mainMod .. " + CTRL + P", hl.dsp.exec_cmd(screenshot .. " region -z"))            -- sf: frozen region
+hl.bind(mainMod .. " + ALT + P",  hl.dsp.exec_cmd(screenshot .. " output"))               -- m:  current monitor
+hl.bind("Print",                   hl.dsp.exec_cmd("sh -c 'f=~/Pictures/Screenshots/$(date +%Y%m%d-%H%M%S).png; mkdir -p ~/Pictures/Screenshots; grim \"$f\" && wl-copy < \"$f\" && notify-send -i \"$f\" Screenshot \"All monitors\"'"), { locked = true }) -- p: all monitors
 
 -- Focus
 hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))

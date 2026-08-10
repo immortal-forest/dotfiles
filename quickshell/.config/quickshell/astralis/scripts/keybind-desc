@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""astralis — derive human keybind descriptions from hypr.d/keybinds.lua.
+
+hyprctl reports every hl.bind() as dispatcher "__lua" + a callback index, so the
+compositor can't tell the KeybindsPage what a bind actually does. This parses the
+Lua (the real source of truth) and emits JSON { "<canonical combo>": { "desc",
+"cmd" } }, which the page merges onto the live `hyprctl binds` list by combo. The
+page stays a read-only viewer; this only supplies labels.
+
+Canonical combo = uppercased tokens, modifiers (SUPER/CTRL/ALT/SHIFT) sorted, key
+last, joined by "+", so it matches a combo rebuilt from hyprctl's modmask + key
+regardless of case/order.
+"""
+import re, json, os, sys
+
+MODS = {"SUPER", "CTRL", "CONTROL", "ALT", "SHIFT"}
+MOD_ALIAS = {"CONTROL": "CTRL"}
+
+
+def canon(combo):
+    toks = [t.strip().upper() for t in combo.split("+") if t.strip()]
+    mods = sorted(MOD_ALIAS.get(t, t) for t in toks if t in MODS)
+    keys = [t for t in toks if t not in MODS]
+    return "+".join(mods + keys)
+
+
+def unquote(p):
+    m = re.match(r'^"(.*)"$', p) or re.match(r"^'(.*)'$", p)
+    return m.group(1) if m else None
+
+
+def eval_combo(expr, key=None):
+    """Concatenate a Lua `a .. b .. c` combo of string literals + mainMod/key."""
+    out = ""
+    for p in expr.split(".."):
+        p = p.strip()
+        if p == "mainMod":
+            out += "SUPER"
+        elif p == "key" and key is not None:
+            out += key
+        else:
+            s = unquote(p)
+            if s is not None:
+                out += s
+    return out
+
+
+def split_args(inner):
+    """Top-level comma split of hl.bind(...) inner text (respects parens/quotes)."""
+    args, depth, q, cur = [], 0, None, ""
+    for ch in inner:
+        if q:
+            cur += ch
+            if ch == q:
+                q = None
+        elif ch in "\"'":
+            q = ch; cur += ch
+        elif ch in "([{":
+            depth += 1; cur += ch
+        elif ch in ")]}":
+            depth -= 1; cur += ch
+        elif ch == "," and depth == 0:
+            args.append(cur); cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        args.append(cur)
+    return args
+
+
+def split_comment(line):
+    """Split off a trailing Lua -- comment, ignoring -- inside string literals
+    (commands carry -- e.g. `ipc call brightness change -- -0.05`)."""
+    q = None
+    i = 0
+    while i < len(line) - 1:
+        ch = line[i]
+        if q:
+            if ch == q:
+                q = None
+        elif ch in "\"'":
+            q = ch
+        elif ch == "-" and line[i + 1] == "-":
+            return line[:i], line[i + 2:]
+        i += 1
+    return line, ""
+
+
+def clean_comment(cm):
+    cm = cm.strip()
+    cm = re.sub(r"^astralis:\s*", "", cm, flags=re.I)
+    cm = re.sub(r"^(s|sf|m|p):\s*", "", cm)          # screenshot mnemonics
+    if cm.lower() == "astralis":                     # bare marker, not a description
+        return ""
+    return (cm[:1].upper() + cm[1:]) if cm else cm
+
+
+def exec_target(cmd):
+    """A short 'what it launches' from an exec_cmd string."""
+    c = cmd.strip().strip("\"'")
+    ipc = re.search(r"ipc call pill (\w+)", c)
+    if ipc:
+        return ipc.group(1).capitalize()
+    ipc2 = re.search(r"ipc call (\w+) (\w+)", c)
+    if ipc2:
+        return ipc2.group(1).capitalize() + " " + ipc2.group(2)
+    if "loginctl lock-session" in c:
+        return "Lock session"
+    if "set-mute" in c:
+        return "Toggle mute"
+    if "set-volume" in c:
+        return "Volume down" if "%-" in c else "Volume up"
+    if c.startswith("playerctl"):
+        parts = c.split()
+        return "Media: " + parts[1] if len(parts) > 1 else "playerctl"
+    first = re.split(r"\s+", c)[0]
+    return os.path.basename(first) if first else c
+
+
+DISPATCH = [
+    (r"window\.close", "Close window"),
+    (r"\bexit\(", "Exit Hyprland"),
+    (r"window\.float", "Toggle floating"),
+    (r"group\.toggle", "Toggle group"),
+    (r"window\.fullscreen", "Fullscreen"),
+    (r"window\.drag", "Move window (mouse)"),
+    (r"window\.resize", "Resize window"),
+    (r"workspace\.toggle_special", "Toggle scratchpad"),
+    (r"workspace\.swap_monitors", "Swap monitor workspaces"),
+    (r"workspace\.move", "Move workspace to monitor"),
+    (r'focus\(\{\s*direction\s*=\s*"(\w+)"', "Focus %s"),
+    (r'focus\(\{\s*workspace\s*=\s*"[er]\+1"', "Next workspace"),
+    (r'focus\(\{\s*workspace\s*=\s*"[er]-1"', "Previous workspace"),
+    (r'focus\(\{\s*workspace\s*=\s*"empty"', "First empty workspace"),
+    (r'focus\(\{\s*workspace\s*=\s*"([^"]+)"', "Go to workspace %s"),
+    (r'window\.move\(\{\s*workspace\s*=\s*"r\+1"', "Move window → next workspace"),
+    (r'window\.move\(\{\s*workspace\s*=\s*"r-1"', "Move window → previous workspace"),
+    (r'window\.move\(\{\s*workspace\s*=\s*"([^"]+)"', "Move window to workspace %s"),
+    (r"window\.move\(\{\s*direction", "Move window"),
+    (r"floatMove", "Move window"),
+    (r'global\("[^"]*:mediaToggle"', "Play / pause"),
+    (r'global\("[^"]*:mediaNext"', "Next track"),
+    (r'global\("[^"]*:mediaPrev"', "Previous track"),
+]
+
+
+def derive(dispatch):
+    for pat, label in DISPATCH:
+        m = re.search(pat, dispatch)
+        if m:
+            return (label % m.groups()) if "%s" in label and m.groups() else label
+    return None
+
+
+def emit(out, combo, desc, cmd, key=None):
+    c = canon(eval_combo(combo, key))
+    if c and c not in out:
+        out[c] = {"desc": desc or "", "cmd": cmd or ""}
+
+
+def _paren_delta(s):
+    """Net (){}/[] nesting change of s, ignoring anything inside string literals."""
+    depth = 0
+    q = None
+    for ch in s:
+        if q:
+            if ch == q:
+                q = None
+        elif ch in "\"'":
+            q = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+    return depth
+
+
+def iter_binds(text):
+    """Yield (code, comment) per hl.bind(...) statement, joining physical lines
+    when a bind spans several (its parentheses don't balance on one line) so
+    multi-line binds are described instead of skipped."""
+    lines = text.split("\n")
+    i, n = 0, len(lines)
+    while i < n:
+        if not lines[i].strip().startswith("hl.bind("):
+            i += 1
+            continue
+        parts, comments, depth, j = [], [], 0, i
+        while j < n:
+            body, cm = split_comment(lines[j])
+            body = body.strip()
+            if body:
+                parts.append(body)
+            cm = cm.strip()
+            if cm:
+                comments.append(cm)
+            depth += _paren_delta(body)
+            j += 1
+            if depth <= 0:
+                break
+        yield " ".join(parts), (comments[-1] if comments else "")
+        i = j
+
+
+def main():
+    path = os.path.expanduser("~/.config/hypr/hypr.d/keybinds.lua")
+    try:
+        text = open(path).read()
+    except Exception:
+        print("{}"); return
+    out = {}
+    for body, raw_comment in iter_binds(text):
+        comment = clean_comment(raw_comment) if raw_comment else ""
+        m = re.match(r"hl\.bind\((.*)\)\s*$", body.strip().rstrip(","))
+        if not m:
+            m = re.match(r"hl\.bind\((.*)\)", body.strip())
+        if not m:
+            continue
+        args = split_args(m.group(1))
+        if len(args) < 2:
+            continue
+        combo_expr, dispatch = args[0].strip(), args[1].strip()
+        cmd = ""
+        ex = re.search(r"exec_cmd\((.*)\)\s*$", dispatch)
+        if ex:
+            cmd = ex.group(1).strip().strip("\"'")
+        desc = comment or derive(dispatch) or (exec_target(cmd) if cmd else "")
+        cmdshort = exec_target(cmd) if cmd else ""
+        if "key" in combo_expr:      # the `for i = 1, 10` workspace loop
+            continue
+        emit(out, combo_expr, desc, cmdshort)
+
+    # The workspace loop (1–10 on the current monitor), emitted explicitly.
+    for i in range(1, 11):
+        k = str(i % 10)
+        emit(out, 'mainMod .. " + %s"' % k, "Go to workspace %d" % i, "", None)
+        emit(out, 'mainMod .. " + SHIFT + %s"' % k, "Move window to workspace %d" % i, "", None)
+        emit(out, 'mainMod .. " + ALT + %s"' % k, "Send window to workspace %d (no follow)" % i, "", None)
+
+    print(json.dumps(out))
+
+
+main()

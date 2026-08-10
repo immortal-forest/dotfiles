@@ -1,0 +1,2 @@
+singleton Appearance Appearance.qml
+AppearanceConfig 1.0 AppearanceConfig.qml

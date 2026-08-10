@@ -1,0 +1,12 @@
+SettingsPage 1.0 SettingsPage.qml
+SettingsGroupLabel 1.0 SettingsGroupLabel.qml
+AppearancePage 1.0 AppearancePage.qml
+AnimationPage 1.0 AnimationPage.qml
+LookPage 1.0 LookPage.qml
+DisplayPage 1.0 DisplayPage.qml
+InputPage 1.0 InputPage.qml
+IdleLockPage 1.0 IdleLockPage.qml
+KeybindsPage 1.0 KeybindsPage.qml
+WorkspacesPage 1.0 WorkspacesPage.qml
+UpdatesPage 1.0 UpdatesPage.qml
+FontPickerPage 1.0 FontPickerPage.qml

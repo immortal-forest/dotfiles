@@ -19,6 +19,7 @@ local servers = {
   r_language_server = {},
   ruff = {},
   ty = {},
+  qmlls = {},
 }
 
 for name, opts in pairs(servers) do
