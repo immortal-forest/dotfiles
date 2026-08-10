@@ -1,0 +1,17 @@
+singleton Backlight Backlight.qml
+singleton Battery Battery.qml
+singleton CameraToggle CameraToggle.qml
+singleton Cava Cava.qml
+singleton Events Events.qml
+singleton Flags Flags.qml
+singleton Hypridle Hypridle.qml
+singleton Motion Motion.qml
+singleton Notifications Notifications.qml
+singleton Players Players.qml
+singleton Privacy Privacy.qml
+singleton Settings Settings.qml
+singleton Sysmon Sysmon.qml
+singleton Wallpaper Wallpaper.qml
+singleton WallpaperFavorites WallpaperFavorites.qml
+singleton Weather Weather.qml
+singleton Workspacerules Workspacerules.qml

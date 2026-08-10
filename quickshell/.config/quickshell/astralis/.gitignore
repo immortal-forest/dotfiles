@@ -1,0 +1,8 @@
+# matugen output — regenerated live on every wallpaper change
+colors/Colors.json
+
+# Quickshell-managed LSP index (QS fills it in)
+.qmlls.ini
+
+# runtime cache
+.cache/

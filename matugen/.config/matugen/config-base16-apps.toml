@@ -1,0 +1,39 @@
+# astralis — matugen base16 OVERLAY config (the "Palette" setting).
+#
+# Invoked by scripts/setwall only when paletteMode != material, AFTER the M3
+# baseline (config.toml) has themed everything:
+#     matugen -c config-base16-apps.toml -m dark -t scheme-vibrant <SRC>
+# where <SRC> is `color hex <seed>` (vivid) or `image <wallpaper>` (authentic).
+#
+# It re-themes ONLY the apps (kitty, ghostty, spotify, browser) from base16
+# templates, writing the SAME output paths as the M3 entries in config.toml so a
+# later material re-run cleanly restores them. It does NOT touch Colors.json,
+# hyprland, cava or rofi — the shell stays M3 (base16Shell handles the shell via
+# scripts/base16-to-colors instead). base16 slots: base00–07 bg→fg ramp;
+# base08–0F red,orange,yellow,green,cyan,blue,magenta,brown.
+
+[config]
+# Needed so an `image` source with several candidate colours resolves without a
+# TTY prompt — mirrors config.toml. base16 generation is scheme-independent.
+prefer = "darkness"
+
+[settings]
+mode = "dark"
+
+[templates.kitty]
+input_path  = "~/.config/matugen/templates/kitty-b16"
+output_path = "/home/immortalforest/.config/kitty/colors.conf"
+
+[templates.ghostty]
+input_path  = "~/.config/matugen/templates/ghostty-b16"
+output_path = "/home/immortalforest/.config/ghostty/themes/matugen"
+
+[templates.spotify]
+input_path  = "~/.config/matugen/templates/spotify-b16.ini"
+output_path = "/home/immortalforest/.config/spicetify/Themes/Sleek/color.ini"
+post_hook   = "command -v spicetify >/dev/null 2>&1 && pgrep -x spotify >/dev/null 2>&1 && spicetify -q apply >/dev/null 2>&1 || true"
+
+[templates.pywalfox]
+input_path  = "~/.config/matugen/templates/pywalfox-b16.json"
+output_path = "/home/immortalforest/.cache/wal/colors.json"
+post_hook   = "command -v pywalfox >/dev/null 2>&1 && pywalfox update >/dev/null 2>&1 || true"
