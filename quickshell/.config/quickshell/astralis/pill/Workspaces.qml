@@ -99,21 +99,16 @@ Item {
         return "";
     }
 
-    /**
-     * Workspace NUMBER → has-windows (keyed by parseInt(w.name), not w.id —
-     * see the range comment above for why), from each workspace's live IPC
-     * object (kept fresh by shell.qml re-pulling refreshWorkspaces() on
-     * every open/close/move window event). Occupied dots read bright;
-     * empty ones fade back, so opening or closing the last window on a
-     * workspace visibly lights or dims its dot — the "add/remove" feedback.
-     */
+    // Workspace NUMBER -> has-windows. Uses the per-workspace toplevel model,
+    // not lastIpcObject.windows: on Hyprland 0.56 the workspace IPC object
+    // Quickshell keeps is empty ({}), so .windows is undefined and no dot ever
+    // read as filled. toplevels is the reliable occupancy signal.
     readonly property var occupied: {
         var m = ({});
         var wss = Hyprland.workspaces.values;
         for (var i = 0; i < wss.length; i++) {
             var w = wss[i];
-            var o = w.lastIpcObject;
-            if (o && o.windows > 0)
+            if (w.toplevels && w.toplevels.values.length > 0)
                 m[parseInt(w.name)] = true;
         }
         return m;
