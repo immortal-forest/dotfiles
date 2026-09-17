@@ -13,7 +13,12 @@ hl.exec_cmd("gsettings set org.gnome.desktop.interface font-hinting 'full'")
 -- Color scheme
 hl.exec_cmd("gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'")
 
--- Persistent workspaces 1–8 (survive monitor reconnects)
+-- Persistent workspaces 1–8, pinned to the laptop panel (survive monitor
+-- reconnects). The `monitor` field is also what astralis's pill reads via
+-- `hyprctl workspacerules -j` (services/Workspacerules.qml) to show all 8
+-- workspace dots up front instead of only the ones actually visited this
+-- session — see that file's comment. DP-3 (monitor.lua) gets none of these
+-- pre-assigned, so it's free to pick up whatever workspace it's switched to.
 for i = 1, 8 do
-	hl.workspace_rule({ workspace = tostring(i), persistent = true })
+	hl.workspace_rule({ workspace = tostring(i), persistent = true, monitor = "eDP-2" })
 end

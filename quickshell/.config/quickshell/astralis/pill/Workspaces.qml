@@ -21,6 +21,16 @@ import "../services"
  * rules (the current userpref.lua persistent workspaces) falls back to the
  * workspaces Hyprland currently has on this monitor plus the active one, so
  * dots still appear and grow as new workspaces are visited.
+ *
+ * That fallback derives everything from parseInt(w.name), never w.id — see
+ * the long comment on `range` below for why (Hyprland 0.56 dropped the
+ * numeric IPC id Quickshell's own id property still reads). One residual
+ * limit worth knowing: Quickshell's workspace model only holds workspaces
+ * it has actually seen fire an event (created/focused/etc.) since the shell
+ * started — a persistent workspace nobody has touched yet this session
+ * still won't have a dot even with this fix, exactly as the paragraph above
+ * already describes ("grow as visited"). [[Workspacerules]] is the one path
+ * that shows every assigned dot unconditionally, independent of that.
  */
 Item {
     id: workspaces
@@ -31,6 +41,30 @@ Item {
     property real dotW: 6 * s
     property real gap: 8 * s
 
+    /**
+     * `w.id` can't be trusted any more: Hyprland 0.56 dropped the numeric
+     * `id` field from its workspace IPC (replaced by a string `address`),
+     * and Quickshell's own `HyprlandWorkspace.id` is populated by reading
+     * that now-absent JSON key — confirmed live against this exact build,
+     * every entry reports id -1 (a freshly-constructed object) or 0 (one
+     * sentinel some other internal path sets for the active workspace),
+     * never the real workspace number. `w.name` is a separate JSON field
+     * the schema change didn't touch, and is still correct — every id-keyed
+     * lookup below reads parseInt(w.name) instead. Open upstream, unfixed
+     * as of Quickshell 0.3.1: quickshell-mirror/quickshell#1149.
+     *
+     * `w.monitor` has a related but separate problem: on this build
+     * Quickshell only resolves it reliably for the CURRENTLY ACTIVE
+     * workspace — every other entry reports monitor: NULL even right after
+     * Hyprland.refreshWorkspaces() (confirmed live), despite raw `hyprctl
+     * workspaces -j` always carrying a real monitor string for all of
+     * them. A single-monitor rig has nothing to disambiguate, so an
+     * unresolved monitor is taken as "this one"; multi-monitor keeps the
+     * old, stricter check (only count a workspace once its monitor
+     * actually resolves) rather than risk the same dot appearing on every
+     * screen. Workspacerules above stays the authoritative, live-state-
+     * independent fix for multi-monitor — this fallback is best-effort.
+     */
     readonly property var range: {
         var ruled = Workspacerules.byMonitor[screenName];
         if (ruled && ruled.length)
@@ -39,12 +73,16 @@ Item {
         var out = [];
         var seen = ({});
         var wss = Hyprland.workspaces.values;
+        var singleMonitor = Hyprland.monitors.values.length <= 1;
         for (var i = 0; i < wss.length; i++) {
             var w = wss[i];
-            if (w.id >= 1 && w.monitor && w.monitor.name === screenName && !seen[w.id]) {
-                seen[w.id] = true;
-                out.push(w.id);
-            }
+            var n = parseInt(w.name);
+            if (isNaN(n) || n < 1 || seen[n])
+                continue;
+            if (!singleMonitor && !(w.monitor && w.monitor.name === screenName))
+                continue;
+            seen[n] = true;
+            out.push(n);
         }
         var a = parseInt(activeName);
         if (a >= 1 && !seen[a])
@@ -62,11 +100,12 @@ Item {
     }
 
     /**
-     * Workspace id → has-windows, from each workspace's live IPC object
-     * (kept fresh by shell.qml re-pulling refreshWorkspaces() on every
-     * open/close/move window event). Occupied dots read bright; empty ones
-     * fade back, so opening or closing the last window on a workspace visibly
-     * lights or dims its dot — the "add/remove" feedback.
+     * Workspace NUMBER → has-windows (keyed by parseInt(w.name), not w.id —
+     * see the range comment above for why), from each workspace's live IPC
+     * object (kept fresh by shell.qml re-pulling refreshWorkspaces() on
+     * every open/close/move window event). Occupied dots read bright;
+     * empty ones fade back, so opening or closing the last window on a
+     * workspace visibly lights or dims its dot — the "add/remove" feedback.
      */
     readonly property var occupied: {
         var m = ({});
@@ -75,7 +114,7 @@ Item {
             var w = wss[i];
             var o = w.lastIpcObject;
             if (o && o.windows > 0)
-                m[w.id] = true;
+                m[parseInt(w.name)] = true;
         }
         return m;
     }
