@@ -330,6 +330,14 @@ ShellRoot {
     // lock otherwise, since Overlay layer-shell renders above the lock surface).
     Lock { id: lockScope }
 
+    // ── resume-from-suspend self-heal ──────────────────────────────────────
+    // Wakes can leave the pill blank-but-space-reserving (lost EGL context on
+    // resume); this watches logind's PrepareForSleep and reloads on wake to
+    // rebuild the surfaces — the manual reload, automated. Guarded to never
+    // fire while locked (reloading under a live lock is a crash/lock-loss
+    // hazard); if we woke locked it runs right after unlock instead.
+    SleepWatch { locked: lockScope.locked }
+
     // ── reserve: exclusive-zone spacer only ────────────────────────────────
     Variants {
         model: Quickshell.screens

@@ -1,3 +1,4 @@
 Lock 1.0 Lock.qml
 LockSurface 1.0 LockSurface.qml
 Auth 1.0 Auth.qml
+SleepWatch 1.0 SleepWatch.qml
