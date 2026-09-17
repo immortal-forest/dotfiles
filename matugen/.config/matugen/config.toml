@@ -53,10 +53,30 @@ output_path = "/home/immortalforest/.config/ghostty/themes/matugen"
 # The base16 overlay (config-base16-apps.toml) writes this SAME path from a base16
 # template, so a re-run in material mode restores the M3 scheme here. post_hook is
 # guarded: spicetify is installed later (Wave-2), so this is a safe no-op until then.
+#
+# `spicetify apply` is backgrounded (the `( ... &)` subshell) rather than run
+# inline: matugen waits for a post_hook to finish before it returns, and
+# `apply` itself force-kills+relaunches a running Spotify — a slow round trip
+# (repatching xpui, then a full Electron cold start) that was stalling the
+# REST of setwall behind it (base16 overlay, kitty/ghostty SIGUSR reload,
+# writing current-wallpaper) on every wallpaper change or palette toggle
+# while Spotify was open. Backgrounding lets matugen return immediately;
+# Spotify still relaunches, just without holding up everything after it.
+#
+# `9>&-` closes setwall's flock fd (exec 9>...setwall.lock) in this subshell
+# BEFORE spicetify launches Spotify. Without it, bash's default fd
+# inheritance carries that open (write-mode, still-flocked) fd all the way
+# into the new Spotify process — a long-lived process that never closes it,
+# so the lock stays held for as long as Spotify keeps running. Every LATER
+# setwall run's `flock -w 30 9` then blocks for the full 30s (proceeding
+# only via its own `|| true`) before awww even starts — this is the
+# "awww doesn't start instantly" symptom, and it doesn't clear on its own
+# short of quitting Spotify (confirmed live: `fuser -v setwall.lock` showed
+# a running spotify process, not setwall, holding it open for writing).
 [templates.spotify]
 input_path  = "~/.config/matugen/templates/spotify-m3.ini"
 output_path = "/home/immortalforest/.config/spicetify/Themes/Sleek/color.ini"
-post_hook   = "command -v spicetify >/dev/null 2>&1 && pgrep -x spotify >/dev/null 2>&1 && spicetify -q apply >/dev/null 2>&1 || true"
+post_hook   = "command -v spicetify >/dev/null 2>&1 && pgrep -x spotify >/dev/null 2>&1 && (spicetify -q apply >/dev/null 2>&1 9>&- &) || true"
 
 # --- Browser (pywalfox reads a pywal-format colors.json) — M3 baseline ---------------
 [templates.pywalfox]

@@ -31,7 +31,14 @@ output_path = "/home/immortalforest/.config/ghostty/themes/matugen"
 [templates.spotify]
 input_path  = "~/.config/matugen/templates/spotify-b16.ini"
 output_path = "/home/immortalforest/.config/spicetify/Themes/Sleek/color.ini"
-post_hook   = "command -v spicetify >/dev/null 2>&1 && pgrep -x spotify >/dev/null 2>&1 && spicetify -q apply >/dev/null 2>&1 || true"
+# Backgrounded — see config.toml's [templates.spotify] for why: `apply`'s
+# forced Spotify relaunch was blocking matugen's return, which serialized
+# the whole setwall pipeline behind it whenever Spotify was running. This is
+# the entry that actually fires for the "Pywal"/"Vivid" Palette setting.
+# `9>&-` closes setwall's flock fd before spicetify launches Spotify — see
+# config.toml for the full explanation of the fd-inheritance leak this
+# prevents (Spotify otherwise holds the lock open indefinitely).
+post_hook   = "command -v spicetify >/dev/null 2>&1 && pgrep -x spotify >/dev/null 2>&1 && (spicetify -q apply >/dev/null 2>&1 9>&- &) || true"
 
 [templates.pywalfox]
 input_path  = "~/.config/matugen/templates/pywalfox-b16.json"
