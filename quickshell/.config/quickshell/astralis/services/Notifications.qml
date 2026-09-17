@@ -195,6 +195,17 @@ Singleton {
                 break;
             }
         }
+        // The freedesktop spec never requires a literal "default" action —
+        // it names the ONE action a click on the notification BODY should
+        // run, and plenty of senders (hyprshot's "View" among them) ship a
+        // single named action and expect exactly that convention: the first
+        // (only) action is what clicking the body means. Falling straight
+        // to expire() when there was no "default" silently dropped it —
+        // clicking the row did nothing an app author had actually wired up.
+        if (!invoked && acts.length > 0) {
+            acts[0].invoke();
+            invoked = true;
+        }
         if (!invoked && typeof n.expire === "function")
             n.expire();
         raiseWindow(n);

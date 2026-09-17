@@ -95,4 +95,4 @@ function starship_transient_prompt_func {
 }
 
 eval "$(starship init zsh)"
-enable_transience
+# enable_transience

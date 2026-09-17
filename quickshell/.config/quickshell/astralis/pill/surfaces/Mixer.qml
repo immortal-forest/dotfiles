@@ -7,6 +7,7 @@ import Quickshell.Io
 import Quickshell.Widgets
 import Quickshell.Services.Pipewire
 import ".."
+import "../m3"
 import "../../colors"
 import "../../services"
 import "../../config"
@@ -34,6 +35,24 @@ PillSurface {
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
+
+    /**
+     * The header's controls are Ricelin-sized 26dp, not M3's 40dp icon button
+     * or 32dp chip. They are handed a scaled-down `s` rather than an overridden
+     * `width`, because `s` is the one knob every m3/ component is built to take
+     * — it carries the glyph, the corner radius, the hit-target floor and the
+     * focus-ring offset down with it, where a bare width override would leave
+     * all four sized for a 40dp button.
+     */
+    readonly property real hdrBtnS: root.s * 26 / M3.iconButtonSize
+    readonly property real hdrChipS: root.s * 26 / M3.chipHeight
+
+    /**
+     * Screen-reader names have to say WHICH device is being muted or routed —
+     * "Mute" alone is useless on a surface that carries several mutes.
+     */
+    readonly property string sinkName: deviceLabel(sink) || "output device"
+    readonly property string sourceName: deviceLabel(source) || "input device"
 
     readonly property var streams: {
         void Pipewire.nodes.values;
@@ -357,71 +376,6 @@ PillSurface {
             .filter(Boolean)
     }
 
-    component IconChip: Rectangle {
-        id: chip
-        property string glyph: ""
-        property bool on: false
-        signal toggled()
-
-        width: 26 * root.s
-        height: 26 * root.s
-        radius: 8 * root.s
-        color: chip.on ? Colors.surface_container_highest : "transparent"
-        border.width: 1
-        border.color: chip.on ? Qt.alpha(Colors.outline_variant, 0.9) : Qt.alpha(Colors.outline_variant, 0.6)
-
-        GlyphIcon {
-            anchors.centerIn: parent
-            width: 15 * root.s
-            height: 15 * root.s
-            name: chip.glyph
-            color: chip.on ? Colors.primary : Colors.on_surface_variant
-            stroke: 1.7
-        }
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: chip.toggled()
-        }
-    }
-
-    /**
-     * Header device picker: an icon-only button that toggles its dropdown. It
-     * reads as an open field (primary tint and border) while its list shows.
-     */
-    component DevicePickerChip: Rectangle {
-        id: dchip
-        property string glyph: ""
-        property bool open: false
-        signal toggled()
-
-        width: 26 * root.s
-        height: 26 * root.s
-        radius: 8 * root.s
-        color: dchip.open ? Qt.alpha(Colors.primary, 0.14)
-            : (dchipHover.hovered ? Colors.surface_container_highest : "transparent")
-        border.width: 1
-        border.color: dchip.open ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-        GlyphIcon {
-            anchors.centerIn: parent
-            width: 15 * root.s
-            height: 15 * root.s
-            name: dchip.glyph
-            color: dchip.open ? Colors.primary : Colors.on_surface_variant
-            stroke: 1.7
-        }
-        HoverHandler {
-            id: dchipHover
-        }
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: dchip.toggled()
-        }
-    }
-
     // ── header: 調 MIXER + route/mute chips ─────────────────────────────────
     Item {
         id: header
@@ -464,61 +418,71 @@ PillSurface {
             // Bluetooth codec chip: shows the wire codec of the active bluez
             // sink and opens the codec menu. Hidden entirely unless the
             // default sink is Bluetooth *and* its codecs were queryable.
-            Rectangle {
-                id: codecChip
-                visible: root.sinkIsBluez && root.btCodecs.length > 0
+            // An assist chip, not a filter one: "open the codec list" is an
+            // action, and a filter chip would slide a check glyph in to mean
+            // "menu open", which is a lie about what was selected.
+            M3Chip {
                 anchors.verticalCenter: parent.verticalCenter
-                readonly property bool openState: root.openPicker === "codec"
-                width: codecChipText.implicitWidth + 14 * root.s
-                height: 26 * root.s
-                radius: 8 * root.s
-                color: openState ? Qt.alpha(Colors.primary, 0.14)
-                    : (codecChipHover.hovered ? Colors.surface_container_highest : "transparent")
-                border.width: 1
-                border.color: openState ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                Text {
-                    id: codecChipText
-                    anchors.centerIn: parent
-                    text: root.btCodecChipText
-                    color: codecChip.openState ? Colors.primary : Colors.on_surface_variant
-                    font.family: Appearance.font.family
-                    font.pixelSize: 9 * root.s
-                    font.weight: Font.Bold
-                    font.letterSpacing: 0.6 * root.s
-                    opacity: root.btCodecSwitching ? 0.5 : 1
-                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-                }
-                HoverHandler {
-                    id: codecChipHover
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.openPicker = root.openPicker === "codec" ? "" : "codec"
-                }
+                visible: root.sinkIsBluez && root.btCodecs.length > 0
+                // Mid-switch the chip goes to M3's disabled treatment rather
+                // than a hand-dimmed label: the profile swap tears the sink
+                // down, so a second click during it genuinely cannot land.
+                enabled: !root.btCodecSwitching
+                s: root.hdrChipS
+                kind: "assist"
+                icon: "bluetooth"
+                text: root.btCodecChipText
+                accessibleName: "Bluetooth audio codec, " + root.btCodecChipText
+                onClicked: root.openPicker = root.openPicker === "codec" ? "" : "codec"
             }
 
-            DevicePickerChip {
-                glyph: "speaker"
-                open: root.openPicker === "out"
-                onToggled: root.openPicker = root.openPicker === "out" ? "" : "out"
+            // The route pickers and the two mutes are all toggle icon buttons:
+            // "standard" is the only variant whose off-state stays transparent
+            // (the header was designed to read quiet) while its on-state is
+            // still unambiguous — the accent glyph, exactly the tint the
+            // hand-rolled chips used. "outlined" was the closer visual match
+            // but M3IconButton renders a *selected* outlined button as a
+            // transparent border over a transparent container, so the active
+            // picker would lose its container instead of gaining one.
+            M3IconButton {
+                anchors.verticalCenter: parent.verticalCenter
+                s: root.hdrBtnS
+                icon: "speaker"
+                toggle: true
+                checked: root.openPicker === "out"
+                accessibleName: "Output device"
+                accessibleDescription: root.sinkName
+                onClicked: root.openPicker = root.openPicker === "out" ? "" : "out"
             }
-            DevicePickerChip {
-                glyph: "mic"
-                open: root.openPicker === "in"
-                onToggled: root.openPicker = root.openPicker === "in" ? "" : "in"
+            M3IconButton {
+                anchors.verticalCenter: parent.verticalCenter
+                s: root.hdrBtnS
+                icon: "mic"
+                toggle: true
+                checked: root.openPicker === "in"
+                accessibleName: "Input device"
+                accessibleDescription: root.sourceName
+                onClicked: root.openPicker = root.openPicker === "in" ? "" : "in"
             }
-            IconChip {
-                glyph: root.sink && root.sink.audio && root.sink.audio.muted ? "speaker-off" : "speaker"
-                on: root.sink !== null && root.sink.audio !== null && root.sink.audio.muted
-                onToggled: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.sink.audio.muted
+            M3IconButton {
+                anchors.verticalCenter: parent.verticalCenter
+                s: root.hdrBtnS
+                icon: root.sink && root.sink.audio && root.sink.audio.muted ? "speaker-off" : "speaker"
+                toggle: true
+                checked: root.sink !== null && root.sink.audio !== null && root.sink.audio.muted
+                enabled: root.sink !== null && root.sink.audio !== null
+                accessibleName: "Mute " + root.sinkName
+                onClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.sink.audio.muted
             }
-            IconChip {
-                glyph: root.source && root.source.audio && root.source.audio.muted ? "mic-off" : "mic"
-                on: root.source !== null && root.source.audio !== null && root.source.audio.muted
-                onToggled: if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted
+            M3IconButton {
+                anchors.verticalCenter: parent.verticalCenter
+                s: root.hdrBtnS
+                icon: root.source && root.source.audio && root.source.audio.muted ? "mic-off" : "mic"
+                toggle: true
+                checked: root.source !== null && root.source.audio !== null && root.source.audio.muted
+                enabled: root.source !== null && root.source.audio !== null
+                accessibleName: "Mute " + root.sourceName
+                onClicked: if (root.source && root.source.audio) root.source.audio.muted = !root.source.audio.muted
             }
         }
     }
@@ -613,6 +577,18 @@ PillSurface {
                     radius: 7 * root.s
                     color: devRowHover.hovered ? Colors.surface_container_highest
                         : (devRow.current ? Qt.alpha(Colors.primary, 0.16) : "transparent")
+
+                    // One device among a list, so it reads as a choice, not an
+                    // unrelated button (SettingsSeg idiom).
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: menu.labelOf(devRow.modelData)
+                    Accessible.checkable: true
+                    Accessible.checked: devRow.current
+                    Accessible.focusable: true
+                    Accessible.onPressAction: {
+                        menu.pick(devRow.modelData);
+                        root.openPicker = "";
+                    }
 
                     HoverHandler { id: devRowHover }
 
@@ -716,6 +692,16 @@ PillSurface {
         function step(deltaPct) {
             setVolume(value + deltaPct / 100);
         }
+
+        // No `.value` on Accessible (quickshell-core.md §9b) — the level is
+        // read through description text, and increase/decrease drive it the
+        // same amount a wheel notch does (see `step`).
+        Accessible.role: Accessible.Slider
+        Accessible.name: fader.label.length > 0 ? fader.label : (fader.brightnessMode ? "Brightness" : "Volume")
+        Accessible.description: fader.muted ? "Muted" : Math.round(fader.value * 100) + " percent"
+        Accessible.focusable: fader.ready
+        Accessible.onIncreaseAction: fader.step(5)
+        Accessible.onDecreaseAction: fader.step(-5)
 
         Item {
             id: trackArea
@@ -860,6 +846,7 @@ PillSurface {
         // Icon/label tap toggles mute (Ricelin mic-fader affordance).
         // Brightness has no mute, so the tap target is off in that mode.
         MouseArea {
+            id: muteArea
             anchors.top: readout.top
             anchors.bottom: parent.bottom
             anchors.horizontalCenter: parent.horizontalCenter
@@ -867,6 +854,13 @@ PillSurface {
             enabled: fader.ready && !fader.brightnessMode
             cursorShape: Qt.PointingHandCursor
             onClicked: fader.node.audio.muted = !fader.node.audio.muted
+
+            Accessible.role: Accessible.CheckBox
+            Accessible.name: "Mute " + (fader.label.length > 0 ? fader.label : "device")
+            Accessible.checkable: true
+            Accessible.checked: fader.muted
+            Accessible.focusable: muteArea.enabled
+            Accessible.onPressAction: fader.node.audio.muted = !fader.node.audio.muted
         }
     }
 

@@ -76,6 +76,21 @@ Item {
             border.width: 1
             border.color: pick.open ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.on_surface, 0.06)
             Behavior on color { ColorAnimation { duration: Motion.fast } }
+            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+            scale: fieldArea.pressed ? 0.92 : 1
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
+                }
+            }
+
+            Accessible.role: Accessible.Button
+            Accessible.name: pick.label
+            Accessible.description: pick.currentLabel
+            Accessible.onPressAction: fieldArea.clicked(null)
 
             DisplayLabel {
                 anchors.left: parent.left
@@ -99,6 +114,7 @@ Item {
             }
 
             MouseArea {
+                id: fieldArea
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
@@ -165,6 +181,22 @@ Item {
                 radius: 7 * pick.s
                 color: optHover.hovered ? Colors.surface_container_highest
                     : (optRow.current ? Qt.alpha(Colors.primary, 0.16) : "transparent")
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                scale: optArea.pressed ? 0.96 : 1
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Motion.glide
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveFastSpatial
+                    }
+                }
+
+                Accessible.role: Accessible.ListItem
+                Accessible.name: optRow.modelData.label
+                Accessible.checkable: true
+                Accessible.checked: optRow.current
+                Accessible.onPressAction: optArea.clicked(null)
 
                 HoverHandler { id: optHover }
 
@@ -179,6 +211,7 @@ Item {
                 }
 
                 MouseArea {
+                    id: optArea
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: pick.picked(optRow.modelData.value)

@@ -216,7 +216,9 @@ PillSurface {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             width: 118 * root.s
-            clip: true
+            // No `clip: true` any more — the mask below fades the cover's
+            // own alpha out before it reaches this box's edge, so there is
+            // nothing left at the boundary for a hard clip to cut through.
 
             Rectangle {
                 anchors.fill: parent
@@ -234,6 +236,49 @@ PillSurface {
                 retainWhileLoading: true
                 cache: String(source).indexOf("file:") !== 0
                 onStatusChanged: if (status === Image.Ready) root.everReady = true
+                // Painted through maskedCover below instead of directly —
+                // the sharp pixels themselves need to fade, not just get
+                // painted over.
+                visible: false
+            }
+
+            // Alpha ramp for the mask: opaque through the first ~68% of the
+            // box, then down to nothing at the trailing edge. Qt reads a
+            // mask by its alpha, so the colour underneath is irrelevant —
+            // only the gradient's own opacity stops matter.
+            //
+            // `layer.enabled: true` is not decoration here — it is the whole
+            // fix. MultiEffect.maskSource docs: valid sources are a
+            // ShaderEffectSource, an item with `layer.enabled`, or something
+            // natively textured like Image. A bare Rectangle is none of
+            // those, so without this the mask silently did nothing at all —
+            // full pass-through, hard edge exactly where the old clip was —
+            // which is why the "dissolve" looked unchanged.
+            Rectangle {
+                id: coverFadeMask
+                anchors.fill: parent
+                visible: false
+                layer.enabled: true
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0;  color: "#ffffffff" }
+                    GradientStop { position: 0.68; color: "#ffffffff" }
+                    GradientStop { position: 1.0;  color: "#00ffffff" }
+                }
+            }
+
+            // What used to be a hard clip is now a real dissolve: the sharp
+            // cover thins out and lets the already-blurred `bleedSrc` copy
+            // (painted full-bleed behind everything, see above) show through
+            // in its place — sharp fading INTO blur, not sharp stopping dead
+            // against a flat wash colour.
+            MultiEffect {
+                anchors.fill: parent
+                source: cover
+                maskEnabled: true
+                maskSource: coverFadeMask
+                maskThresholdMin: 0
+                maskSpreadAtMin: 1
             }
 
             GlyphIcon {
@@ -246,6 +291,10 @@ PillSurface {
             }
         }
 
+        // Colour-matches the dissolve into the surrounding wash once the
+        // cover's own alpha has already done the actual softening above —
+        // this only needs to carry the last bit of tint continuity now, not
+        // hide a seam on its own.
         Rectangle {
             anchors.left: parent.left
             anchors.leftMargin: 62 * root.s

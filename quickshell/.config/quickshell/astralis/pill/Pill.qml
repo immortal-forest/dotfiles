@@ -1,12 +1,12 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
 import Quickshell
 import Quickshell.Hyprland
 import "../colors"
 import "../services"
 import "../config"
+import "m3"
 import "surfaces"
 // `Notifications` names BOTH the services singleton and the surfaces type;
 // both directories are imported unqualified above, so the two notification
@@ -155,6 +155,12 @@ Item {
      * surface is one entry here plus its Loader in surfaceHost.
      */
     readonly property var surfaces: ({
+        // Card back to its original 390 — the 430 tried here read too big on
+        // screen. The source/time line's truncation this was chasing (see
+        // Media.qml's `srcLine`, squeezed between `textX` and `transport.left`)
+        // is still there when a multi-player picker chip is showing; if that
+        // comes up again the fix belongs in that gap specifically, not in
+        // widening the whole card.
         media:     { size: () => { surfaceItem(ldMedia);     return Qt.size(390 * s, 150 * s); }, ame: () => surfaceItem(ldMedia) },
         calendar:  { size: () => { surfaceItem(ldCalendar);  return Qt.size(698 * s, 304 * s); }, ame: () => surfaceItem(ldCalendar) },
         mixer:     { size: () => { surfaceItem(ldMixer);     return Qt.size(440 * s, 214 * s); }, ame: () => surfaceItem(ldMixer) },
@@ -168,7 +174,12 @@ Item {
         // Ricelin sizes sysmon 392×(content+33): header 24 + 16 + dials 110 +
         // 18 + divider 1 + 13 + cells 30 = 212 content ⇒ 245 fixed. Height is
         // GPU-independent (dials recentre, the cell row just gets wider cells).
-        sysmon:    { size: () => { surfaceItem(ldSysmon);    return Qt.size(392 * s, 245 * s); }, ame: () => surfaceItem(ldSysmon) }
+        sysmon:    { size: () => { surfaceItem(ldSysmon);    return Qt.size(392 * s, 245 * s); }, ame: () => surfaceItem(ldSysmon) },
+        // Header 24 + 14 + state panel 94 + 12 + rule + 6 + three option rows
+        // 102 + 6 + chip row 28 + 10 + output 24 = 322 content ⇒ 350 fixed;
+        // 430 wide keeps three capture tiles square-ish and fits the frame-rate
+        // and quality strips on one line each.
+        recorder:  { size: () => { surfaceItem(ldRecorder);  return Qt.size(430 * s, 350 * s); }, ame: () => surfaceItem(ldRecorder) }
     })
 
     // Mode ladder (Ricelin Pill.qml:224–231; game/quickChoose/quickCount rungs
@@ -189,6 +200,50 @@ Item {
     // so clear on BOTH transitions (a stray pin tap on open-surface padding
     // must not survive the surface closing and leave the pill stuck open).
     onSurfaceOpenChanged: pinned = false
+
+    /**
+     * A clock readout that ROLLS when the time changes.
+     *
+     * The pill is the most-looked-at object in the shell and, at rest, the
+     * least animated: it holds a string for sixty seconds and then swaps it
+     * between two frames. The new value now rises the last few pixels into
+     * place out of a dim — the smallest gesture that reads as time PASSING
+     * rather than as text being replaced, and the same one the lock screen's
+     * numerals use, so the shell's two clocks tick the same way.
+     *
+     * Silenced when the clock is showing SECONDS: a roll once a minute is a
+     * detail, and the identical roll sixty times a minute is a fidget. Also
+     * silenced under reduce-motion, and while the readout is not on screen.
+     */
+    component TickText: Text {
+        id: tick
+        property bool live: true
+        readonly property bool rolls: tick.live && !Flags.clockSeconds && !Motion.reduceMotion
+
+        color: Colors.on_surface
+        font.family: Appearance.font.family
+        font.features: ({ "tnum": 1 })
+
+        transform: Translate { id: tickRoll }
+        onTextChanged: if (tick.rolls) tickAnim.restart()
+
+        ParallelAnimation {
+            id: tickAnim
+            NumberAnimation {
+                target: tickRoll; property: "y"
+                from: 5 * pill.s; to: 0
+                duration: Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveFastSpatial
+            }
+            NumberAnimation {
+                target: tick; property: "opacity"
+                from: 0.4; to: 1
+                duration: Motion.standard
+                easing.type: Motion.easeStandard
+            }
+        }
+    }
 
     // ── clock ───────────────────────────────────────────────────────────────
     SystemClock {
@@ -226,12 +281,24 @@ Item {
         toast: () => Qt.size(toastW, ldToast.item ? ldToast.item.implicitHeight + 24 * s : restH)
     })
 
+    /**
+     * Rest width: whatever the resting row asks for plus the 18*s edge padding
+     * on each side, never below restW's floor. Everything that can appear at
+     * rest — capture chip, kanji + clock, privacy dots — lives inside restRow,
+     * so its implicitWidth is the single measurement and the row stays centred
+     * and evenly padded in every combination. (An earlier pass anchored the
+     * privacy dots to the pill's right edge and reserved their width twice
+     * here; that kept the clock centred but left the dots hard against it with
+     * no gutter, and the reserve read as dead space on the left.)
+     */
+    readonly property real restTargetW: Math.max(restW, restRow.implicitWidth + 36 * s)
+
     readonly property size targetSize: {
         const sf = Object.prototype.hasOwnProperty.call(surfaces, mode) ? surfaces[mode] : undefined;
         if (sf)
             return sf.size();
         const f = Object.prototype.hasOwnProperty.call(modeSize, mode) ? modeSize[mode] : undefined;
-        return f ? f() : Qt.size(Math.max(restW, restRow.implicitWidth + 36 * s), restH);
+        return f ? f() : Qt.size(restTargetW, restH);
     }
     readonly property real targetW: targetSize.width
     readonly property real targetH: targetSize.height
@@ -287,8 +354,8 @@ Item {
 
     SequentialAnimation {
         id: kanjiFlashAnim
-        NumberAnimation { target: pill; property: "kanjiFlash"; to: 1; duration: 90; easing.type: Easing.OutCubic }
-        NumberAnimation { target: pill; property: "kanjiFlash"; to: 0; duration: 320; easing.type: Easing.OutCubic }
+        NumberAnimation { target: pill; property: "kanjiFlash"; to: 1; duration: Math.round(90 * Motion.mult); easing.type: Motion.easeStandard }
+        NumberAnimation { target: pill; property: "kanjiFlash"; to: 0; duration: Motion.standard; easing.type: Motion.easeStandard }
     }
 
     Behavior on width { NumberAnimation { duration: pill.hoverHop ? Motion.glide : Motion.morph; easing.type: Motion.easeMorph; easing.bezierCurve: Motion.morphCurve } }
@@ -316,48 +383,15 @@ Item {
     }
 
     // ── body ────────────────────────────────────────────────────────────────
-    Rectangle {
+    // The pill's material is now Panel — the same gradient, outline, sheen
+    // and shadow the lock screen's capsule and now-playing panel wear. It used
+    // to be written out inline here and nowhere else, which is precisely why
+    // the lock screen and the pill did not look like the same program.
+    Panel {
         id: body
         anchors.fill: parent
+        s: pill.s
         radius: pill.morphRadius
-        border.width: 1
-        border.color: Qt.alpha(Colors.outline_variant, 0.6)
-
-        // Subtle two-stop vertical depth; each stop animates so a matugen
-        // retheme sweeps through the body instead of snapping.
-        gradient: Gradient {
-            GradientStop {
-                position: 0.0
-                color: Colors.surface_container_high
-                Behavior on color { ColorAnimation { duration: Motion.standard } }
-            }
-            GradientStop {
-                position: 1.0
-                color: Colors.surface_container
-                Behavior on color { ColorAnimation { duration: Motion.standard } }
-            }
-        }
-
-        layer.enabled: true
-        layer.effect: MultiEffect {
-            shadowEnabled: true
-            shadowColor: Qt.rgba(0, 0, 0, Appearance.elevation.shadowOpacity)
-            shadowBlur: 0.7
-            shadowVerticalOffset: 3 * pill.s
-        }
-
-        // 1px top sheen hairline, inset by the corner radius so it never
-        // clips across the curve.
-        Rectangle {
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.topMargin: 1
-            anchors.leftMargin: body.radius * 0.6
-            anchors.rightMargin: body.radius * 0.6
-            height: 1
-            color: Qt.alpha(Colors.on_surface, 0.06)
-        }
     }
 
     // ── Ame, the soul bead ──────────────────────────────────────────────────
@@ -383,16 +417,24 @@ Item {
         void pill.width;
         void pill.height;
         const drop = 12 * pill.s;
+        // The bead parks just under the GLYPH, not under the button box. A
+        // status slot is a 32dp state layer around an 18dp icon now, so
+        // `height` overshoots the ink by 7dp on each side and aiming at it
+        // would drop the bead onto the pill's bottom edge (where Ame's own
+        // bounds clamp would catch it and pin it there for every icon alike).
+        const glyphFoot = M3.iconButtonIconSizeSmall / 2 * pill.s + drop * 0.55;
         if (soulTarget === "tray") {
             void trayIcons.implicitWidth;
             return trayIcons.mapToItem(pill, trayIcons.width / 2, trayIcons.height + drop * 0.3);
         }
         if (soulTarget === "inbox")
-            return inboxIcon.mapToItem(pill, inboxIcon.width / 2, inboxIcon.height + drop * 0.55);
+            return inboxIcon.mapToItem(pill, inboxIcon.width / 2, inboxIcon.height / 2 + glyphFoot);
         if (soulTarget === "power")
-            return powerIcon.mapToItem(pill, powerIcon.width / 2, powerIcon.height + drop * 0.55);
+            return powerIcon.mapToItem(pill, powerIcon.width / 2, powerIcon.height / 2 + glyphFoot);
         if (soulTarget === "settings")
-            return settingsIcon.mapToItem(pill, settingsIcon.width / 2, settingsIcon.height + drop * 0.55);
+            return settingsIcon.mapToItem(pill, settingsIcon.width / 2, settingsIcon.height / 2 + glyphFoot);
+        if (soulTarget === "recorder")
+            return recorderIcon.mapToItem(pill, recorderIcon.width / 2, recorderIcon.height / 2 + glyphFoot);
         if (soulTarget === "ws" && soulWsIndex >= 0) {
             void wsDots.activeName;
             void wsDots.width;
@@ -411,6 +453,14 @@ Item {
     readonly property var ameSurface: (surfaceOpen && Object.prototype.hasOwnProperty.call(surfaces, surface))
         ? surfaces[surface].ame() : null
 
+    /**
+     * The anchors below are handed over RAW. Ame's canvas fills the pill, so
+     * ink outside the body is cut; rather than every anchor site carrying its
+     * own safety margin, Ame clamps `point` into its own bounds by the current
+     * form's painted extent (Ame.qml `anchor`/`inkHalf`). The clamp is a no-op
+     * for a point that already has headroom, so the hover/wake anchors and the
+     * surfaces' deliberate edge docks land exactly where they ask to.
+     */
     Ame {
         id: ame
         anchors.fill: parent
@@ -432,12 +482,129 @@ Item {
         anchors.fill: parent
         opacity: pill.mode === "rest" ? Math.pow(pill.morphCloseness, 1.5) : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: pill.mode === "rest" ? Motion.fast : Motion.glide } }
+        Behavior on opacity {
+            NumberAnimation {
+                duration: pill.mode === "rest" ? Motion.fast : Motion.glide
+                easing.type: Motion.easeStandard
+            }
+        }
+
+        // The capture chip and the privacy indicators used to be fenced off
+        // from the clock by 1px vertical rules. The rules are gone and nothing
+        // replaced them: restRow's spacing does the separating, tightened
+        // inside each group and widened between them. Boxing the two groups
+        // into tracks was tried and reverted — a container nested inside the
+        // pill's own container reads as packaging, and the pill is small
+        // enough that a wider gap says "different thing" perfectly well.
+
+        /**
+         * One live capture source, drawn as a DOT — not as an icon.
+         *
+         * These were tiny icons twice over: first Material Symbols ligatures,
+         * then GlyphIcons, and both times they read as odd ones out in the
+         * resting pill. The reason is not which icon set they came from. It is
+         * that a 13dp stroked pictogram carries detail nobody can resolve at
+         * that size, and putting three of them in three different accent
+         * colours next to a clock makes a rash rather than a status.
+         *
+         * The pill already has a vocabulary for "something is live", and it is
+         * a coloured dot — the capture chip's recording dot, three centimetres
+         * to the left of these, does exactly this. So do the workspace dots,
+         * the unread badge, the lock screen's colon and the Ame bead. Matching
+         * it costs the pictogram and buys a status line that reads at a glance
+         * and belongs to the shell. WHICH source is live is carried by colour
+         * and, for anyone who needs it stated, by the accessible name.
+         */
+        component PrivacyDot: Item {
+            id: pdot
+            property color tint: Colors.on_surface
+            property bool active: false
+            property string label: ""
+            anchors.verticalCenter: parent.verticalCenter
+            width: 8 * pill.s
+            height: 8 * pill.s
+            opacity: active ? 1 : 0
+            visible: opacity > 0.01
+            scale: active ? 1 : 0.5
+            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+            Behavior on scale { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+
+            // A dot says "live" but not "live doing what", so the one thing it
+            // cannot show is the one thing a screen reader must say.
+            Accessible.role: Accessible.Indicator
+            Accessible.name: pdot.label
+            Accessible.ignored: !pdot.active
+
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: pdot.tint
+
+                // The same breath, at the same rate, as the capture chip's
+                // recording dot. Gated on the rest face actually showing, so
+                // no infinite animation ticks behind an open surface.
+                SequentialAnimation on opacity {
+                    running: pdot.active && rest.visible && !Motion.reduceMotion
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.35; duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 1;    duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
+                }
+            }
+        }
 
         Row {
             id: restRow
             anchors.centerIn: parent
-            spacing: 9 * pill.s
+            // 11 rather than the old 9: the vertical rules used to hold the
+            // optional groups off the clock, and with them gone the gap is the
+            // only thing doing it.
+            spacing: 11 * pill.s
+
+            /**
+             * Capture chip. While a take is arming or running the resting pill
+             * grows a live counter to the left of the clock — a Row skips
+             * invisible children, so at rest this costs nothing, and when it
+             * appears the rest target (restRow.implicitWidth + 36*s, above
+             * restW's floor) widens the pill through the same morph Behavior
+             * as everything else. Read-only: the hover row's 録 icon is the way
+             * back to the stop control, so a stray pill tap can't end a take.
+             */
+            Row {
+                id: recChip
+                anchors.verticalCenter: parent.verticalCenter
+                visible: ScreenRec.recording || ScreenRec.arming
+                spacing: 6 * pill.s
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 8 * pill.s
+                    height: 8 * pill.s
+                    radius: width / 2
+                    color: ScreenRec.arming || ScreenRec.paused
+                        ? Colors.on_surface_variant : Colors.error
+
+                    // Breathes while capturing; a countdown or a paused take
+                    // holds steady, so "live" is never ambiguous at a glance.
+                    SequentialAnimation on opacity {
+                        running: ScreenRec.recording && !ScreenRec.paused
+                            && rest.visible && !Motion.reduceMotion
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.35; duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
+                        NumberAnimation { to: 1;    duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
+                    }
+                }
+
+                TickText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    // A countdown is three deliberate beats and each one is
+                    // worth marking; the running elapsed time is a second
+                    // hand, and animating a second hand is a fidget.
+                    live: rest.visible && ScreenRec.arming
+                    text: ScreenRec.arming ? "" + ScreenRec.countdown : ScreenRec.elapsedText
+                    font.pixelSize: 13 * pill.s
+                    font.weight: Font.DemiBold
+                }
+            }
 
             // The resting 時 kanji (Ricelin Pill.qml:1174–1228). The kanji
             // carries the idle glow (an Outline copy whose alpha rides
@@ -462,8 +629,18 @@ Item {
                     color: "transparent"
                     font: kanjiFill.font
                     style: Text.Outline
+                    // Was a flat 0.5 baseline whenever at rest — a permanent
+                    // tertiary-tinted halo, not a flash, sitting right next to
+                    // a plain-fill numeral with none. It read as two different
+                    // rendering techniques stapled together, the same
+                    // complaint this shell keeps drawing for mismatched
+                    // shapes/fonts, just done in outline-vs-fill this time.
+                    // 0.16 keeps the kanji's warmth as a whisper; kanjiFlash
+                    // still spikes it to a real glow on the hover-soul-gate
+                    // event, which is the only place this was ever meant to
+                    // read as a flash.
                     styleColor: Qt.alpha(Colors.tertiary,
-                        Math.min(1, (pill.mode === "rest" || !pill.hoverSoulGate ? 0.5 : 0) + pill.kanjiFlash))
+                        Math.min(1, (pill.mode === "rest" || !pill.hoverSoulGate ? 0.16 : 0) + pill.kanjiFlash))
                     Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                 }
 
@@ -503,15 +680,13 @@ Item {
                 }
             }
 
-            Text {
+            TickText {
                 visible: pill.specialView === ""
+                live: rest.visible
                 anchors.verticalCenter: parent.verticalCenter
                 text: clock.hhmm
-                color: Colors.on_surface
-                font.family: Appearance.font.family
                 font.pixelSize: 16 * pill.s
                 font.weight: Font.DemiBold
-                font.features: ({ "tnum": 1 })
             }
 
             Text {
@@ -523,56 +698,39 @@ Item {
                 font.pixelSize: 16 * pill.s
                 font.weight: Font.DemiBold
             }
-        }
 
-        // ── privacy indicators (iOS-style) ──────────────────────────────
-        // Something capturing the mic / camera / screen shows as a tiny
-        // pulsing glyph tucked against the right edge of the resting pill.
-        // Anchored outside restRow so appearing never recenters the kanji +
-        // clock and never feeds the rest width target (the pill does not
-        // widen); living inside the rest face keeps them rest-only — the
-        // hover row, toast/osd flashes and open surfaces stay clean.
-        Row {
-            id: privacyRow
-            anchors.right: parent.right
-            anchors.rightMargin: 9 * pill.s
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 2 * pill.s
-
-            component PrivacyDot: Item {
-                id: pdot
-                property alias glyph: pdotGlyph.text
-                property alias tint: pdotGlyph.color
-                property bool active: false
-                width: 10 * pill.s
-                height: 10 * pill.s
-                opacity: active ? 1 : 0
+            // ── privacy indicators (iOS-style) ──────────────────────────
+            // Something capturing the mic / camera / screen shows as a tiny
+            // pulsing glyph at the trailing end of the same centred row,
+            // mirroring the capture chip at the leading end. Both now sit in
+            // the same recessed track, so the two read as a matched pair of
+            // status wells flanking the clock rather than as two loose groups
+            // fenced off by rules.
+            //
+            // The group must go `visible: false` when empty — a Row reserves a
+            // spacing gap for a zero-width visible child, which would leave a
+            // hole after the clock.
+            //
+            // Gate that on OPACITY, never on measured width: a positioner
+            // stops recomputing its implicitWidth while it is invisible, so
+            // `visible: width > 0` is a one-way latch — once the last dot
+            // clears, the width never comes back and the indicators are gone
+            // for the rest of the session (verified: implicitWidth holds 0.0
+            // with a visible, opaque child underneath). Opacity is
+            // layout-independent, so it keeps animating while hidden and lifts
+            // the group back into the row on its own, and it buys the fade.
+            Row {
+                id: privacyRow
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 5 * pill.s
+                opacity: Privacy.anyActive ? 1 : 0
                 visible: opacity > 0.01
-                scale: active ? 1 : 0.5
                 Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-                Behavior on scale { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
-                Text {
-                    id: pdotGlyph
-                    anchors.centerIn: parent
-                    font.family: Appearance.font.symbols
-                    font.pixelSize: 10 * pill.s
-
-                    // Subtle breath so an active capture reads live, not stuck.
-                    // Gated on the rest face actually showing, so no infinite
-                    // animation ticks behind an open surface.
-                    SequentialAnimation on opacity {
-                        running: pdot.active && rest.visible && !Motion.reduceMotion
-                        loops: Animation.Infinite
-                        NumberAnimation { to: 0.45; duration: Motion.pulse * 2; easing.type: Motion.easeStandard }
-                        NumberAnimation { to: 1;    duration: Motion.pulse * 2; easing.type: Motion.easeStandard }
-                    }
-                }
+                PrivacyDot { active: Privacy.micActive;    tint: Colors.tertiary; label: "Microphone in use" }
+                PrivacyDot { active: Privacy.cameraActive; tint: Colors.primary;  label: "Camera in use" }
+                PrivacyDot { active: Privacy.screenActive; tint: Colors.error;    label: "Screen being shared" }
             }
-
-            PrivacyDot { active: Privacy.micActive;    glyph: "mic";          tint: Colors.tertiary }
-            PrivacyDot { active: Privacy.cameraActive; glyph: "videocam";     tint: Colors.primary }
-            PrivacyDot { active: Privacy.screenActive; glyph: "screen_share"; tint: Colors.error }
         }
     }
 
@@ -587,58 +745,140 @@ Item {
         visible: true
         // Near-instant clear when leaving hover so this face never lingers
         // over an opening surface; fast fade-in smooths the closeness pop.
-        Behavior on opacity { NumberAnimation { duration: pill.mode === "hover" ? Motion.fast : 0 } }
+        Behavior on opacity {
+            NumberAnimation {
+                duration: pill.mode === "hover" ? Motion.fast : 0
+                easing.type: Motion.easeStandard
+            }
+        }
 
         // This face stays visible at opacity 0 (see above), so every
         // interactive bit inside it must gate on `live` or an invisible
         // hover face would swallow clicks meant for the rest face / surfaces.
         readonly property bool live: pill.mode === "hover"
 
-        // 17*s status-icon slot: a Material Symbols glyph in a fixed box.
-        // A non-empty `surface` makes it clickable → requestSurface(surface)
-        // (exclusive-grab tap so the pill's pin TapHandler doesn't also fire).
+        /**
+         * Entrance stagger. The hover face used to arrive as one flat
+         * cross-fade: the pill grew and its whole contents appeared at once,
+         * which reads as a picture being swapped rather than as a control
+         * unfolding. Each zone now rises the last few pixels into place on its
+         * own beat — workspaces first, then the clock, then the status icons
+         * one after another — so the row assembles left to right in the ~200ms
+         * the morph is already taking.
+         *
+         * Deliberately a TRANSLATE only, with no per-zone opacity: the face's
+         * own cross-fade is already running underneath, and fading twice made
+         * the row feel like it was arriving through fog. The rise is what adds
+         * the life; the fade is already handled.
+         *
+         * Delays are held off `live` so LEAVING is instant — a staggered exit
+         * would leave content hanging over a pill that had already collapsed.
+         */
+        component ZoneRise: Translate {
+            property real delay: 0
+            y: hover.live ? 0 : 7 * pill.s
+            Behavior on y {
+                SequentialAnimation {
+                    PauseAnimation { duration: hover.live ? Math.round(delay * Motion.mult) : 0 }
+                    NumberAnimation {
+                        duration: Motion.expressiveFastSpatialDur
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveFastSpatial
+                    }
+                }
+            }
+        }
+
+        /**
+         * A status slot in the hover row: an M3 Expressive extra-small icon
+         * button — a 32dp state layer around an 18dp GlyphIcon.
+         *
+         * What this replaced, and why. The old slot was a bare 17dp Material
+         * Symbols glyph whose only feedback was a colour swap, with a
+         * TapHandler carrying a 6dp margin — a ~29dp pointer target, under
+         * M3's floor, with nothing under the cursor to say it was aimable.
+         * Now the target is a real 32dp box (grown to 36dp invisibly by
+         * `minTarget`, which is exactly the pitch of the group's 4dp gaps, so
+         * neighbouring targets tile without overlapping), and it carries M3's
+         * state layer: 8% of the content colour on hover, 12% pressed, plus
+         * the keyboard focus ring and the shell's press dip.
+         *
+         * The glyph is a GlyphIcon rather than a Material Symbols ligature so
+         * that an icon matches the surface it opens — the notifications,
+         * recorder and settings surfaces are all drawn in the shell's own
+         * stroked set, and the launcher for a surface pointing at a different
+         * icon family than the surface itself was the seam that made the pill
+         * read as chrome bolted onto a different program.
+         */
         component StatusGlyph: Item {
             id: statusGlyph
-            property alias glyph: glyphText.text
+            /** A `pill/lib/glyphs.js` name — a name not in that file draws NOTHING. */
+            property string icon: ""
+            /** Per-slot override; the four shell icons all take the default. */
+            property real iconSize: M3.iconButtonIconSizeSmall
             property string surface: ""
             property string soulKey: ""
             property bool dot: false
-            // A glyph is clickable either because it owns a pill surface
-            // (surface non-empty) or because it does something else on tap
-            // (the power icon: `activated()` opens the full-screen session
-            // menu, no surface morph involved) — set explicitly for those.
+            // Clickable either because it owns a pill surface (surface
+            // non-empty) or because it does something else on tap (the power
+            // icon opens the standalone session menu) — set explicitly there.
             property bool interactive: surface !== ""
+            /** What this icon IS, and what tapping it does. */
+            property string accessibleName: ""
+            property string accessibleDescription: ""
             signal activated()
-            width: 17 * pill.s
-            height: 17 * pill.s
 
-            Text {
-                id: glyphText
+            /** Position in the trailing cluster's entrance stagger. */
+            property int order: 0
+
+            width: M3.iconButtonSizeSmall * pill.s
+            height: M3.iconButtonSizeSmall * pill.s
+
+            transform: ZoneRise { delay: 130 + statusGlyph.order * Motion.rowStagger }
+
+            // M3StateLayer drives this through its own animated `dip`.
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
+                }
+            }
+
+            GlyphIcon {
                 anchors.centerIn: parent
-                color: glyphHover.hovered ? Colors.on_surface : Colors.on_surface_variant
-                font.family: Appearance.font.symbols
-                font.pixelSize: Appearance.font.sizeL * pill.s
+                width: statusGlyph.iconSize * pill.s
+                height: statusGlyph.iconSize * pill.s
+                name: statusGlyph.icon
+                color: glyphState.hovered ? Colors.on_surface : Colors.on_surface_variant
+                stroke: 1.7
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
 
-            // Top-right badge (the inbox unread dot).
+            // Unread badge, tucked inside the 32dp box rather than hung off
+            // its corner — the box is the button now, and a dot floating
+            // outside it would sit on the group track's edge.
             Rectangle {
-                visible: statusGlyph.dot
                 anchors.top: parent.top
                 anchors.right: parent.right
-                anchors.topMargin: -2 * pill.s
-                anchors.rightMargin: -2 * pill.s
-                width: 5 * pill.s
-                height: 5 * pill.s
+                anchors.topMargin: 3 * pill.s
+                anchors.rightMargin: 3 * pill.s
+                width: M3.badgeDotSize * pill.s
+                height: width
                 radius: width / 2
                 color: Colors.primary
-            }
-
-            HoverHandler {
-                id: glyphHover
-                enabled: hover.live && statusGlyph.interactive
-                margin: 6 * pill.s
-                cursorShape: Qt.PointingHandCursor
+                // Springs in when the first notification lands rather than
+                // blinking into existence — the overshoot is what makes a
+                // badge read as something that ARRIVED.
+                scale: statusGlyph.dot ? 1 : 0
+                visible: scale > 0.01
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Motion.expressiveFastSpatialDur
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveFastSpatial
+                    }
+                }
             }
 
             // Sticky soul-bead retarget (A.4): entering this glyph writes its
@@ -646,15 +886,22 @@ Item {
             // moves when another target claims it — icon→icon, never via home.
             HoverHandler {
                 enabled: hover.live && statusGlyph.soulKey !== ""
-                margin: 6 * pill.s
                 onHoveredChanged: if (hovered) pill.soulTarget = statusGlyph.soulKey
             }
 
-            TapHandler {
+            M3StateLayer {
+                id: glyphState
+                anchors.fill: parent
                 enabled: hover.live && statusGlyph.interactive
-                margin: 6 * pill.s
-                gesturePolicy: TapHandler.ReleaseWithinBounds
-                onTapped: {
+                s: pill.s
+                radius: width / 2
+                contentColor: Colors.on_surface
+                // Small round target — the contract's deep dip.
+                pressScale: 0.92
+                minTarget: M3.groupTarget
+                accessibleName: statusGlyph.accessibleName
+                accessibleDescription: statusGlyph.accessibleDescription
+                onClicked: {
                     if (statusGlyph.surface !== "")
                         pill.requestSurface(statusGlyph.surface);
                     statusGlyph.activated();
@@ -665,30 +912,67 @@ Item {
         Row {
             id: hoverRow
             anchors.centerIn: parent
-            spacing: 20 * pill.s
+            // The two 1px rules that used to fence the clock off from the
+            // workspace dots and the status cluster are gone (see M3Group.qml),
+            // so the gap is now the only thing separating the row's three
+            // zones and it is widened to carry that on its own.
+            spacing: 26 * pill.s
+
+            /**
+             * The clock sits at ROW POSITION 2 of 3, not at the pill's
+             * geometric middle — those are only the same point when the
+             * leading (workspace dots) and trailing (tray + status icons)
+             * zones happen to measure the same width, and they usually
+             * don't (5 status icons + a tray reliably outmeasures 2-8 dots).
+             * A plain Row centred as a whole then just shifts the clock
+             * toward whichever side is narrower — visibly off-centre next to
+             * the rest face, where a lone clock has nothing to be
+             * asymmetric against.
+             *
+             * Forcing both flanks to this shared width turns the row back
+             * into a true three-lane layout (leading / centre / trailing),
+             * so the clock lands on the pill's actual centre regardless of
+             * which side is fuller. Each flank's content still hugs its
+             * OUTER edge within the lane (dots against the leading edge,
+             * icons against the trailing edge) rather than being centred in
+             * the extra space, so the gap right next to the clock stays the
+             * same 26·s on both sides instead of ballooning on whichever
+             * side is shorter.
+             */
+            readonly property real sideLane: Math.max(wsDots.implicitWidth, trailGroup.implicitWidth)
 
             // Per-monitor Hyprland workspace dots: active = primary stick,
             // click-to-focus, range from Workspacerules with live fallback.
             // (`wsDots` is the id the soul bead will later retarget between.)
-            Workspaces {
-                id: wsDots
+            Item {
+                id: leadLane
                 anchors.verticalCenter: parent.verticalCenter
-                width: implicitWidth
-                s: pill.s
-                screenName: pill.screenName
-                gap: 8 * pill.s
-                enabled: hover.live
-                onHoverIndexChanged: if (hoverIndex >= 0) {
-                    pill.soulTarget = "ws";
-                    pill.soulWsIndex = hoverIndex;
-                }
-            }
+                width: hoverRow.sideLane
+                height: wsDots.implicitHeight
 
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 1
-                height: 22 * pill.s
-                color: Qt.alpha(Colors.outline_variant, 0.7)
+                Workspaces {
+                    id: wsDots
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: implicitWidth
+                    s: pill.s
+                    screenName: pill.screenName
+                    // Adaptive, not fixed: `sideLane` forces BOTH flanks to
+                    // match whichever is wider, so every dot this side gains
+                    // past 5 costs the pill 2 dot-pitches, not 1 — a screen
+                    // with 8+ workspaces was making the whole pill visibly
+                    // long even though the trailing side never grew. Tighten
+                    // the pitch as the count climbs (8·s down to a 4·s floor)
+                    // instead, so the lane — and the pill with it — grows
+                    // sublinearly rather than in lockstep with dot count.
+                    gap: Math.max(4, 8 - Math.max(0, wsDots.range.length - 5)) * pill.s
+                    enabled: hover.live
+                    transform: ZoneRise { delay: 0 }
+                    onHoverIndexChanged: if (hoverIndex >= 0) {
+                        pill.soulTarget = "ws";
+                        pill.soulWsIndex = hoverIndex;
+                    }
+                }
             }
 
             // HH:mm over a small dim ddd d MMM date column (Ricelin
@@ -697,20 +981,30 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: hoverClock.implicitWidth
                 height: hoverClock.implicitHeight
+                transform: ZoneRise { delay: 50 }
 
                 Column {
                     id: hoverClock
                     anchors.centerIn: parent
                     spacing: 2 * pill.s
 
-                    Text {
+                    // Two stacked lines pressed as one block, so 0.96 rather
+                    // than the 0.92 the single status glyphs take.
+                    scale: clockArea.pressed ? 0.96 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+
+                    TickText {
                         anchors.horizontalCenter: parent.horizontalCenter
+                        live: hover.live
                         text: clock.hhmm
-                        color: Colors.on_surface
-                        font.family: Appearance.font.family
                         font.pixelSize: 18 * pill.s
                         font.weight: Font.DemiBold
-                        font.features: ({ "tnum": 1 })
                     }
 
                     Text {
@@ -726,77 +1020,111 @@ Item {
                 }
 
                 MouseArea {
+                    id: clockArea
                     anchors.centerIn: parent
                     width: hoverClock.implicitWidth + 22 * pill.s
                     height: hoverClock.implicitHeight + 10 * pill.s
                     enabled: hover.live
                     cursorShape: Qt.PointingHandCursor
                     onClicked: pill.requestSurface("calendar")
-                }
-            }
 
-            Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 1
-                height: 22 * pill.s
-                color: Qt.alpha(Colors.outline_variant, 0.7)
+                    // Read out as the time it shows, not as "clock" — the
+                    // reason to reach for it is the date it is about to open.
+                    Accessible.role: Accessible.Button
+                    Accessible.name: clock.hhmm + ", " + clock.date
+                    Accessible.description: "Opens the calendar"
+                    Accessible.focusable: true
+                    Accessible.onPressAction: pill.requestSurface("calendar")
+                }
             }
 
             // Status icons — glyph visuals are static this stage (live
             // wifi/battery/volume/notification state lands with the surface
             // agents); every glyph with a home surface opens it on click.
-            Row {
+            //
+            // Wrapped in a lane (see `hoverRow.sideLane` above) so this
+            // group's content hugs the pill's TRAILING edge instead of
+            // centring in whatever extra width the lane carries to match the
+            // workspace dots — the gap next to the clock stays constant on
+            // both sides that way, and the group as a whole still balances
+            // against `leadLane`.
+            Item {
+                id: trailLane
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 12 * pill.s
+                width: hoverRow.sideLane
+                height: trailGroup.implicitHeight
 
-                // Windows stashed on special:minimized (Super+Shift+M) show
-                // as app-icon chips; click restores to this monitor's active
-                // workspace. Invisible (and skipped by the Row, so the hover
-                // pill doesn't widen) while empty.
-                MinimizedTray {
-                    id: minimized
+                Row {
+                    id: trailGroup
+                    anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    s: pill.s
-                    screenName: pill.screenName
-                    enabled: hover.live
-                    visible: count > 0
-                }
+                    spacing: 10 * pill.s
 
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: minimized.count > 0
-                    width: 1
-                    height: 14 * pill.s
-                    color: Qt.alpha(Colors.outline_variant, 0.7)
-                }
-
-                // System tray (Ricelin Pill.qml:1391–1396). Invisible (and
-                // skipped by the Row) while no StatusNotifier items live, so
-                // the hover pill only widens when a tray exists. The hover
-                // handler makes the whole cluster a sticky soul-bead target
-                // (astralis adaptation: Ricelin's wider icon row gave tray
-                // items no anchor; the 4-icon astralis row does).
-                Tray {
-                    id: trayIcons
-                    anchors.verticalCenter: parent.verticalCenter
-                    s: pill.s
-                    barWindow: pill.barWindow
-                    enabled: hover.live
-
-                    HoverHandler {
+                    // Windows stashed on special:minimized (Super+Shift+M) show
+                    // as app-icon chips; click restores to this monitor's active
+                    // workspace. Invisible (and skipped by the Row, so the hover
+                    // pill doesn't widen) while empty.
+                    MinimizedTray {
+                        id: minimized
+                        anchors.verticalCenter: parent.verticalCenter
+                        transform: ZoneRise { delay: 90 }
+                        s: pill.s
+                        screenName: pill.screenName
                         enabled: hover.live
-                        margin: 4 * pill.s
-                        onHoveredChanged: if (hovered) pill.soulTarget = "tray"
+                        visible: count > 0
+                    }
+
+                    // System tray (Ricelin Pill.qml:1391–1396). Invisible (and
+                    // skipped by the Row) while no StatusNotifier items live, so
+                    // the hover pill only widens when a tray exists. The hover
+                    // handler makes the whole cluster a sticky soul-bead target
+                    // (astralis adaptation: Ricelin's wider icon row gave tray
+                    // items no anchor; the 4-icon astralis row does).
+                    Tray {
+                        id: trayIcons
+                        anchors.verticalCenter: parent.verticalCenter
+                        transform: ZoneRise { delay: 110 }
+                        s: pill.s
+                        barWindow: pill.barWindow
+                        enabled: hover.live
+
+                        HoverHandler {
+                            enabled: hover.live
+                            margin: 4 * pill.s
+                            onHoveredChanged: if (hovered) pill.soulTarget = "tray"
+                        }
+                    }
+
+                    // The shell's own four controls. They read as one cluster
+                    // because they sit at a TIGHTER pitch than anything around
+                    // them (M3.groupGap against hoverRow's 26), not because a box
+                    // is drawn round them — the state layer under the cursor is
+                    // the only container any of them ever needs, and it only
+                    // exists while it is being aimed at.
+                    Row {
+                        id: statusIcons
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: M3.groupGap * pill.s
+
+                        StatusGlyph { id: inboxIcon; order: 0;    icon: "inbox";    surface: "notifications"; dot: Services.Notifications.unread > 0; soulKey: "inbox"; accessibleName: "Notifications"; accessibleDescription: Services.Notifications.unread > 0 ? Services.Notifications.unread + " unread" : "No unread notifications" }
+                        // The badge lights while a take runs, so the hover row
+                        // doubles as the "am I still recording?" answer and the
+                        // one-click way back to the stop control.
+                        // `video`, not `record`. `record` is a solid disc, and a
+                        // filled glyph sitting in a row of stroked outlines reads
+                        // as a bullet dropped into the row rather than as the
+                        // fourth icon — no size tuning rescues that, because the
+                        // mismatch is the DRAWING STYLE, not the ink area. A
+                        // camcorder is the same stroked family as the bell, the
+                        // gear and the power mark, and says the same thing.
+                        StatusGlyph { id: recorderIcon; order: 1; icon: "video"; surface: "recorder"; dot: ScreenRec.busy; soulKey: "recorder"; accessibleName: "Screen recorder"; accessibleDescription: ScreenRec.busy ? "Recording in progress" : "Not recording" }
+                        StatusGlyph { id: settingsIcon; order: 2; icon: "cog";      surface: "settings"; soulKey: "settings"; accessibleName: "Settings" }
+                        // No `surface`: the power icon opens the standalone full-screen
+                        // session menu (requestPower), not a pill surface morph.
+                        // `soulKey` still lets the Ame bead ride this icon on hover.
+                        StatusGlyph { id: powerIcon; order: 3;    icon: "shutdown"; interactive: true; soulKey: "power"; accessibleName: "Session"; accessibleDescription: "Opens the power menu"; onActivated: pill.requestPower() }
                     }
                 }
-
-                StatusGlyph { id: inboxIcon;    anchors.verticalCenter: parent.verticalCenter; glyph: "notifications";      surface: "notifications"; dot: Services.Notifications.unread > 0; soulKey: "inbox" }
-                StatusGlyph { id: settingsIcon; anchors.verticalCenter: parent.verticalCenter; glyph: "settings";           surface: "settings"; soulKey: "settings" }
-                // No `surface`: the power icon opens the standalone full-screen
-                // session menu (requestPower), not a pill surface morph. The old
-                // in-pill power dock (pill/surfaces/Power.qml) has been deleted;
-                // `soulKey` still lets the Ame bead ride this icon on hover.
-                StatusGlyph { id: powerIcon;    anchors.verticalCenter: parent.verticalCenter; glyph: "power_settings_new"; interactive: true; soulKey: "power"; onActivated: pill.requestPower() }
             }
         }
     }
@@ -978,6 +1306,18 @@ Item {
             sourceComponent: Surfaces.Sysmon {
                 s: pill.s
                 open: pill.mode === "sysmon"
+                morphCloseness: pill.morphCloseness
+                onRequestClose: pill.requestClose()
+            }
+        }
+
+        Loader {
+            id: ldRecorder
+            active: false
+            anchors.fill: parent
+            sourceComponent: Recorder {
+                s: pill.s
+                open: pill.mode === "recorder"
                 morphCloseness: pill.morphCloseness
                 onRequestClose: pill.requestClose()
             }

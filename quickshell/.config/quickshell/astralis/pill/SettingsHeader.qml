@@ -57,7 +57,24 @@ Item {
         height: 16 * head.s
         name: head.showBack ? "chevron-left" : "close"
         color: exitArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
         stroke: head.showBack ? 2.2 : 1.7
+
+        // The glyph flips between back and close, so the announced name has to
+        // flip with it — a button that says "Close" while acting as "Back" is
+        // worse than an unlabelled one.
+        Accessible.role: Accessible.Button
+        Accessible.name: head.showBack ? "Back" : "Close"
+        Accessible.onPressAction: head.back()
+
+        scale: exitArea.pressed ? 0.92 : 1
+        Behavior on scale {
+            NumberAnimation {
+                duration: Motion.glide
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveFastSpatial
+            }
+        }
 
         MouseArea {
             id: exitArea

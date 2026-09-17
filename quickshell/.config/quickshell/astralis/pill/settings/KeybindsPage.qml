@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import ".."
+import "../m3"
 import "../../colors"
 import "../../services"
 import "../../config"
@@ -72,13 +73,23 @@ SettingsPage {
         return m;
     }
 
-    /** Display form of a key: mouse tokens spelled out (Ricelin comboPretty), single letters uppercased. */
+    /**
+     * Display form of a key: mouse tokens spelled out (Ricelin comboPretty),
+     * single letters uppercased.
+     *
+     * Scroll direction is a WORD, never an arrow. These strings sit inside a
+     * combo chip beside "Super", "Ctrl", "Shift" — all spelled out — and a
+     * "↑" borrowed from the UI font renders at the FONT's weight, metrics and
+     * optical size, never the icon set's, so it lands in that chip as a
+     * visibly different object no matter how it is sized. "Scroll up" matches
+     * how every other token in the same chip already reads.
+     */
     function prettyKey(b) {
         var k = String(b.key || "");
         if (k.length === 0)
             return b.keycode ? "keycode " + b.keycode : "?";
-        if (k === "mouse_up") return "Scroll ↑";
-        if (k === "mouse_down") return "Scroll ↓";
+        if (k === "mouse_up") return "Scroll up";
+        if (k === "mouse_down") return "Scroll down";
         if (k === "mouse:272") return "LMB";
         if (k === "mouse:273") return "RMB";
         return k.length === 1 ? k.toUpperCase() : k;
@@ -247,6 +258,21 @@ SettingsPage {
             onFocusedChanged: if (focused) root.focusRowItem = brow
             Component.onDestruction: if (root.focusRowItem === brow) root.focusRowItem = null
 
+            // A read-only list line: the combo is its name, the action and the
+            // raw dispatcher are its description. `focused` mirrors this page's
+            // own highlight rather than QML focus, exactly as SettingsRow does,
+            // so assistive tech follows the one notion of "current" the page
+            // actually has. (Nothing numeric here, so no `description` range —
+            // and `Accessible.value` does not exist anyway, see
+            // quickshell-core.md §9b.)
+            Accessible.role: Accessible.ListItem
+            Accessible.name: brow.modelData.combo
+            Accessible.description: brow.modelData.action
+                + (brow.modelData.caption.length > 0 ? " · " + brow.modelData.caption : "")
+            Accessible.focusable: true
+            Accessible.focused: brow.focused
+            Accessible.readOnly: true
+
             Rectangle {
                 anchors.fill: parent
                 anchors.topMargin: 3 * root.s
@@ -260,6 +286,10 @@ SettingsPage {
                 id: rowArea
                 anchors.fill: parent
                 hoverEnabled: true
+                // Read-only viewer — nothing fires on click, but the row
+                // still reveals its raw dispatcher on hover, so the pointer
+                // cursor keeps the row feeling responsive under the mouse.
+                cursorShape: Qt.PointingHandCursor
                 onPositionChanged: (m) => {
                     var g = rowArea.mapToItem(null, m.x, m.y);
                     if (g.x !== root.lastPointer.x || g.y !== root.lastPointer.y) {
@@ -275,12 +305,17 @@ SettingsPage {
                 anchors.leftMargin: 12 * root.s
                 anchors.verticalCenter: parent.verticalCenter
                 width: comboText.implicitWidth + 16 * root.s
-                height: comboText.implicitHeight + 8 * root.s
-                radius: 7 * root.s
+                // The shell's control line, the same 24dp the switches, the
+                // segmented control and the scrub values sit on — a keycap is
+                // the only pill on this page, so it has to hold that line or it
+                // reads as a different program's chip.
+                height: M3.controlHeight * root.s
+                radius: height / 2
                 color: brow.focused ? Qt.alpha(Colors.primary, 0.16) : Colors.surface_container_high
                 border.width: 1
                 border.color: brow.focused ? Qt.alpha(Colors.primary, 0.45) : Qt.alpha(Colors.on_surface, 0.06)
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
                 Text {
                     id: comboText
@@ -291,6 +326,7 @@ SettingsPage {
                     font.pixelSize: 11 * root.s
                     font.weight: Font.Bold
                     font.letterSpacing: 0.3 * root.s
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
                 }
             }
 
@@ -311,12 +347,20 @@ SettingsPage {
                     font.pixelSize: 11 * root.s
                     font.weight: Font.Medium
                     elide: Text.ElideRight
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
                 }
 
                 Text {
+                    // `shown` drives layout; opacity fades the raw dispatcher
+                    // in/out over that so it eases in with the hover instead
+                    // of hard-popping at full opacity (same idiom as
+                    // SettingsRow's captionOnFocus).
+                    readonly property bool shown: rowArea.containsMouse && brow.modelData.caption.length > 0
                     width: parent.width
                     horizontalAlignment: Text.AlignRight
-                    visible: rowArea.containsMouse && brow.modelData.caption.length > 0
+                    visible: shown || opacity > 0.01
+                    opacity: shown ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                     text: brow.modelData.caption
                     color: Qt.alpha(Colors.on_surface_variant, 0.5)
                     font.family: Appearance.font.family
@@ -336,21 +380,19 @@ SettingsPage {
         font.pixelSize: 10.5 * root.s
     }
 
+    // No rule between the list and this footnote. A 1px line to fence two
+    // clusters apart is the toolbar idiom every other surface in the shell
+    // dropped (astralis-architecture §2b-iii); the gap below the last row does
+    // the same job without laying ink over the wallpaper.
     Column {
         id: footer
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
 
-        Rectangle {
-            width: parent.width
-            height: 1
-            color: Qt.alpha(Colors.on_surface, 0.06)
-        }
-
         Item {
             width: parent.width
-            height: 20 * root.s
+            height: 26 * root.s
 
             Text {
                 anchors.left: parent.left

@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import "../../colors"
 import "../../services"
 import "../../config"
+import "../../pill"
 import "../../pill/lib/Fuzzy.js" as Fuzzy
 
 /**
@@ -37,8 +38,9 @@ import "../../pill/lib/Fuzzy.js" as Fuzzy
  *
  * SEARCH: a bottom, underline-free fuzzy field (inline TextField +
  * lib/Fuzzy.js) has keyboard focus the whole time — typing always filters,
- * arrows page the strip, Enter activates, Tab flips All/Favorites. At the
- * wallpaper level the
+ * arrows page the strip, Enter activates, Tab flips All/Favorites, Ctrl+F
+ * toggles the focused card's favorite (bare F would collide with typing a
+ * search that starts with the letter f). At the wallpaper level the
  * query filters the folder's wallpapers by filename; at the folder level it
  * searches EVERYTHING — matching folders first, then matching wallpapers from
  * any folder inline (empty query = plain folder browse). Results ease in/out
@@ -52,7 +54,7 @@ import "../../pill/lib/Fuzzy.js" as Fuzzy
  *
  * The shell sets `screen`, `s` and `open`, and wires `requestClose()` back to
  * its wallpaperOpen flag. Keyboard focus is exclusive while open so
- * Escape/F/Tab/arrows work over any focused client.
+ * Escape/Ctrl+F/Tab/arrows work over any focused client.
  */
 PanelWindow {
     id: picker
@@ -75,23 +77,22 @@ PanelWindow {
     // the bottom; everywhere else is frost that dismisses on click.
     anchors { left: true; right: true; top: true; bottom: true }
 
-    // ── carousel metrics (~/shell numbers, ×s) — enlarged so the strip fills
-    // a large centre band of the (now full-screen) overlay. ──────────────────
-    readonly property real itemW: Math.round(340 * s)
-    readonly property real itemH: Math.round(480 * s)
+    // ── carousel metrics (~/shell numbers, ×s) ──────────────────────────────
+    // Narrow portrait cards, tall enough to fill real screen space, gentle
+    // shear — built off the actual reference screenshots, not off a
+    // WebFetch that turned out not to match any of them.
+    readonly property real itemW: Math.round(210 * s)
+    readonly property real itemH: Math.round(560 * s)
     readonly property real borderW: Math.max(2, Math.round(3 * s))
-    readonly property real skewFactor: -0.35
-    // Centered-card emphasis: the focused card keeps itemH but grows LONGER
-    // than it is tall — its width unfolds to heroW so it reads as a wide
-    // landscape rectangle over its dimmed, still-portrait neighbours. heroW is
-    // derived from itemH so it is guaranteed wider than the card is tall. The
-    // sliding motion lives in the image (see the delegate), not the frame.
-    readonly property real heroW: Math.round(picker.itemH * 1.45)
-    // How far the neighbours slide away from the focused hero so it never sits
-    // ON them: the hero overflows its itemW slot by (heroW − itemW)/2 on each
-    // side, plus a clear gap. Left neighbours shift left by this, right ones
-    // right — a gap opens around the centred hero.
-    readonly property real heroPush: Math.round((picker.heroW - picker.itemW) / 2 + 26 * s)
+    readonly property real skewFactor: -0.22
+    // The current card's width only — height stays itemH like everyone
+    // else, so it stands out by getting a bit more presence, not by
+    // becoming a different shape. 1.8× of the (now narrow) 210 base is 378.
+    readonly property real heroW: Math.round(picker.itemW * 1.8)
+    // How far the neighbours slide clear of the widened current card, so it
+    // doesn't just sit on top of them — half the extra width it gained,
+    // plus a clean gap.
+    readonly property real heroPush: Math.round((picker.heroW - picker.itemW) / 2 + 16 * s)
     readonly property real tabsH: Math.round(34 * s)
     readonly property real searchH: Math.round(40 * s)
     readonly property real searchGap: Math.round(14 * s)
@@ -381,8 +382,17 @@ PanelWindow {
             anchors.fill: parent
             color: Qt.alpha(Colors.scrim, 0.08)
 
+            Accessible.role: Accessible.Button
+            Accessible.name: "Close wallpaper picker"
+            Accessible.focusable: true
+            Accessible.onPressAction: picker.requestClose()
+
             MouseArea {
                 anchors.fill: parent
+                // Full-screen dismiss scrim, not a discrete affordance — cursor
+                // signals it is clickable, but a press dip has nothing visible
+                // to scale against.
+                cursorShape: Qt.PointingHandCursor
                 onClicked: picker.requestClose()
             }
         }
@@ -412,6 +422,32 @@ PanelWindow {
             preferredHighlightEnd: (width / 2) + (picker.itemW / 2)
             highlightMoveDuration: Motion.standard
             highlightMoveVelocity: -1
+
+            /**
+             * StrictlyEnforceRange centers the CURRENT item by shifting
+             * contentX — but Flickable still clamps contentX to
+             * [0, contentWidth - width]. Centering index 0 needs a negative
+             * contentX (there's nothing to its left to scroll into); that
+             * gets clamped to 0, so the view sits at its raw start instead —
+             * flush left, not centered. With few enough items every visible
+             * index is effectively "index 0 or the last index", so a
+             * one-or-two-card Favorites strip pins left instead of centering
+             * (this is really the same edge-clamp the first/last card of ANY
+             * strip would hit, just invisible there because you rarely park
+             * on the very first/last item long enough to notice).
+             *
+             * Fix: pad both ends of the content with invisible header/footer
+             * space equal to the same half-item slack the highlight range
+             * already reserves (`width/2 - itemW/2`). That turns the clamp's
+             * floor/ceiling into exactly the contentX index 0 / the last
+             * index need, so both ends resolve to a legal, centered position
+             * instead of the boundary. Constant (not count-dependent) — a
+             * fixed width, so it costs nothing when the strip is already
+             * long enough to fill the screen.
+             */
+            readonly property real edgePad: Math.max(0, (width - picker.itemW) / 2)
+            header: Item { width: view.edgePad; height: 1 }
+            footer: Item { width: view.edgePad; height: 1 }
 
             // Search re-shapes the model live: ease inserted/removed cards in
             // and out, and let the survivors glide to their new slots so the
@@ -456,12 +492,11 @@ PanelWindow {
 
                 z: isCurrent ? 10 : 1
 
-                // whole-card tap: focus the card, then drill in / apply. Fills
-                // the CARD (not the itemW slot) so the widened landscape hero
-                // stays fully clickable where it overflows its neighbours,
-                // instead of those edges falling through to the dismiss scrim.
+                // whole-card tap: focus the card, then drill in / apply.
                 MouseArea {
+                    id: cardArea
                     anchors.fill: card
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         view.currentIndex = delegateRoot.index;
@@ -475,18 +510,64 @@ PanelWindow {
                 Item {
                     id: card
                     anchors.centerIn: parent
-                    // The focused card unfolds LONGER than tall: its width
-                    // animates from itemW (portrait) to heroW (landscape) while
-                    // the height stays itemH, so it becomes a wide rectangle.
-                    // centerIn keeps it centred, so it grows symmetrically.
-                    // No vertical scale — the height stays the same.
+                    // The current card gets more WIDTH, not a different
+                    // shape — height stays itemH like every neighbour, so it
+                    // stands out by having more presence, not by turning
+                    // into a different aspect ratio. centerIn keeps it
+                    // growing symmetrically around its own centre.
                     width: delegateRoot.isCurrent ? picker.heroW : picker.itemW
-                    height: parent.height
+                    height: picker.itemH
+                    Behavior on width {
+                        NumberAnimation {
+                            duration: Motion.expressiveDefaultSpatialDur
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveDefaultSpatial
+                        }
+                    }
 
-                    // Slide neighbours clear of the hero: cards left of the
-                    // current one shift left, cards to the right shift right, so
-                    // a gap opens around the centred hero instead of it sitting
-                    // on top of them. The current card stays put.
+                    /**
+                     * The shear below (`transform: Matrix4x4`) is a raw skew,
+                     * not a rotation/scale — Qt Quick's border-stroke AA is
+                     * a distance-field shader that assumes a near-axis-aligned
+                     * local space, so under a genuine shear it degenerates to
+                     * a hard 1px stair-step (confirmed: an isolated render of
+                     * this exact shear showed a blended edge pixel on ~1/143
+                     * scan rows — essentially none). Rendering the card into
+                     * a layer FIRST and compositing that flat texture through
+                     * the shear (linear-filtered) is what actually produces a
+                     * real anti-aliased edge — confirmed the same way, ~114/143
+                     * rows blended with a genuine gradient ramp across rows,
+                     * not just a single soft pixel. Verified this doesn't
+                     * disturb the children's own counter-shears (image/
+                     * favBtn/liveBadge/folderTag below): they still cancel out
+                     * to upright inside the layer exactly as before.
+                     */
+                    layer.enabled: true
+                    layer.smooth: true
+
+                    // Folder cards drill in; wallpaper cards apply. The live/
+                    // favorite state matters more read aloud than on screen —
+                    // there is no icon to glance at, so it goes in the description.
+                    Accessible.role: Accessible.Button
+                    Accessible.name: delegateRoot.isFolder
+                        ? "Open " + delegateRoot.modelData.fileName + " folder"
+                        : "Apply " + delegateRoot.modelData.fileName + " wallpaper"
+                    Accessible.description: delegateRoot.isFolder
+                        ? (delegateRoot.modelData.count || 0) + " wallpapers"
+                        : (delegateRoot.live ? "Currently applied" : (delegateRoot.isFav ? "Favorite" : ""))
+                    Accessible.selected: delegateRoot.isCurrent
+                    Accessible.focusable: true
+                    Accessible.onPressAction: {
+                        view.currentIndex = delegateRoot.index;
+                        if (delegateRoot.isFolder)
+                            picker.enterFolder(delegateRoot.modelData.fileName);
+                        else
+                            picker.pick(delegateRoot.filePath);
+                    }
+
+                    // Slide neighbours clear of the widened current card so
+                    // it doesn't just overlap them — half its extra width
+                    // each way. The current card itself stays put.
                     anchors.horizontalCenterOffset: {
                         const rel = delegateRoot.index - view.currentIndex;
                         return rel === 0 ? 0 : (rel < 0 ? -picker.heroPush : picker.heroPush);
@@ -499,19 +580,10 @@ PanelWindow {
                         }
                     }
 
-                    scale: delegateRoot.isCurrent ? 1.0 : 0.9
+                    // Press dip only — no per-card idle scale difference.
+                    scale: cardArea.pressed ? 0.96 : 1
                     opacity: delegateRoot.isCurrent ? 1.0 : 0.55
 
-                    // ~/shell: OutBack 500ms pop — the expressive spatial pair
-                    // is Motion's overshoot equivalent. The width shares it so
-                    // the card unfolds into its landscape shape with the spring.
-                    Behavior on width {
-                        NumberAnimation {
-                            duration: Motion.expressiveDefaultSpatialDur
-                            easing.type: Motion.easeBezier
-                            easing.bezierCurve: Motion.expressiveDefaultSpatial
-                        }
-                    }
                     Behavior on scale {
                         NumberAnimation {
                             duration: Motion.expressiveDefaultSpatialDur
@@ -521,11 +593,28 @@ PanelWindow {
                     }
                     Behavior on opacity { NumberAnimation { duration: Motion.expressiveDefaultSpatialDur } }
 
-                    // Parallelogram shear — every child (frame, borders) shears
-                    // with the card; the image below counter-shears upright.
+                    /**
+                     * Parallelogram shear — every child (frame, borders)
+                     * shears with the card; the image below counter-shears
+                     * upright. The `-k*(height/2)` translation term pivots
+                     * the shear around the card's OWN vertical center
+                     * instead of its top edge (a raw `x' = x + k*y` shear
+                     * leaves the top edge un-shifted and the bottom edge
+                     * shifted by the full `k*height` — so the shape's
+                     * visual centroid sits `k*height/2` away from the
+                     * anchored/centered position, which is exactly the
+                     * "card looks left of center" report: confirmed with an
+                     * isolated render — a crosshair through the anchor
+                     * point landed on the shape's right edge, not its
+                     * middle, until this term was added). Same pattern
+                     * folderTag/tabPill below already use for the same
+                     * reason — this was just missing here and on the
+                     * counter-shears (img/favBtn/liveBadge) that need the
+                     * matching term to stay exactly where they were.
+                     */
                     transform: Matrix4x4 {
                         readonly property real k: picker.skewFactor
-                        matrix: Qt.matrix4x4(1, k, 0, 0,
+                        matrix: Qt.matrix4x4(1, k, 0, -k * (card.height / 2),
                                              0, 1, 0, 0,
                                              0, 0, 1, 0,
                                              0, 0, 0, 1)
@@ -544,16 +633,19 @@ PanelWindow {
                         // Counter-skewed image: upright picture inside the
                         // sheared frame, widened so the parallelogram stays
                         // covered edge to edge. SLIDING ANIMATION lives here:
-                        // the image is over-wide, so it can pan within the
-                        // clipped frame — when this card becomes the focused
-                        // one the picture glides from an offset into its rest
-                        // position (Behavior below). Neighbours sit pre-shifted.
+                        // the image is over-wide, so it CAN pan within the
+                        // clipped frame, but at rest every card — current or
+                        // not — sits at the same restOffset. Non-current
+                        // cards used to carry an extra +52 on top of that,
+                        // permanently, not just mid-transition, which is
+                        // what read as off-centre: every neighbour's image
+                        // sat visibly further off than the current card's
+                        // own already-offset -35 rest position.
                         Image {
                             id: img
                             readonly property real restOffset: Math.round(-35 * picker.s)
-                            readonly property real slideAmp: Math.round(52 * picker.s)
                             anchors.centerIn: parent
-                            anchors.horizontalCenterOffset: restOffset + (delegateRoot.isCurrent ? 0 : slideAmp)
+                            anchors.horizontalCenterOffset: restOffset
                             Behavior on anchors.horizontalCenterOffset {
                                 NumberAnimation {
                                     duration: Motion.expressiveDefaultSpatialDur
@@ -571,9 +663,15 @@ PanelWindow {
                             asynchronous: true
                             smooth: true
 
+                            // Same pivot term as card's own shear above (with
+                            // card's height, not img's — they must cancel
+                            // against the SAME reference the outer shear
+                            // pivots on) so the image stays exactly where it
+                            // was rather than drifting off with just the
+                            // frame re-centered under it.
                             transform: Matrix4x4 {
                                 readonly property real k: -picker.skewFactor
-                                matrix: Qt.matrix4x4(1, k, 0, 0,
+                                matrix: Qt.matrix4x4(1, k, 0, -k * (card.height / 2),
                                                      0, 1, 0, 0,
                                                      0, 0, 1, 0,
                                                      0, 0, 0, 1)
@@ -596,20 +694,39 @@ PanelWindow {
                             color: Qt.alpha(Colors.scrim, favArea.containsMouse ? 0.7 : 0.45)
                             Behavior on color { ColorAnimation { duration: Motion.fast } }
 
+                            Accessible.role: Accessible.CheckBox
+                            Accessible.name: "Favorite"
+                            Accessible.description: delegateRoot.modelData.fileName
+                            Accessible.checkable: true
+                            Accessible.checked: delegateRoot.isFav
+                            Accessible.focusable: true
+                            Accessible.onPressAction: picker.favoriteToggle(delegateRoot.filePath)
+
+                            scale: favArea.pressed ? 0.92 : 1
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
+
+                            // Same card-height pivot term as the image above.
                             transform: Matrix4x4 {
                                 readonly property real k: -picker.skewFactor
-                                matrix: Qt.matrix4x4(1, k, 0, 0,
+                                matrix: Qt.matrix4x4(1, k, 0, -k * (card.height / 2),
                                                      0, 1, 0, 0,
                                                      0, 0, 1, 0,
                                                      0, 0, 0, 1)
                             }
 
-                            Text {
+                            GlyphIcon {
                                 anchors.centerIn: parent
-                                text: "favorite"
+                                width: Math.round(17 * picker.s)
+                                height: Math.round(17 * picker.s)
+                                name: delegateRoot.isFav ? "heart-filled" : "heart"
+                                stroke: 1.8
                                 color: delegateRoot.isFav ? Colors.error : Colors.on_surface
-                                font.family: Appearance.font.symbols
-                                font.pixelSize: Math.round(17 * picker.s)
                                 Behavior on color { ColorAnimation { duration: Motion.fast } }
                             }
 
@@ -636,20 +753,22 @@ PanelWindow {
                             radius: width / 2
                             color: Colors.primary_container
 
+                            // Same card-height pivot term as the image above.
                             transform: Matrix4x4 {
                                 readonly property real k: -picker.skewFactor
-                                matrix: Qt.matrix4x4(1, k, 0, 0,
+                                matrix: Qt.matrix4x4(1, k, 0, -k * (card.height / 2),
                                                      0, 1, 0, 0,
                                                      0, 0, 1, 0,
                                                      0, 0, 0, 1)
                             }
 
-                            Text {
+                            GlyphIcon {
                                 anchors.centerIn: parent
-                                text: "check"
+                                width: Math.round(15 * picker.s)
+                                height: Math.round(15 * picker.s)
+                                name: "check"
+                                stroke: 2.2
                                 color: Colors.on_primary_container
-                                font.family: Appearance.font.symbols
-                                font.pixelSize: Math.round(15 * picker.s)
                             }
                         }
 
@@ -704,13 +823,15 @@ PanelWindow {
                         Behavior on opacity { NumberAnimation { duration: Motion.standard } }
                     }
 
-                    // border ring: primary on the centered card, hairline otherwise
+                    // border ring: primary on the centered card, a hovered
+                    // neighbour tints toward primary too (so the card you're
+                    // about to click reads before you click it), hairline otherwise.
                     Rectangle {
                         anchors.fill: parent
                         color: "transparent"
                         border.width: delegateRoot.isCurrent ? picker.borderW : 1
                         border.color: delegateRoot.isCurrent ? Colors.primary
-                            : Qt.alpha(Colors.outline_variant, 0.6)
+                            : (cardArea.containsMouse ? Qt.alpha(Colors.primary, 0.45) : Qt.alpha(Colors.outline_variant, 0.6))
                         Behavior on border.color { ColorAnimation { duration: Motion.fast } }
                     }
                 }
@@ -749,7 +870,9 @@ PanelWindow {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: Math.round(40 * picker.s)
-            width: Math.min(Math.round(620 * picker.s), focusScope.width - Math.round(48 * picker.s))
+            // 420, not 620 — the bar was reading as a full-width input strip
+            // rather than a compact search field sitting under the carousel.
+            width: Math.min(Math.round(420 * picker.s), focusScope.width - Math.round(48 * picker.s))
             height: picker.searchH
             radius: Appearance.rounding.large * picker.s
             color: "transparent"
@@ -778,6 +901,7 @@ PanelWindow {
                 anchors.leftMargin: Math.round(10 * picker.s)
                 anchors.right: searchCount.left
                 anchors.rightMargin: Math.round(10 * picker.s)
+                horizontalAlignment: TextInput.AlignHCenter
                 background: null        // no underline, no box
                 padding: 0
                 color: Colors.on_surface
@@ -786,6 +910,7 @@ PanelWindow {
                 placeholderText: picker.currentFolder === ""
                     ? "Search wallpapers & folders"
                     : "Search " + picker.currentFolder
+                Accessible.name: placeholderText
                 placeholderTextColor: Qt.alpha(Colors.on_surface_variant, 0.65)
                 selectByMouse: true
                 selectionColor: Qt.alpha(Colors.primary, 0.45)
@@ -807,6 +932,17 @@ PanelWindow {
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
                         picker.setFavoritesOnly(!picker.favoritesOnly);
+                        event.accepted = true;
+                    } else if (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier)) {
+                        // Ctrl+F, not bare F: bare 'f' is a real character —
+                        // gating it on an empty field (the first attempt)
+                        // still broke the moment a wallpaper's own name
+                        // starts with "f", since typing the first letter of
+                        // that search IS pressing 'f' on an empty field.
+                        // Ctrl+F never collides with typing at all, so it
+                        // works regardless of what's already in the box or
+                        // what you're about to type.
+                        picker.toggleCurrentFavorite();
                         event.accepted = true;
                     }
                 }
@@ -853,12 +989,30 @@ PanelWindow {
                     implicitHeight: picker.tabsH
                     implicitWidth: tabRow.implicitWidth + Math.round(40 * picker.s)
 
+                    // A two-option segmented control reads as one choice among
+                    // two, not two unrelated buttons (SettingsSeg idiom).
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: tabPill.modelData.label
+                    Accessible.checkable: true
+                    Accessible.checked: tabPill.active
+                    Accessible.focusable: true
+                    Accessible.onPressAction: picker.setFavoritesOnly(tabPill.modelData.fav)
+
+                    scale: tabArea.pressed ? 0.92 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+
                     // Skewed parallelogram background. The shear is centered on
                     // the pill (the -k*h/2 translation) so the upright label at
                     // the centre stays centered inside the shape.
                     Rectangle {
                         anchors.fill: parent
-                        radius: Appearance.rounding.small * picker.s
+                        radius: Appearance.rounding.full
                         color: tabPill.active ? Colors.primary : Colors.surface_container
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
 
@@ -877,13 +1031,15 @@ PanelWindow {
                         anchors.centerIn: parent
                         spacing: Math.round(6 * picker.s)
 
-                        Text {
+                        GlyphIcon {
                             visible: tabPill.modelData.fav
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "favorite"
-                            font.family: Appearance.font.symbols
-                            font.pixelSize: Math.round(14 * picker.s)
+                            width: Math.round(14 * picker.s)
+                            height: Math.round(14 * picker.s)
+                            name: "heart-filled"
+                            stroke: 1.8
                             color: tabPill.active ? Colors.on_primary : Colors.error
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
 
                         Text {
@@ -895,10 +1051,12 @@ PanelWindow {
                             font.pixelSize: Appearance.font.size * picker.s
                             font.weight: Font.Bold
                             color: tabPill.active ? Colors.on_primary : Colors.on_surface
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
                     }
 
                     MouseArea {
+                        id: tabArea
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: picker.setFavoritesOnly(tabPill.modelData.fav)
@@ -914,12 +1072,13 @@ PanelWindow {
             spacing: Appearance.spacing.xs * picker.s
             visible: picker.allWallpapers.length === 0
 
-            Text {
+            GlyphIcon {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "wallpaper"
+                width: Math.round(28 * picker.s)
+                height: Math.round(28 * picker.s)
+                name: "image"
+                stroke: 1.6
                 color: Colors.on_surface_variant
-                font.family: Appearance.font.symbols
-                font.pixelSize: Math.round(28 * picker.s)
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -947,17 +1106,18 @@ PanelWindow {
                 anchors.centerIn: parent
                 spacing: Math.round(10 * picker.s)
 
-                Text {
+                GlyphIcon {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "favorite"
-                    font.family: Appearance.font.symbols
-                    font.pixelSize: Math.round(20 * picker.s)
+                    width: Math.round(20 * picker.s)
+                    height: Math.round(20 * picker.s)
+                    name: "heart-filled"
+                    stroke: 1.8
                     color: Colors.error
                 }
 
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "No favorites yet — focus a wallpaper and press F (or tap the heart)"
+                    text: "No favorites yet — focus a wallpaper and press Ctrl+F (or tap the heart)"
                     font.family: Appearance.font.family
                     font.pixelSize: Appearance.font.sizeL * picker.s
                     color: Colors.on_surface

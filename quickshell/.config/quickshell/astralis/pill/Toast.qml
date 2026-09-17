@@ -51,6 +51,7 @@ Item {
     }
 
     MouseArea {
+        id: bodyArea
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
         onClicked: {
@@ -58,6 +59,19 @@ Item {
             Notifications.removePopup(root.notif);
         }
     }
+
+    scale: bodyArea.pressed ? 0.96 : 1
+    Behavior on scale {
+        NumberAnimation {
+            duration: Motion.glide
+            easing.type: Motion.easeBezier
+            easing.bezierCurve: Motion.expressiveFastSpatial
+        }
+    }
+
+    Accessible.role: Accessible.StaticText
+    Accessible.name: root.notif ? root.notif.summary : ""
+    Accessible.description: root.notif ? root.notif.body : ""
 
     Rectangle {
         id: iconTile
@@ -100,8 +114,12 @@ Item {
         id: dismiss
         anchors.right: parent.right
         anchors.top: parent.top
-        width: 11 * root.s
-        height: 11 * root.s
+        // Was 11·s — below ~13·s a stroked glyph's rasterized line width
+        // can't get thin enough to stay legible; the shape reads as a
+        // blobby smudge instead of a crisp × (verified by rendering every
+        // icon at every real size the shell uses, side by side).
+        width: 13 * root.s
+        height: 13 * root.s
         name: "close"
         color: dismissArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
         stroke: 1.9
@@ -109,6 +127,19 @@ Item {
         Behavior on color {
             ColorAnimation { duration: Motion.fast }
         }
+
+        scale: dismissArea.pressed ? 0.92 : 1
+        Behavior on scale {
+            NumberAnimation {
+                duration: Motion.glide
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveFastSpatial
+            }
+        }
+
+        Accessible.role: Accessible.Button
+        Accessible.name: "Dismiss notification"
+        Accessible.onPressAction: dismissArea.clicked(null)
 
         MouseArea {
             id: dismissArea
@@ -216,6 +247,21 @@ Item {
                     color: actPill.index === 0 ? Qt.alpha(Colors.primary, 0.14) : Colors.surface_container_high
                     border.width: 1
                     border.color: actPill.index === 0 ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                    scale: actArea.pressed ? 0.92 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: actPill.modelData.text
+                    Accessible.onPressAction: actArea.clicked(null)
 
                     Text {
                         id: actText
@@ -228,6 +274,7 @@ Item {
                     }
 
                     MouseArea {
+                        id: actArea
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {

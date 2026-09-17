@@ -58,6 +58,26 @@ Item {
                 Layout.preferredWidth: 24 * tray.s
                 Layout.preferredHeight: 24 * tray.s
 
+                // Announce the same title the tooltip shows — a tray of
+                // unlabelled 16px icons is otherwise completely opaque to a
+                // screen reader, and the app name is the only thing that
+                // distinguishes one slot from the next.
+                Accessible.role: Accessible.Button
+                Accessible.name: slot.modelData.tooltipTitle || slot.modelData.title || slot.modelData.id
+                Accessible.description: "System tray item"
+                Accessible.onPressAction: slot.modelData.onlyMenu
+                    ? tray.showMenu(slot.modelData, slot) : slot.modelData.activate()
+
+                // Small round target: a tighter dip than a tile/row press.
+                scale: area.pressed ? 0.92 : 1
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Motion.glide
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveFastSpatial
+                    }
+                }
+
                 Rectangle {
                     anchors.fill: parent
                     radius: 6 * tray.s
@@ -65,7 +85,7 @@ Item {
                     border.width: 1
                     border.color: Qt.alpha(Colors.on_surface, 0.10)
                     opacity: area.containsMouse ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                 }
 
                 Image {
@@ -156,7 +176,7 @@ Item {
                 radius: width / 2
                 color: Colors.primary
                 opacity: mrowArea.containsMouse && mrow.entryData.enabled ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
 
             Rectangle {
@@ -213,7 +233,11 @@ Item {
                     : (mrowArea.containsMouse ? Colors.on_surface : Qt.alpha(Colors.on_surface, 0.82))
                 font.family: Appearance.font.family
                 font.pixelSize: 13 * tray.s
-                font.weight: mrowArea.containsMouse ? Font.DemiBold : Font.Normal
+                // Pinned, NOT hover-driven. A weight swap re-measures the
+                // text and nudges the row's layout under the cursor, and
+                // font.weight cannot be animated to smooth it over — the
+                // colour change above already reads as hover.
+                font.weight: Font.Normal
                 elide: Text.ElideRight
             }
 

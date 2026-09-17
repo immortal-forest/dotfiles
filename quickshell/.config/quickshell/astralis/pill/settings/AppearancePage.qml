@@ -41,6 +41,7 @@ SettingsPage {
             r.push({ item: base16Row, kind: "toggle", get: function () { return Flags.base16Shell; }, set: function (v) { Flags.base16Shell = v; } });
         r.push(
             { item: vizRow, kind: "toggle", get: function () { return Flags.musicViz; }, set: function (v) { Flags.musicViz = v; } },
+            { item: vizCycleRow, kind: "toggle", get: function () { return Flags.vizColorCycle; }, set: function (v) { Flags.vizColorCycle = v; } },
             { item: scaleRow, kind: "seg", vals: [0.9, 1.0, 1.1, 1.25], get: function () { return Flags.uiScale; }, set: function (v) { Flags.uiScale = v; } },
             { item: motionRow, kind: "toggle", get: function () { return Flags.reduceMotion; }, set: function (v) { Flags.reduceMotion = v; } },
             { item: fontRow, kind: "nav", surface: "fontpicker" }
@@ -96,6 +97,7 @@ SettingsPage {
 
                 LinkToggle {
                     s: root.s
+                    accessibleName: secRow.name
                     on: Flags.clockSeconds
                     onToggled: Flags.clockSeconds = !Flags.clockSeconds
                 }
@@ -109,6 +111,7 @@ SettingsPage {
 
                 LinkToggle {
                     s: root.s
+                    accessibleName: glyphRow.name
                     on: Flags.showGlyphs
                     onToggled: Flags.showGlyphs = !Flags.showGlyphs
                 }
@@ -173,21 +176,44 @@ SettingsPage {
 
                 LinkToggle {
                     s: root.s
+                    accessibleName: base16Row.name
                     on: Flags.base16Shell
                     onToggled: Flags.base16Shell = !Flags.base16Shell
                 }
             }
 
+            // Names the PILL spectrum specifically: the full-screen visualizer
+            // is a separate, runtime-only toggle (Super+B) that this setting
+            // must not appear to own.
             SettingsRow {
                 id: vizRow
                 surface: root
-                name: "Music visualizer"
+                name: "Pill spectrum"
+                sub: "Live audio bars in the resting pill — the full-screen visualizer is Super+B"
+                captionOnFocus: true
                 icon: "music"
 
                 LinkToggle {
                     s: root.s
+                    accessibleName: vizRow.name
                     on: Flags.musicViz
                     onToggled: Flags.musicViz = !Flags.musicViz
+                }
+            }
+
+            SettingsRow {
+                id: vizCycleRow
+                surface: root
+                name: "Visualizer colour cycle"
+                sub: "Full-screen wave drifts through every colour in the wallpaper palette"
+                captionOnFocus: true
+                icon: "palette"
+
+                LinkToggle {
+                    s: root.s
+                    accessibleName: vizCycleRow.name
+                    on: Flags.vizColorCycle
+                    onToggled: Flags.vizColorCycle = !Flags.vizColorCycle
                 }
             }
 
@@ -213,6 +239,7 @@ SettingsPage {
 
                 LinkToggle {
                     s: root.s
+                    accessibleName: motionRow.name
                     on: Flags.reduceMotion
                     onToggled: Flags.reduceMotion = !Flags.reduceMotion
                 }
@@ -226,12 +253,16 @@ SettingsPage {
                 sub: Flags.uiFont.length > 0 ? Flags.uiFont : Appearance.font.family
                 last: true
 
+                // Nav affordance, identical to the sidebar's NavChevron
+                // (16dp, stroke 2.2, on_surface when the row is current) so a
+                // drill-in reads the same on both sides of the surface.
                 GlyphIcon {
                     width: 16 * root.s
                     height: 16 * root.s
                     name: "chevron-right"
                     color: root.focusRowItem === fontRow ? Colors.on_surface : Colors.on_surface_variant
-                    stroke: 1.9
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    stroke: 2.2
                 }
             }
 

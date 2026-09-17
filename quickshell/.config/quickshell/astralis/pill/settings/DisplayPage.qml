@@ -382,9 +382,20 @@ SettingsPage {
         id: crow
 
         property string icon: ""
+        property string accessibleName: ""
         default property alias content: crowInner.data
 
         readonly property bool focused: root.focusRowItem === crow
+
+        // Same row semantics as SettingsRow elsewhere in the shell: a click
+        // anywhere on the head line activates it (root.activateRow), so it
+        // carries the same ListItem identity (quickshell-core.md §9b: no
+        // Accessible.value, so nothing numeric belongs here).
+        Accessible.role: Accessible.ListItem
+        Accessible.name: crow.accessibleName || crow.icon
+        Accessible.focusable: true
+        Accessible.focused: crow.focused
+        Accessible.onPressAction: root.activateRow(crow)
 
         width: parent ? parent.width : 0
         implicitHeight: crowInner.childrenRect.height
@@ -405,9 +416,22 @@ SettingsPage {
             radius: 8 * root.s
             color: (crowHover.hovered || crow.focused) ? Colors.surface_container_highest : "transparent"
             Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+            // Full-width row dip, same 0.98 depth as SettingsRow's own
+            // highlight — the fill lives here so the head line dips under
+            // the finger without squishing the icon/content anchored to it.
+            scale: crowArea.pressed ? 0.98 : 1
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
+                }
+            }
         }
 
         MouseArea {
+            id: crowArea
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: root.activateRow(crow)
@@ -424,6 +448,7 @@ SettingsPage {
             visible: crow.icon.length > 0
             color: crow.focused ? Colors.on_surface : Colors.on_surface_variant
             stroke: 1.8
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
 
         Item {
@@ -504,6 +529,16 @@ SettingsPage {
                             Behavior on y { enabled: !tileMA.pressed; NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                             Behavior on color { ColorAnimation { duration: Motion.fast } }
                             Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                            // A radio group of outputs, not independent buttons
+                            // — exactly one monitor is selected at a time (`sel`).
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.name: tile.modelData.name + " display"
+                            Accessible.description: tile.modelData.hz + "Hz"
+                            Accessible.checkable: true
+                            Accessible.checked: tile.sel
+                            Accessible.focusable: root.pendingOut.length === 0
+                            Accessible.onPressAction: if (root.pendingOut.length === 0) root.selName = tile.modelData.name
 
                             Column {
                                 anchors.centerIn: parent
@@ -679,6 +714,7 @@ SettingsPage {
                         CardRow {
                             id: resRow
                             icon: "monitor"
+                            accessibleName: "Resolution"
                             // Float above the rows below while the dropdown is open
                             // so its overlay panel paints over (and catches clicks
                             // for) Refresh/Scale/Rotation instead of pushing them down.
@@ -703,6 +739,7 @@ SettingsPage {
                         CardRow {
                             id: rateRow
                             icon: "reboot"
+                            accessibleName: "Refresh rate"
                             z: root.openPicker === root.selName + ":rate" ? 20 : 0
 
                             DisplayPicker {
@@ -723,6 +760,7 @@ SettingsPage {
                         CardRow {
                             id: scaleRow
                             icon: "scaling"
+                            accessibleName: "Display scale"
 
                             Row {
                                 width: parent.width
@@ -751,6 +789,7 @@ SettingsPage {
                         CardRow {
                             id: transformRow
                             icon: "record"
+                            accessibleName: "Screen rotation"
 
                             Row {
                                 width: parent.width
@@ -795,6 +834,23 @@ SettingsPage {
                                 Behavior on color { ColorAnimation { duration: Motion.fast } }
                                 Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
+                                // Dip only when the click would actually do something —
+                                // matches the onClicked guard below.
+                                scale: (card.dirty && applyArea.pressed) ? 0.96 : 1
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: Motion.glide
+                                        easing.type: Motion.easeBezier
+                                        easing.bezierCurve: Motion.expressiveFastSpatial
+                                    }
+                                }
+
+                                Accessible.role: Accessible.Button
+                                Accessible.name: "Apply"
+                                Accessible.description: "Applies the pending resolution, refresh rate, scale or rotation live for 12 seconds before reverting"
+                                Accessible.focusable: card.dirty
+                                Accessible.onPressAction: applyArea.clicked(null)
+
                                 Text {
                                     id: applyLabel
                                     anchors.centerIn: parent
@@ -830,6 +886,21 @@ SettingsPage {
                                     radius: 9 * root.s
                                     color: keepArea.containsMouse ? Colors.tertiary : Qt.alpha(Colors.tertiary, 0.75)
                                     Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                                    scale: keepArea.pressed ? 0.96 : 1
+                                    Behavior on scale {
+                                        NumberAnimation {
+                                            duration: Motion.glide
+                                            easing.type: Motion.easeBezier
+                                            easing.bezierCurve: Motion.expressiveFastSpatial
+                                        }
+                                    }
+
+                                    Accessible.role: Accessible.Button
+                                    Accessible.name: "Keep"
+                                    Accessible.description: "Confirms the display change; " + root.countdown + " seconds left before it reverts automatically"
+                                    Accessible.focusable: true
+                                    Accessible.onPressAction: keepArea.clicked(null)
 
                                     Text {
                                         id: keepLabel

@@ -10,13 +10,10 @@ import "../config"
  * astralis — the OSD face (ported from Ricelin pill/Osd.qml). A short-lived
  * flash the pill morphs into when a watched quantity changes: volume keys,
  * brightness keys, a track switch, the charger landing, a workspace hop,
- * the camera hardware kill-switch flipping.
+ * the camera hardware kill-switch flipping, a screen recording starting or
+ * stopping.
  * `flashing` drives the pill's osd mode; each kind renders its own stacked
  * row and the rows cross-fade on `kind`.
- *
- * Ricelin delta (reverts to verbatim when its dep lands): the record kind's
- * ScreenRec Connections is omitted (§2.8); the row and its sizing branch
- * stay so the port is one Connections away.
  */
 Item {
     id: root
@@ -221,8 +218,16 @@ Item {
         }
     }
 
-    // Ricelin also flashes "record" from ScreenRec.recordingChanged — the
-    // Connections lands with the §2.8 recorder port; the row below is ready.
+    // A take opening or closing flashes the record row, so starting from a
+    // keybind (with the surface never opened) still confirms itself, and a
+    // recorder that dies on its own is visible instead of silent.
+    Connections {
+        target: ScreenRec
+        function onRecordingChanged() {
+            root.recordStarted = ScreenRec.recording;
+            root.flash("record");
+        }
+    }
 
     Connections {
         target: Backlight
@@ -236,7 +241,7 @@ Item {
         anchors.fill: parent
         opacity: root.kind === "volume" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 * Motion.mult } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         GlyphIcon {
             id: volGlyph
@@ -281,7 +286,7 @@ Item {
                 radius: parent.radius
                 color: root.muted ? Qt.darker(Colors.primary, 1.6)
                     : (root.overAmp ? Colors.error : Colors.primary)
-                Behavior on width { NumberAnimation { duration: Motion.fast } }
+                Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
         }
@@ -292,7 +297,7 @@ Item {
         anchors.fill: parent
         opacity: root.kind === "track" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 * Motion.mult } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         ClippingRectangle {
             id: coverBox
@@ -400,7 +405,7 @@ Item {
         anchors.fill: parent
         opacity: root.kind === "brightness" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 * Motion.mult } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         GlyphIcon {
             id: brightGlyph
@@ -444,7 +449,7 @@ Item {
                 width: parent.width * root.brightness
                 radius: parent.radius
                 color: Colors.primary
-                Behavior on width { NumberAnimation { duration: Motion.fast } }
+                Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
         }
     }
@@ -454,7 +459,7 @@ Item {
         anchors.fill: parent
         opacity: root.kind === "battery" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 * Motion.mult } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         GlyphIcon {
             id: battGlyph
@@ -504,7 +509,7 @@ Item {
                     GradientStop { position: 0.0; color: Colors.primary_container }
                     GradientStop { position: 1.0; color: Colors.tertiary }
                 }
-                Behavior on width { NumberAnimation { duration: Motion.fast } }
+                Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
                 // Charging shimmer sweep (Ricelin's warm-white stops, rebuilt
                 // on the tertiary glow family so a matugen retheme carries it).
@@ -537,7 +542,7 @@ Item {
         anchors.fill: parent
         opacity: root.kind === "workspace" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 * Motion.mult } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         Workspaces {
             id: wsIndicator
@@ -554,7 +559,7 @@ Item {
         anchors.fill: parent
         opacity: root.kind === "mic" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 * Motion.mult } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         GlyphIcon {
             id: micGlyph
@@ -587,7 +592,7 @@ Item {
         anchors.fill: parent
         opacity: root.kind === "camera" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 * Motion.mult } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         GlyphIcon {
             id: camGlyph
@@ -632,7 +637,7 @@ Item {
         anchors.fill: parent
         opacity: root.kind === "record" ? 1 : 0
         visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 150 * Motion.mult } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         Rectangle {
             id: recGlyph

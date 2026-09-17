@@ -91,6 +91,26 @@ Item {
             width: 26 * surface.s
             height: 26 * surface.s
 
+            // Every surface in the shell wears this ×, so it is the most-pressed
+            // button in the rice — it dips on press like the rest of them. The
+            // dip lives on the wrapper so the disc and the glyph travel
+            // together; 0.92 is the small-round-target depth.
+            // The one control present on every surface in the shell, so it is
+            // also the one a screen-reader user will meet most often.
+            Accessible.role: Accessible.Button
+            Accessible.name: "Close"
+            Accessible.description: surface.title.length > 0 ? "Close " + surface.title : "Close this surface"
+            Accessible.onPressAction: surface.requestClose()
+
+            scale: closeArea.pressed ? 0.92 : 1
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
+                }
+            }
+
             Rectangle {
                 anchors.fill: parent
                 radius: width / 2
@@ -98,12 +118,15 @@ Item {
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
 
-            Text {
+            GlyphIcon {
                 anchors.centerIn: parent
-                text: "close"
+                width: Appearance.font.sizeL * surface.s
+                height: Appearance.font.sizeL * surface.s
+                name: "close"
+                stroke: 1.8
                 color: closeArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
-                font.family: Appearance.font.symbols
-                font.pixelSize: Appearance.font.sizeL * surface.s
+                // The disc behind it fades; without this the glyph snapped.
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
 
             MouseArea {

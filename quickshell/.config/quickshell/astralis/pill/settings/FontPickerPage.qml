@@ -9,26 +9,37 @@ import "../../config"
 
 /**
  * astralis — 字 FONT settings page (ported from Ricelin pill/FontPicker.qml):
- * a searchable list of every installed family, each row rendering its own
- * name as a live preview so the shape reads before the pick, plus a preview
- * line under the search that follows the focused row. A click writes the
- * family to Flags.uiFont, which Appearance.font.family reads back so the
- * whole shell re-renders at once; the leading reset row writes "" to fall
- * back to the bundled default. The current pick carries the primary tint.
- * Reached from Appearance's Font nav row, not the sidebar (Ricelin parity:
- * the picker is a drill-in of Appearance); back returns there.
+ * a searchable list of curated families, each row rendering its own name as
+ * a live preview so the shape reads before the pick, plus a preview line
+ * under the search that follows the focused row. A click writes the family
+ * to Flags.uiFont, which Appearance.font.family reads back so the whole
+ * shell re-renders at once — chrome included, by design; the leading reset
+ * row writes "" to fall back to the bundled default. The current pick
+ * carries the primary tint. Reached from Appearance's Font nav row, not the
+ * sidebar (Ricelin parity: the picker is a drill-in of Appearance); back
+ * returns there.
  *
- * Ricelin delta: families come from `fc-list : family` through a Process
- * (first name per line, deduped, sorted) instead of Qt.fontFamilies(), run
- * once per pill session. The Noto per-script flood is trimmed exactly like
- * Ricelin (notoKeep) so the list stays a font picker, not a script index.
+ * Curated, not every installed family. This used to list literally
+ * everything `fc-list` returned — a few hundred families deep once the full
+ * Google Fonts set landed, including script/handwritten/display faces never
+ * meant to carry dense chrome text. Because `Flags.uiFont` really does apply
+ * everywhere, picking one of those made the settings sidebar, nav chevrons'
+ * neighbouring labels and every row title render in a cursive face — legible
+ * as a novelty, not as a sidebar. `uiSafeFamilies` below is the fix: the same
+ * grotesque/geometric families actually compared for this role (see
+ * AppearanceConfig.qml's `family` doc), each with a real weight ladder so
+ * `Font.Medium`/`DemiBold` requests never fall back to a synthesized style.
+ * Ricelin delta otherwise unchanged: families come from `fc-list : family`
+ * through a Process (first name per line, deduped) rather than
+ * Qt.fontFamilies(), run once per pill session, now intersected with the
+ * allowlist and sorted.
  */
 SettingsPage {
     id: root
 
     rows: []
 
-    /** Deduped, sorted family names from fc-list; filled once per session. */
+    /** Deduped, sorted, curated family names; filled once per session. */
     property var families: []
     property string query: ""
     property int focusIndex: 0
@@ -43,11 +54,20 @@ SettingsPage {
     readonly property string resetLabel: "System default (" + Appearance.font.familyDefault + ")"
 
     /**
-     * The only Noto families kept in the list. Noto ships hundreds of
-     * per-script variants (Noto Sans Arabic, Noto Serif Devanagari and the
-     * like) that flood the picker and never serve as a UI font.
+     * The only families the picker will ever offer as `Flags.uiFont`. Every
+     * one is a grotesque/geometric sans with a full weight range, installed
+     * and `fc-match`-clean at the time this list was written — the actual
+     * shortlist this shell's UI face was chosen from, not a guess. Widening
+     * this is a deliberate design call (a script/display face becoming
+     * legitimately selectable as the SHELL'S face, chrome included), not a
+     * one-line addition — see the header doc above for why.
      */
-    readonly property var notoKeep: ["Noto Sans", "Noto Serif", "Noto Sans Mono"]
+    readonly property var uiSafeFamilies: [
+        "Be Vietnam Pro", "DM Sans", "Figtree", "Geist", "Hanken Grotesk",
+        "Inter", "Lexend", "Manrope", "Nunito", "Onest", "Outfit",
+        "Plus Jakarta Sans", "Poppins", "Red Hat Display", "Schibsted Grotesk",
+        "Sora", "Space Grotesk", "Urbanist", "Work Sans"
+    ]
 
     /**
      * The family list narrowed by a case-insensitive substring on the live
@@ -116,11 +136,11 @@ SettingsPage {
                 for (var i = 0; i < lines.length; i++) {
                     // A line may alias several names ("JetBrainsMono Nerd
                     // Font,JetBrainsMono NF,…"); the first is the canonical
-                    // family.
+                    // family. Each weight/style instance of a variable font
+                    // repeats its family on its own line, so this still needs
+                    // the `seen` dedup even filtered down to 19 names.
                     var fam = lines[i].split(",")[0].trim();
-                    if (fam.length === 0 || fam.charAt(0) === ".")
-                        continue;
-                    if (fam.indexOf("Noto ") === 0 && root.notoKeep.indexOf(fam) < 0)
+                    if (root.uiSafeFamilies.indexOf(fam) < 0)
                         continue;
                     if (seen[fam] === true)
                         continue;
@@ -227,6 +247,18 @@ SettingsPage {
 
             onFocusedChanged: if (focused) root.focusRowItem = frow
             Component.onDestruction: if (root.focusRowItem === frow) root.focusRowItem = null
+
+            // A font list row: `selected` marks the live pick (Flags.uiFont),
+            // `focused` mirrors the page's own keyboard highlight — same
+            // split KeybindsPage's rows use (quickshell-core.md §9b: no
+            // Accessible.value, so nothing numeric belongs here).
+            Accessible.role: Accessible.ListItem
+            Accessible.name: frow.modelData.label
+            Accessible.checkable: true
+            Accessible.checked: frow.selected
+            Accessible.focusable: true
+            Accessible.focused: frow.focused
+            Accessible.onPressAction: root.pick(frow.modelData.family)
 
             MouseArea {
                 id: rowArea

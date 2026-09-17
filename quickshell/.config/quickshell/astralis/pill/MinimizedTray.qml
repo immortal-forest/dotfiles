@@ -62,6 +62,26 @@ Row {
         return Quickshell.iconPath(cls, "application-x-executable");
     }
 
+    /**
+     * Human-readable label for a screen reader — the IPC title if Hyprland
+     * gave one, else the same class/appId chain `iconFor` already resolves.
+     */
+    function titleFor(t) {
+        if (t && t.lastIpcObject && t.lastIpcObject.title)
+            return t.lastIpcObject.title;
+        var cls = (t && t.lastIpcObject && t.lastIpcObject.class) ? t.lastIpcObject.class
+            : (t && t.wayland && t.wayland.appId ? t.wayland.appId : "");
+        return cls || "window";
+    }
+
+    /** Shared by the click and the accessible press action so they can't drift. */
+    function restoreToplevel(t) {
+        var addr = String((t && t.address) || "");
+        if (addr.indexOf("0x") !== 0)
+            addr = "0x" + addr;
+        Hyprland.dispatch("movetoworkspacesilent " + root.restoreWorkspace() + ",address:" + addr);
+    }
+
     Repeater {
         model: root.items
 
@@ -73,6 +93,11 @@ Row {
 
             readonly property string iconSrc: root.iconFor(chip.modelData)
 
+            Accessible.role: Accessible.Button
+            Accessible.name: "Restore " + root.titleFor(chip.modelData) + " to this screen"
+            Accessible.focusable: true
+            Accessible.onPressAction: root.restoreToplevel(chip.modelData)
+
             Image {
                 anchors.fill: parent
                 sourceSize.width: Math.round(36 * root.s)
@@ -83,6 +108,14 @@ Row {
                 source: chip.iconSrc
                 opacity: area.containsMouse ? 1 : 0.78
                 Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                scale: area.pressed ? 0.92 : 1
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Motion.glide
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveFastSpatial
+                    }
+                }
             }
 
             MouseArea {
@@ -91,12 +124,7 @@ Row {
                 anchors.margins: -3 * root.s
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    var addr = String(chip.modelData.address || "");
-                    if (addr.indexOf("0x") !== 0)
-                        addr = "0x" + addr;
-                    Hyprland.dispatch("movetoworkspacesilent " + root.restoreWorkspace() + ",address:" + addr);
-                }
+                onClicked: root.restoreToplevel(chip.modelData)
             }
         }
     }

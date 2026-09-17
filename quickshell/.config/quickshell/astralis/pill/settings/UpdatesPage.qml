@@ -192,7 +192,11 @@ SettingsPage {
                     loops: Animation.Infinite
                     from: 0
                     to: 360
-                    duration: 900
+                    // Indeterminate spin rate, not any settle/entrance token —
+                    // `running` already excludes reduceMotion, but the literal
+                    // still owes the ×mult contract so it stays correct if that
+                    // gate ever loosens.
+                    duration: Math.round(900 * Motion.mult)
                 }
             }
         }
@@ -261,6 +265,32 @@ SettingsPage {
 
             width: ListView.view.width
             height: 26 * root.s
+
+            // The pending list arrives as a unit each time a check finishes
+            // (not per-keystroke, so the cascade never gets re-triggered by
+            // typing) — same short wave as SettingsRow's entrance.
+            property bool entered: false
+            Timer {
+                interval: Motion.rowStagger * Math.min(urow.index, 10)
+                running: true
+                onTriggered: urow.entered = true
+            }
+            opacity: urow.entered ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+            transform: Translate {
+                y: urow.entered ? 0 : 10 * root.s
+                Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+            }
+
+            // Read-only line — this page never installs, so there is no press
+            // action, only a name and the version jump to announce (nothing
+            // numeric enough to need `description` as a range; `Accessible.value`
+            // doesn't exist regardless, see quickshell-core.md §9b).
+            Accessible.role: Accessible.ListItem
+            Accessible.name: urow.modelData.name
+            Accessible.description: (urow.modelData.aur ? "AUR update" : "Repository update")
+                + (urow.modelData.to.length > 0 ? ", " + urow.modelData.from + " to " + urow.modelData.to : "")
+            Accessible.readOnly: true
 
             Rectangle {
                 anchors.fill: parent
@@ -365,7 +395,23 @@ SettingsPage {
         border.color: Qt.alpha(Colors.primary, checkArea.containsMouse && !root.checking ? 0.6 : 0.4)
         opacity: root.checking ? 0.55 : 1
         Behavior on color { ColorAnimation { duration: Motion.fast } }
+        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
         Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+
+        scale: (checkArea.pressed && !root.checking) ? 0.98 : 1
+        Behavior on scale {
+            NumberAnimation {
+                duration: Motion.glide
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveFastSpatial
+            }
+        }
+
+        Accessible.role: Accessible.Button
+        Accessible.name: "Check for updates"
+        Accessible.description: root.checking ? "Checking for updates" : root.headline
+        Accessible.focusable: !root.checking
+        Accessible.onPressAction: root.check()
 
         MouseArea {
             id: checkArea
