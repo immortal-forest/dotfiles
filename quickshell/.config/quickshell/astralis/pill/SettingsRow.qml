@@ -35,6 +35,28 @@ Item {
     readonly property real s: srow.surface ? srow.surface.s : 1
     readonly property bool focused: srow.surface ? srow.surface.focusRowItem === srow : false
 
+    /**
+     * Screen-reader identity for the row. Every settings page in the shell is
+     * built out of these, so labelling the row here labels forty-odd controls
+     * at once — and it is the only place that knows both the name and the
+     * caption, which is exactly what a screen reader wants to read out.
+     *
+     * `focused` is mirrored rather than using QML focus: the settings pages run
+     * their own row-focus system (`surface.focusRowItem`, the gliding soul
+     * seam), and assistive tech should follow THAT, not a second, competing
+     * notion of what is current.
+     *
+     * Note `Accessible.value` and friends do not exist on the attached type —
+     * see quickshell-core.md §9b. Anything numeric belongs in `description`.
+     */
+    Accessible.role: Accessible.ListItem
+    Accessible.name: srow.name
+    Accessible.description: srow.sub
+    Accessible.focusable: true
+    Accessible.focused: srow.focused
+    Accessible.selected: srow.lit
+    Accessible.onPressAction: if (srow.surface) srow.surface.activateRow(srow)
+
     width: parent ? parent.width : 0
     /**
      * Even row rhythm: size the row from its TEXT (one line + 26 padding, or a
@@ -134,7 +156,17 @@ Item {
         color: rowArea.pressed ? Qt.alpha(Colors.primary, 0.10)
             : (srowHover.hovered || srow.focused) ? Colors.surface_container_highest : "transparent"
         Behavior on color { ColorAnimation { duration: Motion.fast } }
-        Behavior on scale { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+        // Same spring as every other pressable in the shell (Recorder's
+        // tiles, the surface ×, the lock transports) so a settings row
+        // answers the finger with the same character — just a shallower
+        // dip, because the target is a full-width row rather than a chip.
+        Behavior on scale {
+            NumberAnimation {
+                duration: Motion.glide
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveFastSpatial
+            }
+        }
     }
 
     MouseArea {
@@ -152,6 +184,9 @@ Item {
         visible: srow.glyph.length > 0 && srow.icon.length === 0 && Flags.showGlyphs
         text: srow.glyph
         color: srow.lit ? Colors.primary : Colors.on_surface_variant
+        // The focus seam glides between rows; without this the kanji it
+        // lands on snapped to the accent instead of blooming with it.
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
         font.family: Appearance.font.jp
         font.pixelSize: 15 * srow.s
     }
@@ -167,6 +202,7 @@ Item {
         name: srow.icon
         color: srow.lit ? Colors.primary
             : (srow.focused ? Colors.on_surface : Colors.on_surface_variant)
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
         stroke: 1.8
     }
 
@@ -182,6 +218,7 @@ Item {
         Text {
             text: srow.name
             color: srow.lit ? Colors.primary : Colors.on_surface
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
             font.family: Appearance.font.family
             font.pixelSize: 12.5 * srow.s
             font.weight: Font.DemiBold

@@ -42,6 +42,14 @@ Item {
 
     height: 30 * s
 
+    TextMetrics {
+        id: glyphMetrics
+        text: root.kanji
+        font.family: Appearance.font.jp
+        font.weight: Font.Medium
+        font.pixelSize: 16 * root.s
+    }
+
     Text {
         id: glyph
         anchors.verticalCenter: parent.verticalCenter
@@ -49,7 +57,12 @@ Item {
         visible: Flags.showGlyphs
         // Collapse the reserved width when hidden so the field reclaims the gap
         // instead of indenting behind an invisible glyph.
-        width: visible ? implicitWidth : 0
+        //
+        // Measured off a TextMetrics rather than off this Text's own
+        // `implicitWidth`: a Text whose width is bound to its own implicit
+        // width is a binding loop ("Binding loop detected for property width"),
+        // because implicit width is derived from the layout that width feeds.
+        width: visible ? glyphMetrics.advanceWidth : 0
         text: root.kanji
         color: Colors.on_surface_variant
         font.family: Appearance.font.jp

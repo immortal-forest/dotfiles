@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Shapes
 import Quickshell
 import Quickshell.Io
 import Quickshell.Networking
@@ -569,74 +568,23 @@ PillSurface {
     onAirplaneOnChanged: if (airplaneOn && subview !== "main") subview = "main"
 
     // ── shared bits ─────────────────────────────────────────────────────────
-    /**
-     * Airplane glyph, drawn inline: GlyphIcon's baked table has no plane and
-     * the surface can't extend it, so the path lives here in the same 24x24
-     * stroked-Shape system (round caps, bounding-box centring).
-     */
-    component PlaneGlyph: Item {
-        id: pg
+    // The airplane mark used to be an inline `component PlaneGlyph` here: a
+    // second hand-written 24x24 stroked Shape, in a file that already draws
+    // every other icon with GlyphIcon, because the baked table had no plane.
+    // The path now lives in pill/lib/glyphs.js as "plane", where the rest of
+    // the shell's icon vocabulary lives, and this surface just names it.
 
-        property color color: Colors.on_surface_variant
-        property real stroke: 1.7
-        readonly property real u: Math.min(width, height) / 24
-
-        Shape {
-            id: pgShape
-            width: 24
-            height: 24
-            scale: pg.u
-            transformOrigin: Item.TopLeft
-            x: pgShape.boundingRect.width > 0
-               ? pg.width / 2 - (pgShape.boundingRect.x + pgShape.boundingRect.width / 2) * pg.u
-               : (pg.width - 24 * pg.u) / 2
-            y: pgShape.boundingRect.height > 0
-               ? pg.height / 2 - (pgShape.boundingRect.y + pgShape.boundingRect.height / 2) * pg.u
-               : (pg.height - 24 * pg.u) / 2
-            antialiasing: true
-            preferredRendererType: Shape.CurveRenderer
-
-            ShapePath {
-                strokeColor: pg.color
-                fillColor: "transparent"
-                strokeWidth: pg.stroke
-                capStyle: ShapePath.RoundCap
-                joinStyle: ShapePath.RoundJoin
-                PathSvg { path: "M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" }
-            }
-        }
-    }
-
-    /** Toggle switch: tile bg off, primary fill on, knob slides on Motion.fast. */
-    component LinkToggle: Rectangle {
-        id: toggle
-
-        property bool on: false
-        signal toggled()
-
-        width: 28 * root.s
-        height: 16 * root.s
-        radius: 999
-        color: on ? Colors.primary : Colors.surface_container_highest
-        border.width: on ? 0 : 1
-        border.color: Qt.alpha(Colors.outline_variant, 0.6)
-
-        Rectangle {
-            anchors.verticalCenter: parent.verticalCenter
-            width: 10 * root.s
-            height: 10 * root.s
-            radius: width / 2
-            color: toggle.on ? Colors.on_primary : Colors.on_surface
-            x: toggle.on ? toggle.width - width - 3 * root.s : 3 * root.s
-            Behavior on x { NumberAnimation { duration: Motion.fast } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: toggle.toggled()
-        }
-    }
+    // The toggle used to be declared here, as an inline `component LinkToggle`.
+    // `import ".."` already brings in pill/LinkToggle.qml — the shell's toggle,
+    // a thin adapter over `pill/m3/M3Switch.qml` — and an inline component of
+    // the same name SHADOWS the imported type for the whole file. So every
+    // switch on this surface was the old hand-rolled 28x16 pill with a 10dp
+    // knob while every settings row in the shell was drawing the M3 switch:
+    // two different toggles in one program, which is the exact seam this pass
+    // exists to close. Deleting the shadow is the whole fix — the call sites
+    // below keep the same `on` / `accessibleName` / `toggled()` surface and now
+    // get the M3 track, thumb-growth spring, state layer, focus ring and 40dp
+    // hit target for free. `s: root.s` is the one thing they must pass.
 
     component HintText: Text {
         color: Qt.alpha(Colors.on_surface_variant, 0.65)
@@ -666,11 +614,29 @@ PillSurface {
                 width: 17 * root.s
                 height: 17 * root.s
 
+                // Named for where it goes, not what it looks like — "chevron"
+                // means nothing read aloud, and the title beside it is the only
+                // other clue to depth a screen reader gets.
+                Accessible.role: Accessible.Button
+                Accessible.name: "Back"
+                Accessible.description: "Return to the connectivity list"
+                Accessible.focusable: true
+                Accessible.onPressAction: root.back()
+
                 GlyphIcon {
                     anchors.fill: parent
                     name: "chevron-left"
                     color: backArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
                     stroke: 1.8
+                    scale: backArea.pressed ? 0.92 : 1
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
                 }
 
                 MouseArea {
@@ -725,6 +691,8 @@ PillSurface {
         property bool subLit: false
         property bool showToggle: true
         property bool toggleOn: false
+        /** The switch controls a radio, which is rarely the row's own name. */
+        property string toggleName: ""
         signal toggled()
         signal drill()
 
@@ -732,12 +700,33 @@ PillSurface {
         height: 44 * root.s
         radius: 10 * root.s
         color: lrowHover.hovered ? Colors.surface_container_highest : "transparent"
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+        // Shallow dip: these rows span the whole surface, so anything deeper
+        // reads as the panel itself flexing rather than the row taking a press.
+        scale: lrowArea.pressed ? 0.98 : 1
+        Behavior on scale {
+            NumberAnimation {
+                duration: Motion.glide
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveFastSpatial
+            }
+        }
+
+        // The subtext is the live link state, and it is the reason to open the
+        // row at all — it belongs in the description, not lost as decoration.
+        Accessible.role: Accessible.Button
+        Accessible.name: lrow.label
+        Accessible.description: lrow.subText
+        Accessible.focusable: true
+        Accessible.onPressAction: lrow.drill()
 
         HoverHandler {
             id: lrowHover
         }
 
         MouseArea {
+            id: lrowArea
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: lrow.drill()
@@ -753,6 +742,9 @@ PillSurface {
             name: lrow.glyph
             color: lrow.glyphLit ? Colors.primary : Colors.on_surface_variant
             stroke: 1.7
+            // The lit tint tracks live link state (associate/drop), so it
+            // blooms into the accent instead of flicking as the radio settles.
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
 
         Column {
@@ -780,6 +772,7 @@ PillSurface {
                 font.pixelSize: 10 * root.s
                 font.weight: lrow.subLit ? Font.DemiBold : Font.Medium
                 elide: Text.ElideRight
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
         }
 
@@ -791,9 +784,11 @@ PillSurface {
             spacing: 9 * root.s
 
             LinkToggle {
+                s: root.s
                 visible: lrow.showToggle
                 anchors.verticalCenter: parent.verticalCenter
                 on: lrow.toggleOn
+                accessibleName: lrow.toggleName.length > 0 ? lrow.toggleName : lrow.label
                 onToggled: lrow.toggled()
             }
 
@@ -876,16 +871,23 @@ PillSurface {
                         font.letterSpacing: 1.4 * root.s
                     }
 
-                    PlaneGlyph {
+                    GlyphIcon {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 14 * root.s
                         height: 14 * root.s
+                        name: "plane"
                         color: root.airplaneOn ? Colors.primary : Colors.on_surface_variant
+                        stroke: 1.7
+                        // rfkill lands a beat after the switch flips, so the
+                        // mark blooms into the accent rather than snapping.
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
                     LinkToggle {
+                        s: root.s
                         anchors.verticalCenter: parent.verticalCenter
                         on: root.airplaneOn
+                        accessibleName: "Airplane mode"
                         onToggled: Flags.airplane = !Flags.airplane
                     }
                 }
@@ -943,6 +945,7 @@ PillSurface {
                 subText: root.netzSubText
                 subLit: !root.wired && root.wifiActive !== null
                 showToggle: !root.wired
+                toggleName: "Wi-Fi"
                 toggleOn: root.wifiOn
                 onToggled: {
                     if (typeof Networking !== "undefined" && Networking)
@@ -960,6 +963,7 @@ PillSurface {
                 label: "Bluetooth"
                 subText: root.btSubText
                 subLit: root.btPrimary !== null
+                toggleName: "Bluetooth"
                 toggleOn: root.btOn
                 onToggled: if (root.btAdapter) root.btAdapter.enabled = !root.btAdapter.enabled
                 onDrill: root.subview = "bt"
@@ -1008,6 +1012,24 @@ PillSurface {
                     visible: root.notifCount > 0
                     spacing: 4 * root.s
 
+                    scale: inboxClearArea.pressed ? 0.92 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+
+                    // Destructive and irreversible, so the count rides along:
+                    // "CLEAR" alone gives no sense of how much is about to go.
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Clear notifications"
+                    Accessible.description: root.notifCount + " notification"
+                        + (root.notifCount === 1 ? "" : "s")
+                    Accessible.focusable: true
+                    Accessible.onPressAction: Services.Notifications.clearAll()
+
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: Flags.showGlyphs
@@ -1016,6 +1038,7 @@ PillSurface {
                         font.family: Appearance.font.jp
                         font.pixelSize: 9 * root.s
                         font.weight: Font.Bold
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -1025,6 +1048,7 @@ PillSurface {
                         font.pixelSize: 9 * root.s
                         font.weight: Font.Bold
                         font.letterSpacing: 1.4 * root.s
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
                 }
 
@@ -1052,6 +1076,7 @@ PillSurface {
                     Rectangle {
                         id: grow
                         required property var modelData
+                        required property int index
                         readonly property var n: modelData.entry.n
 
                         width: parent.width
@@ -1060,11 +1085,81 @@ PillSurface {
                         color: growHover.hovered ? Colors.surface_container_highest : "transparent"
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
 
+                        // A notification body spans the surface, so it takes the
+                        // shallow row dip rather than a chip's.
+                        scale: growArea.pressed ? 0.98 : 1
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Motion.glide
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.expressiveFastSpatial
+                            }
+                        }
+
+                        /**
+                         * Entrance cascade (SettingsRow idiom): the glance is a
+                         * fixed ≤3-row block that arrives as a unit, so it rides
+                         * in as a short wave instead of popping. Re-armed from
+                         * `active` rather than creation alone — the surface's
+                         * Loader latches once, so a creation-only cascade would
+                         * play on the very first open and never again.
+                         */
+                        property bool entered: false
+
+                        Timer {
+                            id: growEnter
+                            interval: Motion.rowStagger * grow.index
+                            onTriggered: grow.entered = true
+                        }
+
+                        Component.onCompleted: growEnter.restart()
+
+                        Connections {
+                            target: root
+                            function onActiveChanged() {
+                                if (root.active) {
+                                    grow.entered = false;
+                                    growEnter.restart();
+                                }
+                            }
+                        }
+
+                        opacity: grow.entered ? 1 : 0
+                        Behavior on opacity {
+                            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                        }
+
+                        transform: Translate {
+                            y: grow.entered ? 0 : 10 * root.s
+                            Behavior on y {
+                                NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                            }
+                        }
+
+                        // The app name, age and repeat count are all visually
+                        // separated from the summary; read aloud they are the
+                        // context that says whether the row is worth opening.
+                        Accessible.role: Accessible.Button
+                        Accessible.name: (grow.n.summary && grow.n.summary.length)
+                            ? grow.n.summary : (grow.n.body || "Notification")
+                        Accessible.description: {
+                            var parts = [grow.modelData.app];
+                            if (grow.modelData.critical)
+                                parts.push("critical");
+                            if (grow.modelData.entry.count > 1)
+                                parts.push(grow.modelData.entry.count + " repeats");
+                            parts.push(Services.Notifications.ageLabel(grow.n));
+                            return parts.join(" · ");
+                        }
+                        Accessible.focusable: true
+                        Accessible.onPressAction: Services.Notifications.activateEntry(grow.modelData.entry)
+
                         HoverHandler {
                             id: growHover
                         }
 
                         MouseArea {
+                            id: growArea
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: Services.Notifications.activateEntry(grow.modelData.entry)
@@ -1157,13 +1252,23 @@ PillSurface {
 
         // 静 SILENCE — the glance's empty state (Ricelin: Notifs.count === 0).
         Column {
-            visible: root.notifCount === 0
+            // Cross-fades with the glance instead of snapping: clearing the
+            // inbox is a click the user makes and this is what answers it. The
+            // padding is floored because the fade now renders in the other
+            // direction too — while it dims out under a just-arrived glance row
+            // this Column is briefly shorter than its own content, and a
+            // negative top padding would shove 静 up out of its box.
+            opacity: root.notifCount === 0 ? 1 : 0
+            visible: opacity > 0.01
             anchors.top: mainCol.bottom
             anchors.bottom: parent.bottom
             anchors.left: parent.left
             anchors.right: parent.right
             spacing: 4 * root.s
-            topPadding: (height - 32 * root.s - 9 * root.s - 4 * root.s) / 2
+            topPadding: Math.max(0, (height - 32 * root.s - 9 * root.s - 4 * root.s) / 2)
+            Behavior on opacity {
+                NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+            }
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -1206,8 +1311,10 @@ PillSurface {
             statusLit: root.wifiActive !== null
 
             LinkToggle {
+                s: root.s
                 anchors.verticalCenter: parent.verticalCenter
                 on: root.wifiOn
+                accessibleName: "Wi-Fi"
                 onToggled: {
                     if (typeof Networking !== "undefined" && Networking)
                         Networking.wifiEnabled = !Networking.wifiEnabled;
@@ -1245,6 +1352,24 @@ PillSurface {
                 readonly property bool isActive: modelData ? modelData.connected === true : false
                 readonly property bool secured: root.isSecured(ssid)
                 readonly property bool asking: ssid.length > 0 && root.expandedSsid === ssid && !isActive
+                readonly property bool known: root.knownProfiles[ssid] === true
+
+                /**
+                 * Everything the row says visually — signal as glyph opacity, a
+                 * padlock, a tick — collapses to nothing when read aloud, so it
+                 * is spelled out here. Security first: it decides whether a tap
+                 * connects or opens the password row.
+                 */
+                readonly property string a11y: {
+                    var parts = [netItem.secured ? "secured" : "open"];
+                    var sig = Math.round((netItem.modelData && netItem.modelData.signalStrength) || 0);
+                    parts.push("signal " + sig + "%");
+                    if (netItem.isActive)
+                        parts.push("connected");
+                    else if (netItem.known)
+                        parts.push("saved");
+                    return parts.join(" · ");
+                }
 
                 width: wifiList.width
                 spacing: 2 * root.s
@@ -1268,11 +1393,28 @@ PillSurface {
                         : (netItem.isActive ? Qt.alpha(Colors.primary, 0.12) : "transparent")
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
 
+                    scale: netArea.pressed ? 0.96 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: netItem.ssid
+                    Accessible.description: netItem.a11y
+                    Accessible.selected: netItem.isActive
+                    Accessible.focusable: true
+                    Accessible.onPressAction: root.activateNetwork(netItem.modelData)
+
                     HoverHandler {
                         id: netHover
                     }
 
                     MouseArea {
+                        id: netArea
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.activateNetwork(netItem.modelData)
@@ -1289,6 +1431,10 @@ PillSurface {
                         color: netItem.isActive ? Colors.primary : Colors.on_surface_variant
                         stroke: 1.7
                         opacity: 0.45 + 0.55 * (((netItem.modelData && netItem.modelData.signalStrength) || 0) / 100)
+                        // Association lands asynchronously; the row lights into
+                        // the accent rather than flicking the instant nmcli
+                        // reports back.
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
                     Text {
@@ -1303,6 +1449,7 @@ PillSurface {
                         font.pixelSize: 11.5 * root.s
                         font.weight: netItem.isActive ? Font.DemiBold : Font.Medium
                         elide: Text.ElideRight
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
                     Row {
@@ -1338,9 +1485,29 @@ PillSurface {
                 // field, Enter or the return glyph submits, pulse dot while
                 // nmcli runs.
                 Item {
-                    visible: netItem.asking
+                    /**
+                     * Grows open under the tapped row instead of snapping the
+                     * whole list down a notch. Visibility is gated on OPACITY,
+                     * never on the animated height: a Column stops recomputing
+                     * its children's sizes while it is itself hidden, so a
+                     * `visible: height > 0` gate would latch shut for good.
+                     */
+                    opacity: netItem.asking ? 1 : 0
+                    visible: opacity > 0.01
+                    enabled: netItem.asking
+                    clip: true
                     width: parent.width
-                    height: 30 * root.s
+                    height: netItem.asking ? 30 * root.s : 0
+                    Behavior on opacity {
+                        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                    }
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Motion.standard
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.morphCurve
+                        }
+                    }
 
                     TextField {
                         id: pwField
@@ -1356,6 +1523,7 @@ PillSurface {
                         font.pixelSize: 11.5 * root.s
                         echoMode: TextInput.Password
                         placeholderText: "Password"
+                        Accessible.name: "Password for " + netItem.ssid
                         placeholderTextColor: Qt.alpha(Colors.on_surface_variant, 0.65)
                         selectByMouse: true
                         selectionColor: Colors.primary
@@ -1393,6 +1561,23 @@ PillSurface {
                             name: "return"
                             color: enterArea.containsMouse ? Colors.on_surface : Colors.primary
                             stroke: 1.8
+                            scale: enterArea.pressed ? 0.92 : 1
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
+
+                            // The glyph is a return arrow; read aloud it has to
+                            // say what pressing it actually does.
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "Connect"
+                            Accessible.description: "Join " + netItem.ssid + " with the entered password"
+                            Accessible.focusable: true
+                            Accessible.onPressAction: root.connectWithPassword(netItem.ssid, pwField.text)
 
                             MouseArea {
                                 id: enterArea
@@ -1407,21 +1592,45 @@ PillSurface {
                 }
 
                 Text {
-                    visible: netItem.asking && root.connectFailed
+                    // Fades and grows in with the rest of the expansion rather
+                    // than shunting the list down the frame nmcli gives up.
+                    readonly property bool shown: netItem.asking && root.connectFailed
+                    opacity: shown ? 1 : 0
+                    visible: opacity > 0.01
+                    clip: true
+                    height: shown ? implicitHeight : 0
                     text: "Connection failed"
                     color: Colors.error
                     font.family: Appearance.font.family
                     font.pixelSize: 9.5 * root.s
                     leftPadding: 10 * root.s
+                    Behavior on opacity {
+                        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                    }
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Motion.standard
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.morphCurve
+                        }
+                    }
                 }
             }
         }
 
         HintText {
+            // The hint and the list share this space, so they cross-fade: a
+            // bare `visible` flip made the first scan result blink the hint out
+            // mid-sentence.
+            readonly property bool shown: root.wifiOn ? root.nets.length === 0 : true
             anchors.centerIn: wifiList
-            visible: root.wifiOn ? root.nets.length === 0 : true
+            opacity: shown ? 1 : 0
+            visible: opacity > 0.01
             text: root.wifiDev === null ? "No Wi-Fi adapter"
                 : (root.wifiOn ? "Searching networks…" : "Wi-Fi is off")
+            Behavior on opacity {
+                NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+            }
         }
     }
 
@@ -1454,6 +1663,23 @@ PillSurface {
                 font.family: Appearance.font.family
                 font.pixelSize: 9.5 * root.s
                 font.weight: Font.DemiBold
+                scale: btScanArea.pressed ? 0.92 : 1
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Motion.glide
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveFastSpatial
+                    }
+                }
+
+                // One control with two meanings, so the name follows the
+                // state rather than the label — "Scanning…" read aloud sounds
+                // like a status line, not something you can press to stop.
+                Accessible.role: Accessible.Button
+                Accessible.name: root.btDiscovering ? "Stop scanning" : "Scan for devices"
+                Accessible.focusable: true
+                Accessible.onPressAction: root.btToggleScan()
 
                 MouseArea {
                     id: btScanArea
@@ -1466,8 +1692,10 @@ PillSurface {
             }
 
             LinkToggle {
+                s: root.s
                 anchors.verticalCenter: parent.verticalCenter
                 on: root.btOn
+                accessibleName: "Bluetooth"
                 onToggled: if (root.btAdapter) root.btAdapter.enabled = !root.btAdapter.enabled
             }
         }
@@ -1517,6 +1745,27 @@ PillSurface {
                 readonly property bool confirming: addr.length > 0 && root.btExpandedAddress === addr
                 readonly property string batteryText: root.btBatteryText(modelData)
 
+                /** A nameless discovery is still selectable, so it falls back to its MAC. */
+                readonly property string devName: modelData
+                    ? (modelData.deviceName || modelData.name || addr)
+                    : ""
+
+                /**
+                 * The meta line, the battery percent and the pairing ember are
+                 * three separate visual channels; read aloud they have to be
+                 * one sentence, and "not paired" has to be said out loud —
+                 * visually it is conveyed by the Pair chip merely existing.
+                 */
+                readonly property string a11y: {
+                    var meta = root.btMetaFor(devItem.modelData);
+                    var parts = meta.length > 0 ? [meta] : ["not paired"];
+                    if (devItem.batteryText.length > 0)
+                        parts.push("battery " + devItem.batteryText);
+                    if (devItem.pairing)
+                        parts.push("pairing…");
+                    return parts.join(" · ");
+                }
+
                 width: btList.width
                 spacing: 2 * root.s
 
@@ -1529,11 +1778,28 @@ PillSurface {
                         : (devItem.isConnected ? Qt.alpha(Colors.primary, 0.12) : "transparent")
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
 
+                    scale: devArea.pressed ? 0.96 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: devItem.devName
+                    Accessible.description: devItem.a11y
+                    Accessible.selected: devItem.isConnected
+                    Accessible.focusable: true
+                    Accessible.onPressAction: root.btActivate(devItem.modelData)
+
                     HoverHandler {
                         id: devHover
                     }
 
                     MouseArea {
+                        id: devArea
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.btActivate(devItem.modelData)
@@ -1549,6 +1815,9 @@ PillSurface {
                         name: "bluetooth"
                         color: devItem.isConnected ? Colors.primary : Colors.on_surface_variant
                         stroke: 1.7
+                        // Connect/disconnect lands a beat after the tap, so the
+                        // glyph blooms into the accent instead of flicking.
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
                     Column {
@@ -1561,14 +1830,13 @@ PillSurface {
 
                         Text {
                             width: parent.width
-                            text: devItem.modelData
-                                ? (devItem.modelData.deviceName || devItem.modelData.name || devItem.addr)
-                                : ""
+                            text: devItem.devName
                             color: devItem.isConnected ? Colors.on_surface : Colors.on_surface_variant
                             font.family: Appearance.font.family
                             font.pixelSize: 11.5 * root.s
                             font.weight: devItem.isConnected ? Font.DemiBold : Font.Medium
                             elide: Text.ElideRight
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
 
                         Text {
@@ -1633,6 +1901,15 @@ PillSurface {
                             Behavior on color { ColorAnimation { duration: Motion.fast } }
                             Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
+                            scale: pairArea.pressed ? 0.92 : 1
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
+
                             Text {
                                 id: pairText
                                 anchors.centerIn: parent
@@ -1641,7 +1918,16 @@ PillSurface {
                                 font.family: Appearance.font.family
                                 font.pixelSize: 9.5 * root.s
                                 font.weight: Font.DemiBold
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
                             }
+
+                            // "Pair" alone is ambiguous in a list of devices —
+                            // the description says which one it bonds.
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "Pair"
+                            Accessible.description: devItem.devName
+                            Accessible.focusable: true
+                            Accessible.onPressAction: root.btActivate(devItem.modelData)
 
                             MouseArea {
                                 id: pairArea
@@ -1691,6 +1977,27 @@ PillSurface {
                             border.width: 1
                             border.color: primaryArea.containsMouse
                                 ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                            scale: primaryArea.pressed ? 0.92 : 1
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
+
+                            // The label flips with the link state, so the name
+                            // has to follow it rather than be fixed at "Connect".
+                            Accessible.role: Accessible.Button
+                            Accessible.name: primaryLabel.text
+                            Accessible.description: devItem.devName
+                            Accessible.focusable: true
+                            Accessible.onPressAction: devItem.isConnected
+                                ? root.btDisconnect(devItem.modelData)
+                                : root.btConnect(devItem.modelData)
 
                             Text {
                                 id: primaryLabel
@@ -1725,6 +2032,34 @@ PillSurface {
                             border.width: 1
                             border.color: devItem.isTrusted
                                 ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
+                            // BlueZ acknowledges the Trusted write a beat later,
+                            // so the chip settles into the accent instead of
+                            // flicking when the property comes back.
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                            scale: trustArea.pressed ? 0.92 : 1
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
+
+                            // A latching flag, not an action: CheckBox is what
+                            // lets a screen reader say "Trusted, checked".
+                            Accessible.role: Accessible.CheckBox
+                            Accessible.name: "Trust"
+                            Accessible.description: devItem.devName
+                                + " — reconnects without asking"
+                            Accessible.checkable: true
+                            Accessible.checked: devItem.isTrusted
+                            Accessible.focusable: true
+                            Accessible.onToggleAction: if (devItem.modelData)
+                                devItem.modelData.trusted = !devItem.modelData.trusted
+                            Accessible.onPressAction: if (devItem.modelData)
+                                devItem.modelData.trusted = !devItem.modelData.trusted
 
                             Text {
                                 id: trustLabel
@@ -1734,6 +2069,7 @@ PillSurface {
                                 font.family: Appearance.font.family
                                 font.pixelSize: 9.5 * root.s
                                 font.weight: Font.DemiBold
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
                             }
 
                             MouseArea {
@@ -1755,6 +2091,24 @@ PillSurface {
                                 ? Qt.alpha(Colors.error, 0.2) : Qt.alpha(Colors.error, 0.12)
                             border.width: 1
                             border.color: Qt.alpha(Colors.error, 0.45)
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                            scale: forgetArea.pressed ? 0.92 : 1
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
+
+                            // Destructive: the description names the device so
+                            // it can't be confirmed blind from the wrong row.
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "Forget"
+                            Accessible.description: "Remove the pairing with " + devItem.devName
+                            Accessible.focusable: true
+                            Accessible.onPressAction: root.btForget(devItem.modelData)
 
                             Text {
                                 id: forgetLabel

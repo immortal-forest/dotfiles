@@ -1,0 +1,13 @@
+singleton M3 M3.qml
+M3StateLayer 1.0 M3StateLayer.qml
+M3Button 1.0 M3Button.qml
+M3IconButton 1.0 M3IconButton.qml
+M3Switch 1.0 M3Switch.qml
+M3Slider 1.0 M3Slider.qml
+M3Chip 1.0 M3Chip.qml
+M3Card 1.0 M3Card.qml
+M3Dialog 1.0 M3Dialog.qml
+M3Progress 1.0 M3Progress.qml
+M3Badge 1.0 M3Badge.qml
+M3ListItem 1.0 M3ListItem.qml
+M3Fab 1.0 M3Fab.qml

@@ -156,9 +156,23 @@ SettingsPage {
                 color: dot.modelData.col
                 border.width: dot.current ? 2 : 1
                 border.color: dot.current ? Colors.on_surface : Qt.alpha(Colors.on_surface, 0.18)
-                scale: dotMA.containsMouse ? 1.15 : 1
-                Behavior on scale { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
+                // Hover grow and press dip are separate concepts on the same
+                // scale — multiplied together so a press mid-hover still dips
+                // from the grown size instead of one clobbering the other.
+                scale: (dotMA.containsMouse ? 1.15 : 1) * (dotMA.pressed ? 0.96 : 1)
+                Behavior on scale { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                 Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                // A colour strip is a radio GROUP, exactly like SettingsSeg —
+                // one swatch is the stored border colour and picking another
+                // clears it, so this reads as "2 of 5" rather than five
+                // unrelated buttons. (`Accessible.value` and friends don't
+                // exist on the attached type — quickshell-core.md §9b.)
+                Accessible.role: Accessible.RadioButton
+                Accessible.name: String(dot.modelData.label)
+                Accessible.checkable: true
+                Accessible.checked: dot.current
+                Accessible.onPressAction: sw.picked(dot.modelData.value)
 
                 MouseArea {
                     id: dotMA

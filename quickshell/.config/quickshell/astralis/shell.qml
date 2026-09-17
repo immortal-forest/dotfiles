@@ -177,6 +177,7 @@ ShellRoot {
         function settings(mon: string): void { root.toggleSurface(mon, "settings"); }
         function sysmon(mon: string): void { root.toggleSurface(mon, "sysmon"); }
         function system(mon: string): void { root.toggleSurface(mon, "sysmon"); }
+        function recorder(mon: string): void { root.toggleSurface(mon, "recorder"); }
         function hide(): void { root.close(); }
 
         /** Opens any surface by name; dev and scripting door. */
@@ -202,6 +203,37 @@ ShellRoot {
         function toggle(): void { root.powerMenuOpen = !root.powerMenuOpen; }
         function show(): void { root.powerMenuOpen = true; }
         function hide(): void { root.powerMenuOpen = false; }
+    }
+
+    /**
+     * Screen recorder (services/ScreenRec.qml → gpu-screen-recorder /
+     * wl-screenrec / wf-recorder). A keybind can start a take without ever
+     * opening the 録 surface — `toggle` is the one to bind, since the same key
+     * then stops it. The surface itself is on the `pill` target above
+     * (`ipc call pill recorder ""`).
+     *
+     * Starting always closes an open surface first: the pill is an overlay
+     * layer, so it would otherwise be baked into the recording, and the
+     * region/window pickers need the pointer.
+     */
+    IpcHandler {
+        target: "recorder"
+        // All four start a take when idle and stop the running one otherwise,
+        // so a single key both arms and ends a recording.
+        function toggle(): void { root.close(); ScreenRec.toggle("screen"); }
+        function screen(): void { root.close(); ScreenRec.toggle("screen"); }
+        function window(): void { root.close(); ScreenRec.toggle("window"); }
+        function region(): void { root.close(); ScreenRec.toggle("region"); }
+        function stop(): void { ScreenRec.stop(); }
+        function pause(): void { ScreenRec.togglePause(); }
+
+        // State is read back as functions, not exposed properties: IpcHandler
+        // warns once per property on every launch about the `…Changed` signals
+        // it cannot expose, and `ipc call` reads these just as well.
+        function isRecording(): bool { return ScreenRec.recording; }
+        function elapsed(): int { return ScreenRec.elapsed; }
+        function lastFile(): string { return ScreenRec.lastFile; }
+        function backend(): string { return ScreenRec.backend; }
     }
 
     /**
@@ -459,6 +491,11 @@ ShellRoot {
                 anchors.fill: parent
                 enabled: overlay.modal
                 acceptedButtons: Qt.AllButtons
+                // A click-outside-to-dismiss backdrop is plumbing, not a
+                // control. Left in the accessibility tree it announces itself
+                // as an unnamed full-screen button sitting on top of the pill,
+                // which is precisely the thing the user was trying to reach.
+                Accessible.ignored: true
                 onPressed: (mouse) => {
                     // This backdrop fills the whole overlay and only owns
                     // presses that land OUTSIDE the pill; presses inside belong

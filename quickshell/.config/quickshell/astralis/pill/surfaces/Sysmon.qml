@@ -14,11 +14,15 @@ import "../../config"
  * memory load, each a 270deg arc stroked with a burn-to-lit primary gradient
  * on a thread track and rounded caps, the sweep eased over the value change;
  * the centre shows the value, a unit and a sub line (CPU/GPU temperature,
- * memory total). A hairline stripe underneath reports network throughput,
- * root-disk fill, swap and VRAM with their units folded into the faint labels
- * so the values read bare. On a machine with no discrete GPU the GPU dial and
- * VRAM cell drop and the remaining dials recentre. Polling lives in the
- * singleton and only runs while this surface is open.
+ * memory total). One hairline marks the section boundary, and under it a strip
+ * reports network throughput, root-disk fill, swap and VRAM with their units
+ * folded into the faint labels so the values read bare. The cells used to be
+ * fenced apart by 1px vertical rules — the toolbar idiom the rest of the shell
+ * dropped (astralis-architecture §2b-iii); nothing replaced them, because an
+ * even pitch and a caption over each value already say where one stat ends.
+ * On a machine with no discrete GPU the GPU dial and VRAM cell drop and the
+ * remaining dials recentre. Polling lives in the singleton and only runs while
+ * this surface is open.
  *
  * The services import is aliased: this file's own type is `Sysmon`
  * (pill/surfaces qmldir), so the singleton must be reached as
@@ -41,19 +45,23 @@ PillSurface {
 
     /**
      * The soul ember rests with the 系 header kanji: the kanji is the lantern,
-     * the bead its flame, hovering just above the glyph with its wick rising into
-     * it. Anchored to the header rather than the dial row so the ember sits in the
-     * same deliberate spot whether three dials or two are shown (the header never
-     * changes with GPU presence). With glyphs off the kanji is hidden, so the
-     * anchor falls back to the SYSTEM label's left edge, vertically centred on the
-     * header, and never floats. Mapped into surface-local space so the host can
-     * offset it by the surface origin.
+     * the bead its flame, sitting a bead's diameter BELOW the glyph box with its
+     * wick rising back up into the strokes (Ame paints under the surface, so the
+     * glyph occludes the wick's faint tail — exactly how the pill's own hover
+     * ember hangs under a status icon). It used to sit 3*s ABOVE the glyph, where
+     * the ~11.3*s wick ran straight off the pill's top edge and left a bare dot
+     * glued to the border. Anchored to the header rather than the dial row so the
+     * ember sits in the same deliberate spot whether three dials or two are shown
+     * (the header never changes with GPU presence). With glyphs off the kanji is
+     * hidden, so the anchor falls back to the SYSTEM label's left edge, vertically
+     * centred on the header, and never floats. Mapped into surface-local space so
+     * the host can offset it by the surface origin.
      */
     readonly property point soulPoint: {
         void root.width;
         void root.height;
         if (Flags.showGlyphs)
-            return kanji.mapToItem(root, kanji.width / 2, -3 * root.s);
+            return kanji.mapToItem(root, kanji.width / 2, kanji.height + 6 * root.s);
         return sysLabel.mapToItem(root, -8 * root.s, sysLabel.height / 2);
     }
 
@@ -301,17 +309,6 @@ PillSurface {
                     height: parent.height
                     x: index * width
 
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.topMargin: 2 * root.s
-                        anchors.bottomMargin: 2 * root.s
-                        height: parent.height - 4 * root.s
-                        width: 1
-                        visible: cell.index > 0
-                        color: Qt.alpha(Colors.on_surface, 0.04)
-                    }
-
                     Column {
                         anchors.centerIn: parent
                         spacing: 6 * root.s
@@ -324,10 +321,10 @@ PillSurface {
                                 : "VRAM · GB"
                             color: Qt.alpha(Colors.on_surface_variant, 0.65)
                             font.family: Appearance.font.family
-                            font.pixelSize: 8 * root.s
+                            font.pixelSize: 8.5 * root.s
                             font.weight: Font.Bold
                             font.capitalization: Font.AllUppercase
-                            font.letterSpacing: 0.9 * root.s
+                            font.letterSpacing: 1 * root.s
                         }
 
                         Row {
@@ -335,21 +332,43 @@ PillSurface {
                             spacing: 8 * root.s
                             visible: cell.key === "net"
 
-                            Text {
-                                text: "↓" + Services.Sysmon.netDown.toFixed(1)
-                                color: Colors.on_surface
-                                font.family: Appearance.font.family
-                                font.pixelSize: 13 * root.s
-                                font.weight: Font.ExtraBold
-                                font.features: ({ "tnum": 1 })
+                            Row {
+                                spacing: 1 * root.s
+                                GlyphIcon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 13 * root.s; height: 13 * root.s
+                                    name: "arrow-down"
+                                    color: Colors.on_surface
+                                    stroke: 1.8
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: Services.Sysmon.netDown.toFixed(1)
+                                    color: Colors.on_surface
+                                    font.family: Appearance.font.family
+                                    font.pixelSize: 13 * root.s
+                                    font.weight: Font.ExtraBold
+                                    font.features: ({ "tnum": 1 })
+                                }
                             }
-                            Text {
-                                text: "↑" + Services.Sysmon.netUp.toFixed(1)
-                                color: Colors.primary
-                                font.family: Appearance.font.family
-                                font.pixelSize: 13 * root.s
-                                font.weight: Font.ExtraBold
-                                font.features: ({ "tnum": 1 })
+                            Row {
+                                spacing: 1 * root.s
+                                GlyphIcon {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 13 * root.s; height: 13 * root.s
+                                    name: "arrow-up"
+                                    color: Colors.primary
+                                    stroke: 1.8
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: Services.Sysmon.netUp.toFixed(1)
+                                    color: Colors.primary
+                                    font.family: Appearance.font.family
+                                    font.pixelSize: 13 * root.s
+                                    font.weight: Font.ExtraBold
+                                    font.features: ({ "tnum": 1 })
+                                }
                             }
                         }
 

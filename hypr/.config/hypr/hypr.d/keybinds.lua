@@ -38,6 +38,12 @@ hl.bind(mainMod .. " + B",     hl.dsp.exec_cmd("qs -c astralis ipc call visualiz
 -- SHIFT because plain SUPER+S is the scratch special-workspace toggle below.
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd('qs -c astralis ipc call pill sysmon ""'))    -- astralis: system monitor
 hl.bind(mainMod .. " + comma",     hl.dsp.exec_cmd('qs -c astralis ipc call pill settings ""'))  -- astralis: settings
+-- Screen recording (astralis 録 → gpu-screen-recorder / wl-screenrec / wf-recorder).
+-- The surface picks the source and holds the settings; the two direct binds skip
+-- it entirely and are start/stop toggles, so the same key ends the take.
+hl.bind(mainMod .. " + R",         hl.dsp.exec_cmd('qs -c astralis ipc call pill recorder ""'))  -- astralis: recorder surface
+hl.bind(mainMod .. " + ALT + R",   hl.dsp.exec_cmd("qs -c astralis ipc call recorder toggle"))   -- astralis: record this screen / stop
+hl.bind(mainMod .. " + CTRL + R",  hl.dsp.exec_cmd("qs -c astralis ipc call recorder region"))   -- astralis: record a region / stop
 hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("sh -c 'qs -c astralis kill; sleep 0.3; qs -c astralis -d'"))  -- astralis: relaunch the shell
 -- astralis: stash/restore the focused window on special:minimized — the pill's
 -- hover tray shows the stashed windows as app-icon chips that restore on click.

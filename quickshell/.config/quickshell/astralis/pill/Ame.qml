@@ -38,6 +38,10 @@ import "../services"
  * need "#rrggbb" STRINGS (a QML color serializes #aarrggbb and corrupts the
  * gradient), so the tokens below keep a color-typed copy for derivation and a
  * String() copy the canvas reads.
+ *
+ * One addition on top of the port: the host's `point` is a REQUEST. It is
+ * clamped into `anchor` by the current form's own painted extent, so no caller
+ * can park the flame where this Canvas would cut it off (see `inkHalf`).
  */
 Item {
     id: root
@@ -80,6 +84,61 @@ Item {
     readonly property real pAntic: 0.146
     readonly property real pFly: 0.658
 
+    /**
+     * Half the painted footprint of the REQUESTED form, read straight off the
+     * renderers in onPaint (width, height), each with the settle's easeOutBack
+     * overshoot folded in. Keyed off `form` — what the host asked for — never
+     * `activeForm`: activeForm is written from inside decide(), which the
+     * anchor below feeds, so reading it here would let the anchor chase its
+     * own transition.
+     */
+    readonly property size inkHalf: {
+        switch (form) {
+        case "off":     return Qt.size(0, 0);
+        case "soul":    return Qt.size(3 * s, 3 * s);    // the bead alone — the wick is one-sided, below
+        case "seam":    return Qt.size(5 * s, 5 * s);    // R at its widest, before the fade-in tightens it
+        case "tick":    return Qt.size(6 * s, 4 * s);    // the flattened rx/ry pair
+        case "caret":   return Qt.size(5 * s, 9 * s);    // half the 15·s capsule, half its widest 8.5·s
+        case "rowseam": return Qt.size(3 * s, 11 * s);   // half the 18·s bar
+        case "ring":    return Qt.size(20 * s, 20 * s);  // (restR + 6 + 5)·s plus half the fat stroke
+        default:        return Qt.size(6 * s, 6 * s);    // rest/dock bead: restR plus the land overshoot
+        }
+    }
+
+    /**
+     * The soul form is the one asymmetric renderer: its wick leaves the bead
+     * on the `wickDir` side and runs a further 1.5·s gap + 7·s length + the
+     * round cap's half line width (0.55·s) ≈ 9·s, so a soul ember needs ~12·s
+     * of headroom on that side and only a bead's radius on the other.
+     */
+    readonly property real inkUp: inkHalf.height + (form === "soul" && wickDir < 0 ? 9 * s : 0)
+    readonly property real inkDown: inkHalf.height + (form === "soul" && wickDir > 0 ? 9 * s : 0)
+
+    /**
+     * The anchor Ame actually flies to and rests on: `point` pulled far enough
+     * inside this item for the whole form to be painted. The Canvas below is
+     * anchors.fill of the pill, so ink past an edge is silently cut — a
+     * surface anchoring the flame to its header (a kanji sits barely 12·s
+     * below the pill's top edge) lost its entire wick that way, leaving a bare
+     * dot glued to the border. Clamping HERE rather than in each surface means
+     * every surface, present and future, gets the guarantee for free, and it
+     * is a no-op for any anchor that already has headroom — a deliberate
+     * dock-against-the-bottom-edge point is left exactly where it was put.
+     * (Only the box is respected, not the body's corner radius; no anchor
+     * lives in a corner, and rounding this would cost a per-corner solve.)
+     */
+    readonly property point anchor: {
+        // Before the first layout there is no box to clamp against.
+        if (width <= 0 || height <= 0)
+            return point;
+        const loX = inkHalf.width;
+        const hiX = width - inkHalf.width;
+        const loY = inkUp;
+        const hiY = height - inkDown;
+        return Qt.point(hiX < loX ? width / 2 : Math.max(loX, Math.min(hiX, point.x)),
+                        hiY < loY ? height / 2 : Math.max(loY, Math.min(hiY, point.y)));
+    }
+
     property real bx: 0
     property real by: 0
     property string activeForm: "rest"
@@ -120,23 +179,23 @@ Item {
 
     /**
      * Recompute heading, distance and the perpendicular bezier control point
-     * for the current fromPoint->point pair. Called per frame during the antic
+     * for the current fromPoint->anchor pair. Called per frame during the antic
      * and fly phases so a target that slides mid-flight bends the arc and the
      * painted streak stays on the same curve as the bead. Arc side is latched
      * in startFlight (arcFlip); re-deciding it per frame would mirror the whole
      * curve in one frame when the target crosses the vertical through the origin.
      */
     function updateFlightGeo() {
-        const dx = point.x - fromPoint.x;
-        const dy = point.y - fromPoint.y;
+        const dx = anchor.x - fromPoint.x;
+        const dy = anchor.y - fromPoint.y;
         const dd = Math.hypot(dx, dy) || 1;
         flightDist = dd;
         flightAng = Math.atan2(dy, dx);
         let px = -dy / dd;
         let py = dx / dd;
         if (arcFlip) { px = -px; py = -py; }
-        ctrlPoint = Qt.point((fromPoint.x + point.x) / 2 + px * dd * 0.22,
-                             (fromPoint.y + point.y) / 2 + py * dd * 0.22);
+        ctrlPoint = Qt.point((fromPoint.x + anchor.x) / 2 + px * dd * 0.22,
+                             (fromPoint.y + anchor.y) / 2 + py * dd * 0.22);
     }
 
     function stopGlide() {
@@ -148,7 +207,7 @@ Item {
     function startFlight(targetForm, quick) {
         quickFlight = quick === true;
         fromPoint = Qt.point(bx, by);
-        arcFlip = point.x > fromPoint.x;
+        arcFlip = anchor.x > fromPoint.x;
         updateFlightGeo();
         remnantAnim.stop();
         remnantPoint = Qt.point(bx, by);
@@ -191,18 +250,18 @@ Item {
         remnant = 0;
         bx = wake.x;
         by = wake.y;
-        if (Math.hypot(point.x - bx, point.y - by) > root.flightThreshold) {
+        if (Math.hypot(anchor.x - bx, anchor.y - by) > root.flightThreshold) {
             startFlight(form, true);
         } else {
-            bx = point.x;
-            by = point.y;
+            bx = anchor.x;
+            by = anchor.y;
             startMorph(form);
         }
     }
 
     function retarget() {
-        const dx = point.x - bx;
-        const dy = point.y - by;
+        const dx = anchor.x - bx;
+        const dy = anchor.y - by;
         const dd = Math.hypot(dx, dy);
         if (form !== activeForm) {
             if (dd > root.flightThreshold) {
@@ -211,7 +270,7 @@ Item {
                 flightAnim.stop();
                 settleAnim.stop();
                 if (dd > 0.5)
-                    startGlide(point);
+                    startGlide(anchor);
                 startMorph(form);
             }
         } else if (timelineLive && prog < 1) {
@@ -224,36 +283,37 @@ Item {
             // the plain `startGlide()` branch below while flightAnim/
             // settleAnim was still driving `prog` toward 1, and the very
             // next animation frame's onProgChanged (`if (!gliding) bx =
-            // point.x; by = point.y;`) would win the race and teleport the
+            // anchor.x; by = anchor.y;`) would win the race and teleport the
             // bead straight to the new anchor BEFORE that glide could take
             // over — rendering at whatever (still low) fadeIn settle had
             // reached, i.e. the collapsed "remnant droplet" instead of the
             // full ember. Stopping both anims and forcing prog to 1 here
             // makes the hop land on idle (fadeIn pinned to 1) immediately,
             // same as the already-correct fly-phase case, then glides.
-            const jump = Math.hypot(point.x - lastTarget.x, point.y - lastTarget.y);
+            const jump = Math.hypot(anchor.x - lastTarget.x, anchor.y - lastTarget.y);
             if (jump > root.flightThreshold) {
                 flightAnim.stop();
                 settleAnim.stop();
-                startGlide(point);
+                startGlide(anchor);
                 prog = 1;
             }
         } else if (dd > 0.5) {
-            startGlide(point);
+            startGlide(anchor);
         } else if (!gliding) {
-            bx = point.x;
-            by = point.y;
+            bx = anchor.x;
+            by = anchor.y;
         }
     }
 
     /**
      * Coalesced decision point. form and point are sibling bindings in Pill
-     * whose change handlers fire mid-cascade in unspecified order. Deciding
-     * synchronously would read a stale partner value (a far form change sees
-     * dd≈0 against the not-yet-updated point and quietly degrades the flight to
-     * an in-place morph). Qt.callLater defers the decision until both bindings
-     * have settled, and collapses the per-frame handler bursts of a pill morph
-     * into one retarget per tick. lastTarget tracks the previous settled anchor
+     * whose change handlers fire mid-cascade in unspecified order (and `anchor`
+     * rides on both). Deciding synchronously would read a stale partner value
+     * (a far form change sees dd≈0 against the not-yet-updated anchor and
+     * quietly degrades the flight to an in-place morph). Qt.callLater defers
+     * the decision until both bindings have settled, and collapses the
+     * per-frame handler bursts of a pill morph into one retarget per tick.
+     * lastTarget tracks the previous settled anchor
      * so a mid-flight DISCRETE hop (mixer focus jump, seek snap) is told apart
      * from a morph slide and handed to a glide rather than teleporting the
      * airborne bead.
@@ -277,19 +337,22 @@ Item {
         } else {
             retarget();
         }
-        lastTarget = Qt.point(point.x, point.y);
+        lastTarget = Qt.point(anchor.x, anchor.y);
     }
 
-    onPointChanged: Qt.callLater(root.decide)
+    // The clamped anchor, not the raw point, is what the timeline chases: a
+    // host point that moves entirely inside the same clamped spot (a header
+    // relayout under a pinned flame) is not a move worth re-deciding.
+    onAnchorChanged: Qt.callLater(root.decide)
     onFormChanged: Qt.callLater(root.decide)
     onHeatChanged: canvas.requestPaint()
 
     Component.onCompleted: {
-        bx = point.x;
-        by = point.y;
+        bx = anchor.x;
+        by = anchor.y;
         activeForm = form;
         hidden = form === "off";
-        lastTarget = Qt.point(point.x, point.y);
+        lastTarget = Qt.point(anchor.x, anchor.y);
     }
 
     NumberAnimation {
@@ -318,7 +381,7 @@ Item {
         from: 1
         to: 0
         duration: Math.round(350 * Motion.mult)
-        easing.type: Easing.OutCubic
+        easing.type: Motion.easeStandard
     }
 
     NumberAnimation {
@@ -328,7 +391,7 @@ Item {
         from: 0
         to: 1
         duration: Motion.glide
-        easing.type: Easing.OutCubic
+        easing.type: Motion.easeStandard
     }
 
     onProgChanged: {
@@ -341,16 +404,16 @@ Item {
             phase = "fly";
             updateFlightGeo();
             const u = easeInOutQuint((prog - pAntic) / (pFly - pAntic));
-            const p = bez(fromPoint, ctrlPoint, point, u);
+            const p = bez(fromPoint, ctrlPoint, anchor, u);
             bx = p.x;
             by = p.y;
         } else {
             if (phase === "fly")
-                flightAng = Math.atan2(point.y - ctrlPoint.y, point.x - ctrlPoint.x);
+                flightAng = Math.atan2(anchor.y - ctrlPoint.y, anchor.x - ctrlPoint.x);
             phase = prog >= 1 ? "idle" : "settle";
             if (!gliding) {
-                bx = point.x;
-                by = point.y;
+                bx = anchor.x;
+                by = anchor.y;
             }
         }
     }
@@ -471,8 +534,8 @@ Item {
                 for (let i = 0; i < NSEG; i++) {
                     const u1 = tail + (u - tail) * (i / NSEG);
                     const u2 = tail + (u - tail) * ((i + 1) / NSEG);
-                    const a2 = root.bez(root.fromPoint, root.ctrlPoint, root.point, u1);
-                    const b2 = root.bez(root.fromPoint, root.ctrlPoint, root.point, u2);
+                    const a2 = root.bez(root.fromPoint, root.ctrlPoint, root.anchor, u1);
+                    const b2 = root.bez(root.fromPoint, root.ctrlPoint, root.anchor, u2);
                     const fI = i / NSEG;
                     ctx.beginPath();
                     ctx.moveTo(a2.x, a2.y);
@@ -485,7 +548,7 @@ Item {
                 }
                 ctx.globalAlpha = 1;
                 const speed = Math.sin(Math.PI * root.clamp01(q));
-                const d1 = root.bez(root.fromPoint, root.ctrlPoint, root.point, Math.min(1, u + 0.01));
+                const d1 = root.bez(root.fromPoint, root.ctrlPoint, root.anchor, Math.min(1, u + 0.01));
                 const tang = Math.atan2(d1.y - by, d1.x - bx);
                 bead(ctx, bx, by, baseR * 1.62, speed * 1.0, tang);
                 return;

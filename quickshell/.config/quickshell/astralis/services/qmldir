@@ -1,4 +1,5 @@
 singleton Backlight Backlight.qml
+singleton ArtCache ArtCache.qml
 singleton Battery Battery.qml
 singleton CameraToggle CameraToggle.qml
 singleton Cava Cava.qml
@@ -9,6 +10,7 @@ singleton Motion Motion.qml
 singleton Notifications Notifications.qml
 singleton Players Players.qml
 singleton Privacy Privacy.qml
+singleton ScreenRec ScreenRec.qml
 singleton Settings Settings.qml
 singleton Sysmon Sysmon.qml
 singleton Wallpaper Wallpaper.qml

@@ -32,6 +32,8 @@ Singleton {
     property alias uiScale: adapter.uiScale
     property alias reduceMotion: adapter.reduceMotion
     property alias uiFont: adapter.uiFont
+    property alias lockFont: adapter.lockFont
+    property alias recordBackend: adapter.recordBackend
     property alias recordCountdown: adapter.recordCountdown
     property alias recordDir: adapter.recordDir
     property alias recordFps: adapter.recordFps
@@ -47,6 +49,7 @@ Singleton {
     property alias lockBeforeSleep: adapter.lockBeforeSleep
     property alias weatherCity: adapter.weatherCity
     property alias musicViz: adapter.musicViz
+    property alias vizColorCycle: adapter.vizColorCycle
     property alias nightLightMode: adapter.nightLightMode
     property alias nightLightTemp: adapter.nightLightTemp
     property alias nightLightOnMin: adapter.nightLightOnMin
@@ -121,6 +124,39 @@ Singleton {
         id: rfkillProc
     }
 
+    /**
+     * May we overwrite what is currently on disk?
+     *
+     * JsonAdapter does NOT report a malformed file as a load failure — it
+     * reports LOADED and silently falls back to every default (verified). With
+     * the write wired straight to onAdapterUpdated that is a settings shredder:
+     * one unreadable read, then the next toggle anywhere in the shell
+     * serialises defaults over the user's real file and the lot is gone, with
+     * printErrors:false keeping it silent. A read can come back unreadable
+     * without the file ever being bad — writeAdapter() is a plain truncate +
+     * write, not an atomic rename, so any second astralis process (a `qs -p`
+     * dev harness, a second daemon) that reads mid-write sees a torn file.
+     *
+     * So parse the raw text ourselves and refuse to write anything we could not
+     * read back. Empty counts as safe: there is nothing to lose, and treating
+     * it as unreadable would wedge saving forever on a legitimately empty file.
+     * `watchChanges` re-runs this on every file event, so a file that is fixed
+     * (or finishes being written) re-enables saving on its own.
+     */
+    property bool writable: false
+
+    function contentIsSane(txt) {
+        const t = (txt === undefined || txt === null) ? "" : String(txt).trim();
+        if (t.length === 0)
+            return true;
+        try {
+            const o = JSON.parse(t);
+            return o !== null && typeof o === "object" && !Array.isArray(o);
+        } catch (e) {
+            return false;
+        }
+    }
+
     FileView {
         id: file
         path: Quickshell.env("HOME") + "/.cache/astralis/flags.json"
@@ -129,14 +165,31 @@ Singleton {
         printErrors: false
 
         onFileChanged: reload()
-        onAdapterUpdated: writeAdapter()
-        onLoaded: root.airplaneReady = true
+        onAdapterUpdated: {
+            if (!root.writable)
+                return;
+            writeAdapter();
+        }
+        onLoaded: {
+            const ok = root.contentIsSane(text());
+            if (!ok && root.writable)
+                console.warn("astralis Flags: ~/.cache/astralis/flags.json did not parse — "
+                    + "holding all writes so the file on disk is preserved. "
+                    + "Fix or delete it to resume saving settings.");
+            root.writable = ok;
+            root.airplaneReady = true;
+        }
         onLoadFailed: function (error) {
             // Defer the first-run default write until mkdir has created the cache
             // dir (dirReady); mkdirProc.onExited re-runs reload() so a missing file
-            // still materialises, just after the dir exists.
-            if (error === FileViewError.FileNotFound && root.dirReady)
-                writeAdapter();
+            // still materialises, just after the dir exists. A genuinely absent
+            // file is the one case where defaults ARE the truth, so this is also
+            // where writing first becomes safe.
+            if (error === FileViewError.FileNotFound) {
+                root.writable = root.dirReady;
+                if (root.dirReady)
+                    writeAdapter();
+            }
             root.airplaneReady = true;
         }
 
@@ -154,6 +207,15 @@ Singleton {
             property real uiScale: 1.0
             property bool reduceMotion: false
             property string uiFont: ""
+            // The lock screen's DISPLAY face — the clock, the date, and the
+            // 鎖 mark. Separate from `uiFont` because the lock is the one
+            // surface in the shell that is nothing but type at display size,
+            // where a face chosen for 11px settings rows has no say. "" keeps
+            // it on the UI family, which is what it was before.
+            property string lockFont: ""
+            // "" = whichever installed recorder ScreenRec prefers; otherwise a
+            // pinned binary name (gpu-screen-recorder / wl-screenrec / wf-recorder).
+            property string recordBackend: ""
             property int recordCountdown: 5
             property string recordDir: ""
             property int recordFps: 60
@@ -168,7 +230,12 @@ Singleton {
             property int idleSuspendMin: 0
             property bool lockBeforeSleep: true
             property string weatherCity: ""
+            // Rest-pill spectrum. Deliberately NOT read by the full-screen
+            // visualizer (modules/visualizer), which is its own runtime toggle.
             property bool musicViz: true
+            // Full-screen visualizer: walk the whole wallpaper palette instead
+            // of holding one primary→tertiary→secondary gradient.
+            property bool vizColorCycle: false
             property string nightLightMode: "off"
             property int nightLightTemp: 4000
             property int nightLightOnMin: 1260

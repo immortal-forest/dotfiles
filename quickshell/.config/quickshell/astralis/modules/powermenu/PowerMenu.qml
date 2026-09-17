@@ -8,6 +8,7 @@ import "../../colors"
 import "../../services"
 import "../../config"
 import "../../pill"
+import "../../pill/m3"
 
 /**
  * astralis — full-screen session/power menu. NOT a pill surface: its own
@@ -189,6 +190,10 @@ PanelWindow {
 
             MouseArea {
                 anchors.fill: parent
+                // Full-screen dismiss scrim, not a discrete affordance — cursor
+                // signals it is clickable, but a press dip has nothing visible
+                // to scale against.
+                cursorShape: Qt.PointingHandCursor
                 onClicked: root.requestClose()
             }
         }
@@ -264,7 +269,11 @@ PanelWindow {
 
                         width: 132 * root.s
                         height: 158 * root.s
-                        scale: tile.kbFocus ? 1.04 : 1.0
+                        // Press dip multiplies onto the existing focus grow
+                        // rather than replacing it, so these highest-stakes
+                        // buttons still visibly give under a click even while
+                        // hover/keyboard focus already has them at 1.04.
+                        scale: (mouseArea.pressed ? 0.94 : 1) * (tile.kbFocus ? 1.04 : 1.0)
                         Behavior on scale {
                             NumberAnimation {
                                 duration: Motion.expressiveDefaultSpatialDur
@@ -272,6 +281,31 @@ PanelWindow {
                                 easing.bezierCurve: Motion.expressiveDefaultSpatial
                             }
                         }
+
+                        /**
+                         * These are the highest-stakes buttons in the shell, so
+                         * the announcement has to carry the CONSEQUENCE, not
+                         * just the label — and it must say that a destructive
+                         * one needs a hold, because a screen-reader user gets no
+                         * benefit at all from a heat-fill they cannot see.
+                         *
+                         * `focused` mirrors the menu's own `focusIndex` rather
+                         * than QML focus: the tiles are arrow-key navigated by
+                         * the surface, and assistive tech should follow that one
+                         * notion of "current" instead of a competing one.
+                         */
+                        Accessible.role: Accessible.Button
+                        Accessible.name: tile.modelData.label
+                        Accessible.description: tile.modelData.confirm
+                            ? "Hold to confirm — this will end your session"
+                            : "Press " + tile.modelData.hint + " or click to run"
+                        Accessible.focusable: true
+                        Accessible.focused: tile.kbFocus
+                        // Deliberately NOT wired to a press action: a
+                        // confirm-class tile must not be fireable by a single
+                        // synthetic activation when the pointer and keyboard
+                        // paths both demand a deliberate hold.
+                        Accessible.onPressAction: if (!tile.modelData.confirm) root.run(tile.modelData)
 
                         readonly property bool kbFocus: root.focusIndex === tile.index
                         readonly property bool isHover: mouseArea.containsMouse || tile.kbFocus
@@ -290,79 +324,104 @@ PanelWindow {
                                 heat.release();
                         }
 
-                        Rectangle {
+                        // The shell's ONE material (pill/Panel.qml), at tile
+                        // scale — not a hand-drawn flat Rectangle. The tonal
+                        // pair, hairline and shadow all come from the panel;
+                        // only the outline is overridden, to carry the
+                        // keyboard-focus accent.
+                        Panel {
+                            id: tileBg
                             anchors.fill: parent
+                            s: root.s
                             radius: Appearance.rounding.large * root.s
-                            color: tile.isHover ? Colors.surface_container_high : Colors.surface_container
-                            border.width: tile.kbFocus ? 2 : 1
-                            border.color: tile.kbFocus ? tile.accent : Qt.alpha(Colors.outline_variant, 0.5)
-                            Behavior on color { ColorAnimation { duration: Motion.fast } }
-                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
-                        }
+                            outlineColor: tile.kbFocus ? tile.accent : Colors.outline_variant
+                            outlineAlpha: tile.kbFocus ? 1 : 0.5
+                            outlineWidth: tile.kbFocus ? 2 : 1
 
-                        // Heat fill in a ClippingRectangle carrying the tile's
-                        // own radius (pill/surfaces/Power.qml pattern) — a
-                        // plain Rectangle's own radius clamps to height/2
-                        // while the fill is still flat, poking corners past
-                        // the tile outline on the first beat of every hold.
-                        ClippingRectangle {
-                            anchors.fill: parent
-                            anchors.margins: 1
-                            radius: (Appearance.rounding.large - 1) * root.s
-                            color: "transparent"
-
+                            // M3's state layer: the content colour at the
+                            // opacity for whichever interaction is live, NOT a
+                            // container colour swap. Hover and keyboard focus
+                            // share one function so the two navigation modes
+                            // light the tile identically.
                             Rectangle {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: parent.height * tile.hold
-                                visible: tile.holding
-                                gradient: Gradient {
-                                    GradientStop { position: 0.0; color: Qt.alpha(Colors.error, 0.6) }
-                                    GradientStop { position: 1.0; color: Qt.alpha(Colors.error, 0.12) }
+                                anchors.fill: parent
+                                radius: tileBg.effRadius
+                                color: Colors.on_surface
+                                opacity: M3.stateOpacity(mouseArea.containsMouse, mouseArea.pressed, tile.kbFocus)
+                                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+                            }
+
+                            // Heat fill in a ClippingRectangle carrying the
+                            // tile's own radius (the clipboard wipe's pattern)
+                            // — a plain Rectangle's own radius clamps to
+                            // height/2 while the fill is still flat, poking
+                            // corners past the tile outline on the first beat
+                            // of every hold.
+                            ClippingRectangle {
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                radius: (Appearance.rounding.large - 1) * root.s
+                                color: "transparent"
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: parent.height * tile.hold
+                                    visible: tile.holding
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: Qt.alpha(Colors.error, 0.6) }
+                                        GradientStop { position: 1.0; color: Qt.alpha(Colors.error, 0.12) }
+                                    }
                                 }
                             }
-                        }
 
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 10 * root.s
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 10 * root.s
 
-                            GlyphIcon {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: 44 * root.s
-                                height: 44 * root.s
-                                name: tile.modelData.glyph
-                                color: tile.holding ? Colors.on_surface : (tile.isHover ? tile.accent : Colors.on_surface_variant)
-                                stroke: 1.9
-                            }
+                                GlyphIcon {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: 44 * root.s
+                                    height: 44 * root.s
+                                    name: tile.modelData.glyph
+                                    color: tile.holding ? Colors.on_surface : (tile.isHover ? tile.accent : Colors.on_surface_variant)
+                                    stroke: 1.9
+                                    // The glyph and the label cross-fade with
+                                    // the tile rather than snapping — §6.1:
+                                    // the colours INSIDE a control follow the
+                                    // same Behavior as its container.
+                                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                                }
 
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: tile.modelData.label
-                                color: tile.isHover ? Colors.on_surface : Colors.on_surface_variant
-                                font.family: Appearance.font.family
-                                font.pixelSize: Appearance.font.sizeL * root.s
-                                font.weight: Font.DemiBold
-                            }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: tile.modelData.label
+                                    color: tile.isHover ? Colors.on_surface : Colors.on_surface_variant
+                                    font.family: Appearance.font.family
+                                    font.pixelSize: Appearance.font.sizeL * root.s
+                                    font.weight: Font.DemiBold
+                                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                                }
 
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                visible: tile.modelData.confirm
-                                text: "hold to confirm"
-                                color: Qt.alpha(Colors.error, 0.85)
-                                font.family: Appearance.font.family
-                                font.pixelSize: Appearance.font.sizeS * root.s
-                                font.weight: Font.Medium
-                            }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    visible: tile.modelData.confirm
+                                    text: "hold to confirm"
+                                    color: Qt.alpha(Colors.error, 0.85)
+                                    font.family: Appearance.font.family
+                                    font.pixelSize: Appearance.font.sizeS * root.s
+                                    font.weight: Font.Medium
+                                }
 
-                            Text {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: tile.modelData.hint
-                                color: Qt.alpha(Colors.on_surface_variant, 0.55)
-                                font.family: Appearance.font.family
-                                font.pixelSize: Appearance.font.sizeS * root.s
-                                font.features: ({ "tnum": 1 })
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: tile.modelData.hint
+                                    color: Qt.alpha(Colors.on_surface_variant, 0.55)
+                                    font.family: Appearance.font.family
+                                    font.pixelSize: Appearance.font.sizeS * root.s
+                                    font.features: ({ "tnum": 1 })
+                                }
                             }
                         }
 
@@ -371,6 +430,17 @@ PanelWindow {
                             onConfirmed: root.run(tile.modelData)
                         }
 
+                        /**
+                         * Deliberately a hand-rolled MouseArea rather than an
+                         * M3StateLayer, for two reasons that both have teeth
+                         * here: the layer's `clicked` is a single activation
+                         * and this tile needs press/release/exit separately to
+                         * drive the heat ramp; and the layer takes active focus
+                         * on click, which would move focus off `focusScope` and
+                         * kill the arrow/hjkl navigation the menu is built on.
+                         * The contract it would have carried — state layer,
+                         * press dip, cursor, Accessible — is spelled out above.
+                         */
                         MouseArea {
                             id: mouseArea
                             anchors.fill: parent
@@ -391,7 +461,12 @@ PanelWindow {
 
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: "↵ activate · hold to confirm · Esc to dismiss"
+                // Key names spelled out, never a Unicode keycap glyph: a "↵"
+                // borrowed from the UI font renders at the FONT's weight and
+                // optical size, never the icon set's, and lands beside "Esc"
+                // as a visibly different object. Words match how Esc already
+                // reads, and stay legible at sizeS where a pictogram would not.
+                text: "Enter activate · hold to confirm · Esc to dismiss"
                 color: Qt.alpha(Colors.on_surface_variant, 0.55)
                 font.family: Appearance.font.family
                 font.pixelSize: Appearance.font.sizeS * root.s

@@ -8,6 +8,7 @@ Marquee 1.0 Marquee.qml
 MinimizedTray 1.0 MinimizedTray.qml
 MusicBars 1.0 MusicBars.qml
 Osd 1.0 Osd.qml
+Panel 1.0 Panel.qml
 Pill 1.0 Pill.qml
 PillSurface 1.0 PillSurface.qml
 ScrubValue 1.0 ScrubValue.qml

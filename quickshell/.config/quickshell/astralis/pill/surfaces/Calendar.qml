@@ -51,6 +51,29 @@ PillSurface {
     property int viewYear: today.getFullYear()
     property int viewMonth: today.getMonth()
 
+    /**
+     * Absolute month ordinal, so a step across the year boundary still reads as
+     * one move in one direction. The day grid is a single live Repeater — it
+     * cannot cross-fade against itself — so a month swap replays as an ARRIVAL
+     * instead (gridFlip): the rebound cells slide in from the side the month
+     * came from, rather than 42 numbers silently blinking over. lastMonthIndex
+     * starts at -1 so the first binding pass has a sentinel to compare against
+     * instead of reading as a step backwards.
+     */
+    readonly property int monthIndex: viewYear * 12 + viewMonth
+    property int lastMonthIndex: -1
+    onMonthIndexChanged: {
+        var dir = (lastMonthIndex < 0 || monthIndex > lastMonthIndex) ? 1 : -1;
+        lastMonthIndex = monthIndex;
+        // Only while the surface is up: the month settled during construction
+        // (and any midnight roll on a closed pill) has no arrival to play, and
+        // gridFlip's id is not resolvable that early either.
+        if (open && !Motion.reduceMotion) {
+            gridFlip.dir = dir;
+            gridFlip.restart();
+        }
+    }
+
     readonly property int offset: firstWeekdayOffset(viewYear, viewMonth)
     readonly property int monthLen: daysInMonth(viewYear, viewMonth)
 
@@ -249,13 +272,27 @@ PillSurface {
     readonly property real focusX: gridPane.x + grid.x + (focusIndex % 7 + 0.5) * cellW
     readonly property real focusY: gridPane.y + grid.y + (Math.floor(focusIndex / 7) + 0.5) * (cellH + rowGap) - rowGap / 2
 
+    /**
+     * The parked ember hangs a bead's diameter BELOW the 暦 glyph box, wick
+     * rising back up into the strokes — the header glyph is the lantern
+     * carrying the flame, the same idiom Sysmon and Recorder use and the same
+     * one the pill's own hover ember uses under a status icon. It sat 3*s
+     * ABOVE the glyph before, which put the wick's ~11.3*s of ink past the
+     * pill's top edge (the Ame canvas fills the pill and cuts anything
+     * outside), leaving a bare dot stuck to the border.
+     */
     readonly property point soulPoint: {
         void width;
         void height;
         // When glyphs are hidden calGlyph drops out of the header Row (width→0),
-        // so rest the ember over the month label instead of the collapsed glyph.
-        var anchor = Flags.showGlyphs ? calGlyph : monthLabel;
-        return anchor.mapToItem(root, anchor.width / 2, -3 * s);
+        // so the ember hangs under the month label's leading letters instead of
+        // the collapsed glyph. Under, not beside: this pane's left gutter is
+        // where the weather divider hairline runs, so the sideways fallback
+        // Sysmon/Recorder use (they have the surface's own margin there) would
+        // drop the bead straight onto the seam.
+        if (Flags.showGlyphs)
+            return calGlyph.mapToItem(root, calGlyph.width / 2, calGlyph.height + 6 * s);
+        return monthLabel.mapToItem(root, 6 * s, monthLabel.height + 6 * s);
     }
 
     ameForm: focused ? "ring" : "soul"
@@ -301,6 +338,23 @@ PillSurface {
                         : (optArea.containsMouse ? Colors.surface_container_highest : "transparent")
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
 
+                    // One choice among the segment's options (SettingsSeg idiom).
+                    Accessible.role: Accessible.RadioButton
+                    Accessible.name: String(opt.modelData.label)
+                    Accessible.checkable: true
+                    Accessible.checked: opt.current
+                    Accessible.focusable: true
+                    Accessible.onPressAction: seg.picked(opt.modelData.value)
+
+                    scale: optArea.pressed ? 0.92 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+
                     Text {
                         id: optLabel
                         anchors.centerIn: parent
@@ -310,6 +364,7 @@ PillSurface {
                         font.pixelSize: 10.5 * root.s
                         font.weight: Font.Bold
                         font.letterSpacing: 0.3 * root.s
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
                     MouseArea {
@@ -404,6 +459,31 @@ PillSurface {
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: 0.8 * root.s
                         elide: Text.ElideRight
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Weather city"
+                        Accessible.description: "Tap to set a town; leave blank for automatic location"
+                        Accessible.focusable: true
+                        Accessible.onPressAction: {
+                            cityField.text = Flags.weatherCity;
+                            cityBox.editing = true;
+                            cityField.forceActiveFocus();
+                            cityField.selectAll();
+                        }
+
+                        // Pressed from the left edge: the label is anchored
+                        // across the whole box but its ink sits hard left, so a
+                        // centre dip would slide the town sideways.
+                        transformOrigin: Item.Left
+                        scale: cityArea.pressed ? 0.96 : 1
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Motion.glide
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.expressiveFastSpatial
+                            }
+                        }
                     }
                     MouseArea {
                         id: cityArea
@@ -434,6 +514,7 @@ PillSurface {
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: 0.8 * root.s
                         placeholderText: "town"
+                        Accessible.name: "Weather city"
                         placeholderTextColor: root.wxFaint
                         selectByMouse: true
                         selectionColor: Colors.primary
@@ -452,8 +533,11 @@ PillSurface {
 
                     GlyphIcon {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 11 * root.s
-                        height: 11 * root.s
+                        // 13·s — see pill/Toast.qml's dismiss icon note (a
+                        // stroked glyph below ~13·s can't rasterize thin
+                        // enough to stay crisp).
+                        width: 13 * root.s
+                        height: 13 * root.s
                         name: "droplet"
                         color: root.wxFaint
                         stroke: 1.6
@@ -523,8 +607,11 @@ PillSurface {
 
                             GlyphIcon {
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 9 * root.s
-                                height: 9 * root.s
+                                // 13·s — see pill/Toast.qml's dismiss icon
+                                // note; 9·s was well below the floor where a
+                                // stroked glyph stays legible.
+                                width: 13 * root.s
+                                height: 13 * root.s
                                 name: "droplet"
                                 color: root.wxFaint
                                 stroke: 1.6
@@ -592,16 +679,37 @@ PillSurface {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.loc.standaloneMonthName(root.viewMonth, Locale.LongFormat)
                         + " " + root.viewYear
-                    color: Colors.on_surface_variant
+                    // The label is a button with no chrome of its own, so
+                    // hover has to say so — it lifts to on_surface the same way
+                    // the nav squares' chevrons do.
+                    color: monthArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
                     font.family: Appearance.font.family
                     font.pixelSize: 11 * root.s
                     font.weight: Font.DemiBold
                     font.capitalization: Font.AllUppercase
                     font.letterSpacing: 1.0 * root.s
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Jump to today"
+                    Accessible.description: monthLabel.text
+                    Accessible.focusable: true
+                    Accessible.onPressAction: root.resetToday()
+
+                    scale: monthArea.pressed ? 0.96 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
 
                     // Tap the label to jump back to today.
                     MouseArea {
+                        id: monthArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.resetToday()
                     }
@@ -623,8 +731,28 @@ PillSurface {
                         height: 22 * root.s
                         radius: Motion.rSmall * root.s
                         color: navArea.containsMouse ? Colors.surface_container_highest : "transparent"
-                        border.width: navArea.containsMouse ? 1 : 0
-                        border.color: Qt.alpha(Colors.outline_variant, 0.9)
+                        // The outline is always drawn and only its colour
+                        // travels: toggling border.width instead snaps the ring
+                        // on with nothing to animate between.
+                        border.width: 1
+                        border.color: navArea.containsMouse
+                            ? Qt.alpha(Colors.outline_variant, 0.9) : "transparent"
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: nav.modelData < 0 ? "Previous month" : "Next month"
+                        Accessible.focusable: true
+                        Accessible.onPressAction: root.shiftMonth(nav.modelData)
+
+                        scale: navArea.pressed ? 0.92 : 1
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Motion.glide
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.expressiveFastSpatial
+                            }
+                        }
 
                         GlyphIcon {
                             anchors.centerIn: parent
@@ -633,6 +761,7 @@ PillSurface {
                             name: nav.modelData < 0 ? "chevron-left" : "chevron-right"
                             color: navArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
                             stroke: 1.8
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
 
                         MouseArea {
@@ -701,6 +830,12 @@ PillSurface {
             rowSpacing: root.rowGap
             columnSpacing: 0
 
+            // Driven by gridFlip on a month change. A Translate rather than
+            // `x`: the Grid is anchored to both pane edges, so its x is not
+            // ours to set — and the focus bead's coordinates read grid.x, so
+            // the bead holds still while the cells travel under it.
+            transform: Translate { id: gridSlide }
+
             Repeater {
                 model: 42
 
@@ -724,6 +859,29 @@ PillSurface {
                         ? root.daysInMonth(root.viewYear, root.viewMonth - 1) + dayNum
                         : dayNum - root.monthLen
 
+                    // Ghost cells (the neighbouring month's fill) are dropped
+                    // from the accessibility tree entirely rather than exposed
+                    // disabled — they carry no date this surface can act on.
+                    Accessible.ignored: !cell.inMonth
+                    Accessible.role: Accessible.Button
+                    Accessible.name: cell.inMonth ? "" + cell.dayNum + (cell.current ? ", today" : "") : ""
+                    Accessible.description: cell.inMonth && cell.hasEvent ? "Has events" : ""
+                    Accessible.selected: cell.sel
+                    Accessible.focusable: cell.inMonth
+                    Accessible.onPressAction: if (cell.inMonth) root.selectDay(cell.dayNum)
+
+                    // Shallower than a tile's dip: a square this small reads as
+                    // a twitch at 0.96. Ghost cells never press — their
+                    // MouseArea is disabled, so `pressed` stays false there.
+                    scale: cellArea.pressed ? 0.94 : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+
                     Rectangle {
                         anchors.centerIn: parent
                         width: 22 * root.s
@@ -731,6 +889,7 @@ PillSurface {
                         radius: Motion.rSmall * root.s
                         color: cellArea.containsMouse && cell.inMonth && !cell.current
                             ? Qt.alpha(Colors.on_surface, 0.04) : "transparent"
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
 
                     Rectangle {
@@ -738,12 +897,20 @@ PillSurface {
                         width: 24 * root.s
                         height: 24 * root.s
                         radius: Motion.rSmall * root.s
-                        visible: cell.current || cell.sel
+                        // Faded, not flipped. Kept on the short hover duration
+                        // rather than the slower state cross-fade because while
+                        // a span is being armed this repaints under the moving
+                        // pointer, and 300ms would smear across the row.
+                        opacity: (cell.current || cell.sel) ? 1 : 0
+                        visible: opacity > 0.01
                         color: cell.sel && !cell.current
                             ? Qt.alpha(Colors.tertiary, 0.12) : Qt.alpha(Colors.primary, 0.14)
                         border.width: 1
                         border.color: cell.selEdge ? Qt.alpha(Colors.tertiary, 0.55)
                             : (cell.sel ? Qt.alpha(Colors.tertiary, 0.22) : Colors.primary)
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
                     }
 
                     Text {
@@ -759,6 +926,8 @@ PillSurface {
                         font.pixelSize: 11 * root.s
                         font.weight: cell.current || cell.hasEvent ? Font.DemiBold : Font.Normal
                         font.features: ({ "tnum": 1 })
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
                     }
 
                     // Ember dot for a day holding a stored event.
@@ -766,11 +935,13 @@ PillSurface {
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.top: parent.verticalCenter
                         anchors.topMargin: 9 * root.s
-                        visible: cell.hasEvent && !cell.current
+                        opacity: cell.hasEvent && !cell.current ? 1 : 0
+                        visible: opacity > 0.01
                         width: 3 * root.s
                         height: 3 * root.s
                         radius: width / 2
                         color: Colors.tertiary
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
                     }
 
                     MouseArea {
@@ -791,6 +962,36 @@ PillSurface {
             }
         }
 
+        /**
+         * The month arrival. The cells are already rewritten by the time this
+         * runs, so there is nothing left to fade OUT — it starts the new month
+         * offset and transparent and walks it home, which reads as the grid
+         * turning a page in the direction of travel.
+         */
+        SequentialAnimation {
+            id: gridFlip
+            property int dir: 1
+            PropertyAction { target: gridSlide; property: "x"; value: gridFlip.dir * 16 * root.s }
+            PropertyAction { target: grid; property: "opacity"; value: 0 }
+            ParallelAnimation {
+                NumberAnimation {
+                    target: gridSlide
+                    property: "x"
+                    to: 0
+                    duration: Motion.morph
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveDefaultSpatial
+                }
+                NumberAnimation {
+                    target: grid
+                    property: "opacity"
+                    to: 1
+                    duration: Motion.standard
+                    easing.type: Motion.easeStandard
+                }
+            }
+        }
+
         // Click the leftover strip under the grid to drop the selection.
         MouseArea {
             anchors.left: parent.left
@@ -798,7 +999,17 @@ PillSurface {
             anchors.top: grid.bottom
             anchors.bottom: parent.bottom
             enabled: root.editorShown && !root.pickingEnd
+            cursorShape: Qt.PointingHandCursor
             onClicked: {
+                root.selectedDate = "";
+                root.selEndDate = "";
+                root.pickingEnd = false;
+            }
+
+            Accessible.role: Accessible.Button
+            Accessible.name: "Clear date selection"
+            Accessible.focusable: root.editorShown && !root.pickingEnd
+            Accessible.onPressAction: {
                 root.selectedDate = "";
                 root.selEndDate = "";
                 root.pickingEnd = false;
@@ -809,7 +1020,9 @@ PillSurface {
             anchors.horizontalCenter: grid.horizontalCenter
             anchors.top: grid.bottom
             anchors.topMargin: 6 * root.s
-            visible: root.pickingEnd
+            opacity: root.pickingEnd ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
             text: "click the end day"
             color: Colors.tertiary
             font.family: Appearance.font.family
@@ -1007,10 +1220,32 @@ PillSurface {
                         Rectangle {
                             id: evRow
                             required property var modelData
+                            required property int index
                             width: edList.width
                             height: evBody.implicitHeight + 12 * root.s
                             radius: Motion.rSmall * root.s
                             color: evArea.hovered ? Colors.surface_container_highest : "transparent"
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                            /**
+                             * Entrance cascade. The model only swaps on a
+                             * discrete act — picking a day, adding or deleting
+                             * an event — never per keystroke, so the wave reads
+                             * as the day's list arriving rather than replaying
+                             * under the user's hands.
+                             */
+                            property bool entered: false
+                            opacity: evRow.entered ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                            transform: Translate {
+                                y: evRow.entered ? 0 : 10 * root.s
+                                Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                            }
+                            Timer {
+                                interval: Motion.rowStagger * Math.min(evRow.index, 10)
+                                running: true
+                                onTriggered: evRow.entered = true
+                            }
 
                             /** "all day" or "09:00–10:00", a date span when multi-day, "every year" when recurring. */
                             readonly property string meta: {
@@ -1085,11 +1320,27 @@ PillSurface {
                                 opacity: evArea.hovered ? 1 : 0.32
                                 Behavior on opacity { NumberAnimation { duration: Motion.fast } }
 
+                                Accessible.role: Accessible.Button
+                                Accessible.name: "Remove event"
+                                Accessible.description: evRow.modelData.text
+                                Accessible.focusable: true
+                                Accessible.onPressAction: Events.remove(evRow.modelData.id)
+
+                                scale: delArea.pressed ? 0.92 : 1
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: Motion.glide
+                                        easing.type: Motion.easeBezier
+                                        easing.bezierCurve: Motion.expressiveFastSpatial
+                                    }
+                                }
+
                                 GlyphIcon {
                                     anchors.fill: parent
                                     name: "close"
                                     color: delArea.containsMouse ? Colors.tertiary : Colors.on_surface_variant
                                     stroke: 1.6
+                                    Behavior on color { ColorAnimation { duration: Motion.fast } }
                                 }
 
                                 MouseArea {
@@ -1139,6 +1390,7 @@ PillSurface {
                             font.family: Appearance.font.family
                             font.pixelSize: 13 * root.s
                             placeholderText: "what's on"
+                            Accessible.name: "Event title"
                             placeholderTextColor: root.wxFaint
                             selectByMouse: true
                             selectionColor: Colors.primary
@@ -1168,6 +1420,22 @@ PillSurface {
                         border.width: 1
                         border.color: armed ? Qt.alpha(Colors.tertiary, 0.5) : Qt.alpha(Colors.outline_variant, 0.9)
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Add event"
+                        Accessible.description: addBtn.armed ? "" : "Enter a title first"
+                        Accessible.focusable: true
+                        Accessible.onPressAction: editor.commit()
+
+                        scale: addArea.pressed ? 0.92 : 1
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Motion.glide
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.expressiveFastSpatial
+                            }
+                        }
 
                         Text {
                             anchors.centerIn: parent
@@ -1176,6 +1444,7 @@ PillSurface {
                             font.family: Appearance.font.family
                             font.pixelSize: 18 * root.s
                             font.weight: Font.Medium
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
 
                         MouseArea {
@@ -1218,6 +1487,7 @@ PillSurface {
                             font.pixelSize: 13 * root.s
                             font.features: ({ "tnum": 1 })
                             placeholderText: "09:00"
+                            Accessible.name: "Start time"
                             placeholderTextColor: root.wxFaint
                             inputMethodHints: Qt.ImhPreferNumbers
                             selectByMouse: true
@@ -1252,6 +1522,7 @@ PillSurface {
                             font.pixelSize: 13 * root.s
                             font.features: ({ "tnum": 1 })
                             placeholderText: "until"
+                            Accessible.name: "End time"
                             placeholderTextColor: root.wxFaint
                             inputMethodHints: Qt.ImhPreferNumbers
                             selectByMouse: true
@@ -1331,6 +1602,7 @@ PillSurface {
                                 font.pixelSize: 11 * root.s
                                 font.weight: Font.Medium
                                 font.features: ({ "tnum": 1 })
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
                             }
                         }
                     }
@@ -1346,6 +1618,32 @@ PillSurface {
                         border.width: 1
                         border.color: armed ? Qt.alpha(Colors.tertiary, 0.5) : Qt.alpha(Colors.outline_variant, 0.9)
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: root.pickingEnd ? "Picking end day"
+                            : (root.selEndDate.length > 0 ? "Edit date range" : "Extend to multiple days")
+                        Accessible.checkable: true
+                        Accessible.checked: extendBtn.armed
+                        Accessible.focusable: true
+                        Accessible.onPressAction: {
+                            if (root.pickingEnd) {
+                                root.pickingEnd = false;
+                                root.hoverDay = 0;
+                            } else {
+                                root.selEndDate = "";
+                                root.pickingEnd = true;
+                            }
+                        }
+
+                        scale: extendArea.pressed ? 0.92 : 1
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Motion.glide
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.expressiveFastSpatial
+                            }
+                        }
 
                         Text {
                             id: extendLabel
@@ -1356,9 +1654,11 @@ PillSurface {
                             font.pixelSize: 10.5 * root.s
                             font.weight: Font.Bold
                             font.letterSpacing: 0.3 * root.s
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
 
                         MouseArea {
+                            id: extendArea
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
@@ -1380,11 +1680,26 @@ PillSurface {
                         height: 16 * root.s
                         visible: root.selEndDate.length > 0 && !root.pickingEnd
 
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Clear date range"
+                        Accessible.focusable: clearSpan.visible
+                        Accessible.onPressAction: root.selEndDate = ""
+
+                        scale: clearArea.pressed ? 0.92 : 1
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Motion.glide
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.expressiveFastSpatial
+                            }
+                        }
+
                         GlyphIcon {
                             anchors.fill: parent
                             name: "close"
                             color: clearArea.containsMouse ? Colors.tertiary : Colors.on_surface_variant
                             stroke: 1.6
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
                         MouseArea {
                             id: clearArea

@@ -6,6 +6,7 @@ import ".."
 import "../../colors"
 import "../../services"
 import "../../services" as Services
+import "../../config"
 
 /**
  * astralis — 動 ANIMATION settings page (ported from Ricelin
@@ -54,10 +55,42 @@ SettingsPage {
     property real cx2: 0.1
     property real cy2: 1.05
 
+    /**
+     * "Spring" and "Bouncy" are lifted straight from Motion.qml's own curves
+     * (expressiveFastSpatial, a classic overshoot-and-settle "back" ease)
+     * rather than invented fresh — picking one of these makes window motion
+     * move on the SAME curve the shell's own controls already do, instead of
+     * the two motion languages just happening to coexist. "Sharp" is M3's
+     * sharp/decisive curve (steep in, steep out — the opposite temperament
+     * from "Smooth"), included because every existing preset before it eased
+     * gently in some direction; a fast, no-nonsense option was the missing
+     * end of the range, not just another variation in the middle of it.
+     *
+     * Labelled "Spring", not "Expressive": six full-word options in this
+     * segmented control have to fit the real settings content pane
+     * (~367px, verified by actually rendering `SettingsSeg` at that exact
+     * width before landing on this — see the git history on this file for
+     * the harness). "Expressive" alone ran the whole row past that width,
+     * which is exactly the overlap that shipped and had to be reverted;
+     * every other label here is 5-6 characters and "Spring" reads just as
+     * true for an overshoot curve while actually fitting the row.
+     *
+     * Each preset is now a full BUNDLE, not just a curve shape: `winStyle`
+     * (windows/windowsIn/windowsOut — Hyprland has one style axis across all
+     * three, only curve/speed differ per leaf) and `wsStyle` (workspaces'
+     * own, independent axis). A curve alone still moved everything on the
+     * same slide; picking "Bouncy" now actually pops windows in and swaps
+     * workspaces differently than "Smooth" does, which is the point of
+     * calling these presets for "the entire Hyprland setup" rather than
+     * just a bezier picker with a different name.
+     */
     readonly property var presets: [
-        { label: "Smooth", x1: 0.23, y1: 1.0, x2: 0.32, y2: 1.0 },
-        { label: "Snappy", x1: 0.15, y1: 0.0, x2: 0.1, y2: 1.0 },
-        { label: "Linear", x1: 0.33, y1: 0.33, x2: 0.66, y2: 0.66 }
+        { label: "Smooth", x1: 0.23, y1: 1.0, x2: 0.32, y2: 1.0, winStyle: "slide", wsStyle: "slide" },
+        { label: "Snappy", x1: 0.15, y1: 0.0, x2: 0.1, y2: 1.0, winStyle: "popin 80%", wsStyle: "slide" },
+        { label: "Linear", x1: 0.33, y1: 0.33, x2: 0.66, y2: 0.66, winStyle: "slide", wsStyle: "fade" },
+        { label: "Spring", x1: 0.42, y1: 1.67, x2: 0.21, y2: 0.9, winStyle: "popin 70%", wsStyle: "slidefade 15%" },
+        { label: "Bouncy", x1: 0.34, y1: 1.56, x2: 0.64, y2: 1.0, winStyle: "popin 60%", wsStyle: "slidevert" },
+        { label: "Sharp", x1: 0.4, y1: 0.0, x2: 0.6, y2: 1.0, winStyle: "slide", wsStyle: "slide" }
     ]
 
     onActiveChanged: {
@@ -83,8 +116,21 @@ SettingsPage {
             root.cx2 = c[2];
             root.cy2 = c[3];
         }
+        root.winStyle = root.setStore.get("animWindowStyle");
+        root.wsStyle = root.setStore.get("animWorkspaceStyle");
         root.base = { speed: root.speed, cx1: root.cx1, cy1: root.cy1, cx2: root.cx2, cy2: root.cy2 };
         root.loaded = true;
+    }
+
+    /** Current window/workspace style — set only by picking a preset (see the doc on `presets`). */
+    property string winStyle: "slide"
+    property string wsStyle: ""
+
+    function writeStyle(winSt, wsSt) {
+        root.winStyle = winSt;
+        root.wsStyle = wsSt;
+        root.setStore.set("animWindowStyle", winSt);
+        root.setStore.set("animWorkspaceStyle", wsSt);
     }
 
     // The singleton, hoisted once (`Settings` unqualified would shadow-clash
@@ -305,6 +351,16 @@ SettingsPage {
                         border.width: 2
                         border.color: Colors.primary
 
+                        // A 2D bezier control point — Accessible has no
+                        // notion of a 2D range (or any value interface, see
+                        // quickshell-core.md §9b), so this identifies as a
+                        // slider and reports both coordinates in
+                        // `description` rather than claiming a single axis.
+                        Accessible.role: Accessible.Slider
+                        Accessible.name: "Curve handle 1, start control point"
+                        Accessible.description: "x " + root.cx1.toFixed(2) + ", y " + root.cy1.toFixed(2)
+                        Accessible.focusable: true
+
                         DragHandler {
                             id: h1drag
                             target: h1
@@ -326,6 +382,12 @@ SettingsPage {
                         color: h2drag.active ? Colors.on_primary : Colors.on_surface
                         border.width: 2
                         border.color: Colors.primary
+
+                        // Same reasoning as h1 above.
+                        Accessible.role: Accessible.Slider
+                        Accessible.name: "Curve handle 2, end control point"
+                        Accessible.description: "x " + root.cx2.toFixed(2) + ", y " + root.cy2.toFixed(2)
+                        Accessible.focusable: true
 
                         DragHandler {
                             id: h2drag
@@ -353,6 +415,14 @@ SettingsPage {
                     color: revertArea.containsMouse ? Colors.on_surface : Qt.alpha(Colors.primary, 0.6)
                     stroke: 1.9
 
+                    // Only reachable while the curve has actually drifted
+                    // from the session-open snapshot (mirrors `visible`).
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Revert curve"
+                    Accessible.description: "Restores the curve to the values from when this page opened"
+                    Accessible.focusable: editor.dirty
+                    Accessible.onPressAction: revertArea.clicked(null)
+
                     MouseArea {
                         id: revertArea
                         anchors.fill: parent
@@ -371,16 +441,39 @@ SettingsPage {
                 }
             }
 
-            SettingsRow {
-                surface: root
-                name: "Preset"
-                sub: "Drop in a ready-made curve"
-                captionOnFocus: true
-                icon: "waves"
+            SettingsGroupLabel {
+                s: root.s
+                text: "Preset"
                 visible: root.animOn
-                last: true
+            }
+
+            /**
+             * Full-width section, like the curve editor above it — NOT a
+             * SettingsRow trailing control. Six full-word options in a
+             * SettingsSeg need close to the whole content pane's width
+             * (verified against the real ~367px pane before shipping this;
+             * see the doc on `presets`); squeezed into a row's trailing slot
+             * next to an icon, a name and a caption, they overlapped all of
+             * it instead of sitting in their own space.
+             */
+            Column {
+                width: parent.width
+                visible: root.animOn
+                spacing: 6 * root.s
+
+                Text {
+                    x: 12 * root.s
+                    width: parent.width - 24 * root.s
+                    text: "A complete feel — curve, window pop-in, workspace swap"
+                    color: Qt.alpha(Colors.on_surface_variant, 0.85)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 10.5 * root.s
+                    wrapMode: Text.WordWrap
+                    lineHeight: 1.2
+                }
 
                 SettingsSeg {
+                    x: 12 * root.s
                     s: root.s
                     options: root.presets.map(function (p) { return { label: p.label, value: p.label }; })
                     value: ""
@@ -394,11 +487,14 @@ SettingsPage {
                                 root.cy2 = p.y2;
                                 editor.syncHandles();
                                 root.writeCurve();
+                                root.writeStyle(p.winStyle, p.wsStyle);
                                 break;
                             }
                         }
                     }
                 }
+
+                Item { width: 1; height: 6 * root.s }
             }
 
             Item { width: 1; height: 10 * root.s }

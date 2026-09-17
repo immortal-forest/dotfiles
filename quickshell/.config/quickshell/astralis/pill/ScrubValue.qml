@@ -29,6 +29,63 @@ Item {
     property real s: 1
     signal edited(real value)
 
+    /**
+     * Name a screen reader announces. Left empty the control is still reported
+     * as a slider with its value, just unlabelled — the owning SettingsRow's
+     * name is the natural thing to pass in.
+     */
+    property string accessibleName: ""
+
+    /**
+     * Keyboard. This control was mouse-only: you could drag it or tap its ends,
+     * and that was the whole vocabulary — which meant every numeric setting in
+     * the shell was unreachable without a pointer. The standard slider keys
+     * work here now, and `activeFocusOnTab` puts it in the tab order so they
+     * can actually be reached.
+     *
+     * PageUp/PageDown move by a tenth of the range rather than by `step`, since
+     * a range like 0..255 in steps of 1 would otherwise need 255 keypresses.
+     */
+    readonly property real pageStep: Math.max(root.step, (root.to - root.from) / 10)
+
+    activeFocusOnTab: true
+
+    /**
+     * QML's `Accessible` attached type exposes only QAccessible's flags and
+     * actions — NOT the value interface. `Accessible.value`, `.minimumValue`,
+     * `.maximumValue` and `.stepSize` do not exist here and assigning any of
+     * them is a hard load failure, not a warning (verified against this Qt
+     * build). The readable number therefore goes in `description`, and the
+     * increase/decrease ACTIONS are what let assistive tech drive the control.
+     */
+    Accessible.role: Accessible.Slider
+    Accessible.name: root.accessibleName
+    Accessible.description: (root.fmt ? root.fmt(root.value) : root.value.toFixed(root.decimals))
+        + (root.unit.length > 0 ? " " + root.unit : "")
+        + " (" + root.from + " to " + root.to + ")"
+    Accessible.focusable: true
+    Accessible.onIncreaseAction: root.bump(1)
+    Accessible.onDecreaseAction: root.bump(-1)
+
+    Keys.onPressed: function (event) {
+        var n = root.value;
+        switch (event.key) {
+        case Qt.Key_Left:
+        case Qt.Key_Down:     n = root.value - root.step; break;
+        case Qt.Key_Right:
+        case Qt.Key_Up:       n = root.value + root.step; break;
+        case Qt.Key_PageDown: n = root.value - root.pageStep; break;
+        case Qt.Key_PageUp:   n = root.value + root.pageStep; break;
+        case Qt.Key_Home:     n = root.from; break;
+        case Qt.Key_End:      n = root.to; break;
+        default: return;
+        }
+        event.accepted = true;
+        var snapped = root.snap(n);
+        if (snapped !== root.value)
+            root.edited(snapped);
+    }
+
     /** Optional value-to-text mapper. When set it owns the label, so the raw number and unit step aside (used for HH:MM schedule scrubs). */
     property var fmt: null
 
@@ -41,7 +98,11 @@ Item {
     property var openValue: undefined
     readonly property bool dirty: openValue !== undefined && !isNaN(openValue) && root.value !== openValue
 
-    readonly property bool hovered: hh.hovered || scrub.containsMouse || scrub.pressed || undoMA.containsMouse
+    // Keyboard focus counts as "awake" alongside hover: a tab-focused control
+    // that still showed only a bare number gave no hint that the arrow keys
+    // now do anything.
+    readonly property bool hovered: hh.hovered || scrub.containsMouse || scrub.pressed
+        || undoMA.containsMouse || root.activeFocus
     readonly property real pxPerStep: 8 * root.s
 
     /**
@@ -85,6 +146,22 @@ Item {
         radius: Motion.rSmall * root.s
         color: Qt.alpha(Colors.primary, root.hovered ? 0.14 : 0)
         Behavior on color { ColorAnimation { duration: Motion.fast } }
+    }
+
+    // Keyboard focus ring, same shape as the m3/ components use
+    // (md-comp-focus-ring: 3dp of `secondary`, sitting 2dp clear of the edge).
+    // Only for real focus, never for hover — a ring that followed the mouse
+    // would fight the fill above rather than mean anything.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -3.5 * root.s
+        radius: (Motion.rSmall + 3.5) * root.s
+        color: "transparent"
+        border.width: 3 * root.s
+        border.color: Colors.secondary
+        opacity: root.activeFocus ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
     }
 
     /**
@@ -172,8 +249,9 @@ Item {
             clip: true
             stroke: 1.9
             color: undoMA.containsMouse ? Colors.on_surface : Qt.alpha(Colors.primary, 0.55)
-            Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+            Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
             MouseArea {
                 id: undoMA
@@ -186,19 +264,39 @@ Item {
             }
         }
 
-        Text {
+        // A GlyphIcon, not the "−" character. Borrowing a symbol from the UI
+        // font gave these buttons the FONT's weight and optical size while
+        // every other icon in the shell carries the icon set's, so the two
+        // ends of this control never matched the rest of the surface.
+        // The reserved width is a constant rather than the glyph's own
+        // implicit width — a width bound to the implicit width it feeds is a
+        // binding loop, and it is also why this had to `clip`.
+        GlyphIcon {
             id: minusG
             anchors.verticalCenter: parent.verticalCenter
-            text: "−"
-            width: root.hovered ? implicitWidth : 0
+            name: "minus"
+            height: 13 * root.s
+            width: root.hovered ? 13 * root.s : 0
             opacity: root.hovered ? 1 : 0
             clip: true
+            stroke: 2
             color: root.overMinus ? Colors.on_surface : Qt.alpha(Colors.primary, 0.6)
-            font.family: Appearance.font.family
-            font.pixelSize: 15 * root.s
-            font.weight: Font.Medium
-            Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            // The end glyphs are the control's buttons — a tap here steps the
+            // value — so they answer the press the way every other button in the
+            // shell does. Keyed on `overMinus` (which already means "pointer is
+            // over this end"), so a press that lands mid-control to start a drag
+            // never dips a glyph it isn't stepping.
+            scale: (scrub.pressed && root.overMinus) ? 0.86 : 1
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
+                }
+            }
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+            Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
         }
 
         Item {
@@ -233,19 +331,35 @@ Item {
             }
         }
 
-        Text {
+        // A GlyphIcon, not the "+" character. Borrowing a symbol from the UI
+        // font gave these buttons the FONT's weight and optical size while
+        // every other icon in the shell carries the icon set's, so the two
+        // ends of this control never matched the rest of the surface.
+        // The reserved width is a constant rather than the glyph's own
+        // implicit width — a width bound to the implicit width it feeds is a
+        // binding loop, and it is also why this had to `clip`.
+        GlyphIcon {
             id: plusG
             anchors.verticalCenter: parent.verticalCenter
-            text: "+"
-            width: root.hovered ? implicitWidth : 0
+            name: "plus"
+            height: 13 * root.s
+            width: root.hovered ? 13 * root.s : 0
             opacity: root.hovered ? 1 : 0
             clip: true
+            stroke: 2
             color: root.overPlus ? Colors.on_surface : Qt.alpha(Colors.primary, 0.6)
-            font.family: Appearance.font.family
-            font.pixelSize: 15 * root.s
-            font.weight: Font.Medium
-            Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            // Mirror of the − glyph above: this end is a button too.
+            scale: (scrub.pressed && root.overPlus) ? 0.86 : 1
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
+                }
+            }
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+            Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
         }
     }
 }

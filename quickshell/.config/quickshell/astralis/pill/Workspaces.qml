@@ -164,6 +164,20 @@ Item {
                 readonly property bool isActive: workspaces.activeName === wsName
                 readonly property bool hasWindows: !!workspaces.occupied[parseInt(wsName)]
 
+                // Each pip is a page in a radio group — exactly one workspace
+                // is current, and clicking one switches to it. Saying so lets
+                // assistive tech announce which of N you are on; a bare row of
+                // 6px dots is otherwise unreadable. No press dip: on a dot this
+                // small a scale change is invisible and only fights the
+                // hover/occupancy swell the pip already does.
+                Accessible.role: Accessible.PageTab
+                Accessible.name: "Workspace " + slot.wsName
+                Accessible.description: slot.isActive ? "Current workspace"
+                    : (slot.hasWindows ? "Has windows" : "Empty")
+                Accessible.checkable: true
+                Accessible.checked: slot.isActive
+                Accessible.onPressAction: Hyprland.dispatch("workspace " + slot.wsName)
+
                 Layout.preferredWidth: slot.isActive ? workspaces.stickW : workspaces.dotW
                 Layout.preferredHeight: 22 * workspaces.s
                 Behavior on Layout.preferredWidth { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
@@ -182,7 +196,7 @@ Item {
                     opacity: slot.isActive ? 1.0
                         : (slot.hasWindows ? (area.containsMouse ? 1.0 : 0.85)
                                            : (area.containsMouse ? 0.7 : 0.32))
-                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                     Behavior on height { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
                 }

@@ -66,6 +66,19 @@ Item {
         onTextChanged: root.sync()
     }
 
+    /**
+     * The durations here deliberately do NOT carry `Motion.mult`, and that is
+     * not an oversight the next contract sweep should fix.
+     *
+     * `Motion.mult` exists to shorten animations under reduce-motion. This
+     * animation does not run under reduce-motion at ALL — `start()` below
+     * gates on `!Motion.reduceMotion` — so multiplying through it would only
+     * ever change the speed of a marquee that a reduce-motion user is not
+     * being shown. And the wrong way: scaling by 0.4 would make the text
+     * scroll two and a half times FASTER, which is the opposite of what the
+     * setting asks for. A marquee's answer to reduce-motion is to stop, not to
+     * hurry.
+     */
     SequentialAnimation {
         id: anim
         loops: Animation.Infinite

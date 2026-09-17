@@ -3,9 +3,49 @@
 /**
  * astralis — shared vector glyph dictionary for pill/GlyphIcon.qml. Baked SVG
  * path data in a 24x24 space; each entry is { d, fill }. Hoisted here as a
- * `.pragma library` module so the ~60-entry map is allocated ONCE for the whole
- * shell instead of per GlyphIcon instance. Pure data (path strings) — no QML
- * context needed. Read as `Glyphs.glyphs[name]`.
+ * `.pragma library` module so the map is allocated ONCE for the whole shell
+ * instead of per GlyphIcon instance. Pure data (path strings) — no QML context
+ * needed. Read as `Glyphs.glyphs[name]`.
+ *
+ * ── THIS IS THE SHELL'S ONLY ICON SET ─────────────────────────────────────
+ *
+ * astralis used to draw icons four different ways, and that — not any single
+ * badly-chosen glyph — is where its "odd ones out" came from:
+ *
+ *   1. these baked paths
+ *   2. Material Symbols Rounded ligatures
+ *   3. Japanese kanji
+ *   4. raw Unicode characters (− + × ✕ ↵ ↑ ↓ ▾ ⇪) set in the UI font
+ *
+ * A Unicode symbol borrowed from the UI font renders at the FONT's weight,
+ * metrics and optical size, never the icon set's, so it lands beside a real
+ * icon as a visibly different object no matter how it is sized or coloured.
+ * That is why those spots could not be fixed by tuning them.
+ *
+ * The rule now:
+ *
+ *   GLYPHICON  every functional icon — buttons, status, actions, affordances.
+ *              This file. Add a path here rather than reaching for a
+ *              character; four were added for exactly that reason (minus,
+ *              plus, arrow-down, caps-lock), three more to retire the last
+ *              Material Symbols call sites (heart, heart-filled, image), and
+ *              `plane` to retire the last hand-drawn Shape (surfaces/Link.qml
+ *              was carrying its own airplane path because this table had none).
+ *
+ *   KANJI      identity marks ONLY, in `Appearance.font.jp` — one per surface,
+ *              in its header, naming it (時 控 系 繋 報 調 探 録 電 静 払 掃
+ *              鎖 音 開). Never a button, never a status.
+ *
+ *   DOTS       "something is live, selected or present" — workspace dots, the
+ *              unread badge, the privacy indicators, the capture chip, the
+ *              lock's accent colon, the Ame bead. A dot beats a 13dp pictogram
+ *              nobody can resolve.
+ *
+ *   BANNED     Material Symbols (zero call sites remain), and Unicode symbols
+ *              used AS ICONS. Unicode as LANGUAGE is fine and stays:
+ *              "1920 × 1080", "×3", "+2 MORE" are text, not iconography.
+ *
+ * A name not in this file renders NOTHING, silently — check before you use one.
  */
 var glyphs = ({
     "sun": { d: "M16 12a4 4 0 1 0-8 0a4 4 0 1 0 8 0 M12 2v2 M12 20v2 M4.2 4.2l1.4 1.4 M18.4 18.4l1.4 1.4 M2 12h2 M20 12h2 M4.2 19.8l1.4-1.4 M18.4 5.6l1.4-1.4", fill: false },
@@ -64,6 +104,11 @@ var glyphs = ({
     "wifi": { d: "M4 9.5C9 4.8 15 4.8 20 9.5 M7 13c3-2.8 7-2.8 10 0 M11 16.8a1.4 1.4 0 1 0 2 0a1.4 1.4 0 1 0-2 0", fill: false },
     "ethernet": { d: "M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 5z M8 19h8 M12 16v3 M8 8.5v3.5 M12 8.5v3.5 M16 8.5v3.5", fill: false },
     "bluetooth": { d: "M12 2.8v18.4 M12 2.8l5.2 4.6-10.4 9 M12 21.2l5.2-4.6-10.4-9", fill: false },
+    // Airplane mode. Lived as a hand-written Shape inside surfaces/Link.qml
+    // ("PlaneGlyph") because this table had no plane — a second, parallel
+    // icon-drawing path in a file that also uses GlyphIcon. Same 24x24 stroked
+    // space, so it belongs here and the surface just names it.
+    "plane": { d: "M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z", fill: false },
     "inbox": { d: "M6 16v-5a6 6 0 0 1 12 0v5 M4 16h16 M10.5 20a1.8 1.8 0 0 0 3 0", fill: false },
     "bolt": { d: "M13 2 4 13.5h6.5L11 22l9-11.5h-6.5z", fill: false },
     "hotspot": { d: "M12 12a1.3 1.3 0 1 0 0.01 0 M8.8 8.5A5 5 0 0 0 8.8 15.5 M15.2 8.5A5 5 0 0 1 15.2 15.5 M6 6A9 9 0 0 0 6 18 M18 6A9 9 0 0 1 18 18", fill: false },
@@ -72,5 +117,20 @@ var glyphs = ({
     "cursor": { d: "M5 3l6 16 2-6 6-2L5 3z", fill: false },
     "video": { d: "M3 7.5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 15 7.5v9A1.5 1.5 0 0 1 13.5 18h-9A1.5 1.5 0 0 1 3 16.5z M15 10l6-3v10l-6-3z", fill: false },
     "record": { d: "M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z", fill: true },
-    "gamepad": { d: "M7 11h4 M9 9v4 M15.5 10h.01 M17.5 13h.01 M17 7H7a5 5 0 0 0-5 5l-.9 4.5A2.4 2.4 0 0 0 5.7 18L8 15h8l2.3 3a2.4 2.4 0 0 0 4.6-1.5L22 12a5 5 0 0 0-5-5z", fill: false }
+    "stop": { d: "M7.6 6h8.8A1.6 1.6 0 0 1 18 7.6v8.8a1.6 1.6 0 0 1-1.6 1.6H7.6A1.6 1.6 0 0 1 6 16.4V7.6A1.6 1.6 0 0 1 7.6 6z", fill: true },
+    "gamepad": { d: "M7 11h4 M9 9v4 M15.5 10h.01 M17.5 13h.01 M17 7H7a5 5 0 0 0-5 5l-.9 4.5A2.4 2.4 0 0 0 5.7 18L8 15h8l2.3 3a2.4 2.4 0 0 0 4.6-1.5L22 12a5 5 0 0 0-5-5z", fill: false },
+    // Added to retire the raw Unicode characters the shell was using as icons
+    // (− + ↓ ⇪ ▾ ✕ ↵). A text glyph borrowed from the UI font renders at the
+    // font's weight and metrics, not the icon set's, which is why those spots
+    // read as odd ones out no matter how they were sized.
+    "minus": { d: "M5 12h14", fill: false },
+    "plus": { d: "M12 5v14 M5 12h14", fill: false },
+    "arrow-down": { d: "M12 5v14 M6 13l6 6 6-6", fill: false },
+    "caps-lock": { d: "M12 4l7 7h-4v3h-6v-3H5l7-7z M9 18h6", fill: false },
+    // The last two Material Symbols call sites in the shell (the wallpaper
+    // picker's favourite hearts and its empty-state mark) resolve here now, so
+    // the second icon FAMILY is gone rather than merely reduced.
+    "heart": { d: "M12 20s-7.5-4.6-9.3-9A5.2 5.2 0 0 1 12 6.5a5.2 5.2 0 0 1 9.3 4.5C19.5 15.4 12 20 12 20z", fill: false },
+    "heart-filled": { d: "M12 20s-7.5-4.6-9.3-9A5.2 5.2 0 0 1 12 6.5a5.2 5.2 0 0 1 9.3 4.5C19.5 15.4 12 20 12 20z", fill: true },
+    "image": { d: "M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8.5 9.5a1.2 1.2 0 1 0 0 .01 M21 16l-5-5-6 6-2-2-5 5", fill: false }
 });

@@ -272,7 +272,7 @@ PillSurface {
 
             Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
             Behavior on height { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
         }
 
         Column {

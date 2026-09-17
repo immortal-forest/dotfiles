@@ -250,6 +250,16 @@ PillSurface {
             readonly property color tone: holding ? Colors.primary
                 : (wipeArea.containsMouse ? Colors.on_surface : Qt.alpha(Colors.on_surface_variant, 0.65))
 
+            // A screen-reader user gets no benefit from a heat-fill they
+            // cannot see, so the hold requirement goes in the description
+            // (PowerMenu's confirm-tile idiom). Deliberately NOT wired to a
+            // press action: a destructive hold-to-confirm control must not be
+            // fireable by a single synthetic activation.
+            Accessible.role: Accessible.Button
+            Accessible.name: "Clear clipboard history"
+            Accessible.description: "Hold to confirm — this will delete all clipboard history"
+            Accessible.focusable: true
+
             Text {
                 anchors.centerIn: parent
                 text: "掃"
@@ -332,6 +342,16 @@ PillSurface {
 
             readonly property var entry: root.results[index]
             readonly property bool selected: index === root.selectedIndex
+
+            Accessible.role: Accessible.Button
+            Accessible.name: row.entry === undefined ? "" : (row.entry.isImage ? row.entry.label : row.entry.preview)
+            Accessible.description: row.entry !== undefined && row.entry.isImage ? row.entry.sizeLabel : ""
+            Accessible.selected: row.selected
+            Accessible.focusable: true
+            Accessible.onPressAction: {
+                root.selectedIndex = row.index;
+                root.activate();
+            }
 
             HoverHandler {
                 id: rowHover
@@ -417,7 +437,12 @@ PillSurface {
                 Text {
                     id: sizeTag
                     anchors.right: tail.left
-                    anchors.rightMargin: width > 0 ? 8 * root.s : 0
+                    // Gated on the TEXT, not on `width` — `width` is itself a
+                    // binding on the same condition, and a margin that reads
+                    // the width it participates in laying out is a binding
+                    // loop ("Binding loop detected for property width"). Both
+                    // now read the one source of truth.
+                    anchors.rightMargin: sizeTag.text.length > 0 ? 8 * root.s : 0
                     anchors.verticalCenter: parent.verticalCenter
                     text: row.entry !== undefined && row.entry.isImage ? row.entry.sizeLabel : ""
                     width: text.length ? implicitWidth : 0
@@ -434,27 +459,42 @@ PillSurface {
                     width: Math.max(ret.implicitWidth, dismiss.implicitWidth)
                     height: Math.max(ret.implicitHeight, dismiss.implicitHeight)
 
-                    Text {
+                    // GlyphIcon, not the "↵" and "✕" characters these used to
+                    // be. A Unicode symbol borrowed from the UI font renders at
+                    // the FONT's weight, metrics and optical size — never the
+                    // icon set's — so it lands next to real icons as a visibly
+                    // different object no matter how it is sized or coloured.
+                    // That is where the shell's odd ones out were coming from.
+                    GlyphIcon {
                         id: ret
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         opacity: row.selected && !rowHover.hovered ? 1 : 0
-                        text: "↵"
+                        width: 14 * root.s
+                        height: 14 * root.s
+                        name: "return"
                         color: Colors.primary
-                        font.family: Appearance.font.family
-                        font.pixelSize: 12 * root.s
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                        stroke: 1.8
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                     }
 
-                    Text {
+                    GlyphIcon {
                         id: dismiss
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         opacity: rowHover.hovered ? 1 : 0
-                        text: "✕"
+                        width: 13 * root.s
+                        height: 13 * root.s
+                        name: "close"
                         color: dismissArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
-                        font.pixelSize: 10 * root.s
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                        stroke: 1.8
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Remove clipboard entry"
+                        Accessible.focusable: rowHover.hovered
+                        Accessible.onPressAction: root.removeAt(row.index)
 
                         MouseArea {
                             id: dismissArea
