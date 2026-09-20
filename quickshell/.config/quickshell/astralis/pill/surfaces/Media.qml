@@ -135,7 +135,7 @@ PillSurface {
         implicitWidth: kanjiLabel.implicitWidth
         implicitHeight: kanjiLabel.implicitHeight
         opacity: skip.can ? 1 : 0.4
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
 
         Text {
             id: kanjiLabel
@@ -362,7 +362,7 @@ PillSurface {
             anchors.fill: parent
             visible: opacity > 0.01
             opacity: root.picking ? 0 : 1
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
 
             Text {
                 id: plainSource
@@ -450,7 +450,7 @@ PillSurface {
             clip: true
             visible: opacity > 0.01
             opacity: root.picking ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
             contentWidth: pickRow.width
             contentHeight: height
             flickableDirection: Flickable.HorizontalFlick
@@ -540,7 +540,7 @@ PillSurface {
         spacing: 14 * root.s
         opacity: root.picking ? 0 : 1
         enabled: !root.picking
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
 
         KanjiSkip {
             kanjiText: "前"
@@ -561,7 +561,7 @@ PillSurface {
             Behavior on sat { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
             opacity: (sealArea.enabled ? 1 : 0.4) * (0.75 + 0.25 * sat)
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
 
             border.width: 1
             border.color: Qt.alpha(Colors.primary, 0.4 + 0.4 * root.sealPulse)

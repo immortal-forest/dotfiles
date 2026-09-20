@@ -75,7 +75,7 @@ Item {
     onBeadLitCChanged: canvas.requestPaint()   // matugen retheme repaints the bead
 
     opacity: form === "off" ? 0 : 1
-    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+    Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
     visible: opacity > 0.001
 
     readonly property real restR: 5 * s

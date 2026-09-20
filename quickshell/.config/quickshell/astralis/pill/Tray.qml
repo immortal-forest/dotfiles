@@ -253,7 +253,7 @@ Item {
                 color: mrow.expanded ? Colors.primary : Colors.on_surface_variant
                 stroke: 2
                 rotation: mrow.expanded ? 90 : 0
-                Behavior on rotation { NumberAnimation { duration: Motion.fast } }
+                Behavior on rotation { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
             }
 
             MouseArea {

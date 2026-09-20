@@ -739,7 +739,7 @@ PillSurface {
                                     : Qt.alpha(Qt.darker(Colors.primary, 1.18), 0.6))
                         }
                     }
-                    Behavior on height { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast } }
+                    Behavior on height { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                 }
             }
 
@@ -765,8 +765,8 @@ PillSurface {
                 radius: 2 * root.s
                 color: Colors.on_surface_variant
                 opacity: fader.focused ? 0 : 1
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
-                Behavior on y { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
+                Behavior on y { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
             }
 
             MouseArea {
@@ -799,7 +799,7 @@ PillSurface {
             font.pixelSize: 9 * root.s
             font.weight: Font.DemiBold
             font.features: ({ "tnum": 1 })
-            Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+            Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
         }
 
         Item {

@@ -938,7 +938,7 @@ PillSurface {
                 // Airplane blocks the radio: dim and lock the row out.
                 enabled: !root.airplaneOn
                 opacity: root.airplaneOn ? 0.4 : 1
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                 glyph: root.wired ? "ethernet" : "wifi"
                 glyphLit: root.wired || (root.wifiOn && root.wifiActive !== null)
                 label: "Network"
@@ -957,7 +957,7 @@ PillSurface {
             LinkRow {
                 enabled: !root.airplaneOn
                 opacity: root.airplaneOn ? 0.4 : 1
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                 glyph: "bluetooth"
                 glyphLit: root.btConnected.length > 0
                 label: "Bluetooth"

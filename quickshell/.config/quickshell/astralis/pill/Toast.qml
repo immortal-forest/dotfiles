@@ -125,7 +125,7 @@ Item {
         stroke: 1.9
 
         Behavior on color {
-            ColorAnimation { duration: Motion.fast }
+            ColorAnimation { duration: Motion.fast; easing.type: Motion.easeStandard }
         }
 
         scale: dismissArea.pressed ? 0.92 : 1
