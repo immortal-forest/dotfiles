@@ -62,8 +62,14 @@ Item {
     opacity: open ? (settled ? 1 : Math.pow(morphCloseness, 1.3)) : 0
     visible: opacity > 0.01
 
+    // Eases in with the open morph; clears fast on close so content is gone
+    // before the shell finishes collapsing.
     Behavior on opacity {
-        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        NumberAnimation {
+            duration: surface.open ? Motion.standard : Motion.smallDur
+            easing.type: surface.open ? Motion.easeStandard : Motion.easeBezier
+            easing.bezierCurve: Motion.emphasizedAccel
+        }
     }
 
     // ── header (only when the surface names itself) ─────────────────────────
