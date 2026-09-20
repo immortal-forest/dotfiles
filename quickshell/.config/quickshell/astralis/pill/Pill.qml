@@ -572,7 +572,11 @@ Item {
             Row {
                 id: recChip
                 anchors.verticalCenter: parent.verticalCenter
-                visible: ScreenRec.recording || ScreenRec.arming
+                // Fade in/out instead of hard-toggling (a Row skips invisible
+                // children, so gate visible on opacity).
+                opacity: (ScreenRec.recording || ScreenRec.arming) ? 1 : 0
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                 spacing: 6 * pill.s
 
                 Rectangle {
@@ -1209,6 +1213,9 @@ Item {
     Item {
         id: surfaceHost
         anchors.fill: parent
+        // Clip surface content to the morphing pill so it's swallowed on close
+        // instead of spilling past the shrinking edges.
+        clip: true
 
         Loader {
             id: ldMedia
