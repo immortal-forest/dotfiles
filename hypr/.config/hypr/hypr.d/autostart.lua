@@ -16,6 +16,8 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("wl-paste --type text --watch cliphist store")
 	hl.exec_cmd("wl-paste --type image --watch cliphist store")
 
-	-- Shell (astralis — Quickshell)
-	hl.exec_cmd("qs -c astralis")
+	-- Shell (astralis). Respawn loop: qs can abort on suspend/resume
+	-- (quickshell #1155). Restart on crash, break on clean quit, back off 5s on
+	-- a fast crash-loop so a broken config can't spin the CPU.
+	hl.exec_cmd("bash -c 'while true; do t=$(date +%s); qs -c astralis; [ $? -eq 0 ] && break; [ $(( $(date +%s) - t )) -lt 5 ] && sleep 5 || sleep 1; done'")
 end)
