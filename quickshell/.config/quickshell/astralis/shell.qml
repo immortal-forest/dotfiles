@@ -423,10 +423,11 @@ ShellRoot {
                 return null;
             }
 
+            // hasFullscreen, not lastIpcObject.hasfullscreen: the IPC object is
+            // empty {} on Hyprland 0.56.
             readonly property bool monFullscreen: {
                 var ws = hMonitor ? hMonitor.activeWorkspace : null;
-                var o = ws ? ws.lastIpcObject : null;
-                return o ? !!o.hasfullscreen : false;
+                return ws ? !!ws.hasFullscreen : false;
             }
 
             onMonFullscreenChanged: if (monFullscreen) {
