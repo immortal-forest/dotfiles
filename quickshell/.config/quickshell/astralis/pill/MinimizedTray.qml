@@ -107,7 +107,7 @@ Row {
                 smooth: true
                 source: chip.iconSrc
                 opacity: area.containsMouse ? 1 : 0.78
-                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                 scale: area.pressed ? 0.92 : 1
                 Behavior on scale {
                     NumberAnimation {

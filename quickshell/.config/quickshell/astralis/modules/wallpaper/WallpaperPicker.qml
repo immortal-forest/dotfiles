@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import "../../colors"
@@ -77,22 +78,16 @@ PanelWindow {
     // the bottom; everywhere else is frost that dismisses on click.
     anchors { left: true; right: true; top: true; bottom: true }
 
-    // ── carousel metrics (~/shell numbers, ×s) ──────────────────────────────
-    // Narrow portrait cards, tall enough to fill real screen space, gentle
-    // shear — built off the actual reference screenshots, not off a
-    // WebFetch that turned out not to match any of them.
+    // ── carousel metrics (×s) ────────────────────────────────────────────────
+    // Narrow portrait cards, tall, with a gentle shear.
     readonly property real itemW: Math.round(210 * s)
-    readonly property real itemH: Math.round(560 * s)
+    readonly property real itemH: Math.round(460 * s)
     readonly property real borderW: Math.max(2, Math.round(3 * s))
     readonly property real skewFactor: -0.22
-    // The current card's width only — height stays itemH like everyone
-    // else, so it stands out by getting a bit more presence, not by
-    // becoming a different shape. 1.8× of the (now narrow) 210 base is 378.
-    readonly property real heroW: Math.round(picker.itemW * 1.8)
-    // How far the neighbours slide clear of the widened current card, so it
-    // doesn't just sit on top of them — half the extra width it gained,
-    // plus a clean gap.
-    readonly property real heroPush: Math.round((picker.heroW - picker.itemW) / 2 + 16 * s)
+    // Current card widens only (height stays itemH); 2.2× the base.
+    readonly property real heroW: Math.round(picker.itemW * 2.2)
+    // Neighbours slide clear by half the extra width, plus a small gap.
+    readonly property real heroPush: Math.round((picker.heroW - picker.itemW) / 2 + 4 * s)
     readonly property real tabsH: Math.round(34 * s)
     readonly property real searchH: Math.round(40 * s)
     readonly property real searchGap: Math.round(14 * s)
@@ -415,12 +410,35 @@ PanelWindow {
             clip: false
             cacheBuffer: Math.min(Math.round(2000 * picker.s), 1200)    // preload neighbours (capped so large/HiDPI grids don't spike image decode)
 
+            // Edge-fade: the strip's ends dissolve into the frost instead of
+            // hard-clipping. Same MultiEffect + ShaderEffectSource idiom as
+            // pill/Marquee.qml (a bare Rectangle maskSource no-ops).
+            layer.enabled: true
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskThresholdMin: 0.0
+                maskSpreadAtMin: 1.0
+                maskSource: ShaderEffectSource {
+                    sourceItem: Rectangle {
+                        width: Math.max(1, view.width)
+                        height: Math.max(1, view.height)
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0;  color: "transparent" }
+                            GradientStop { position: 0.20; color: "black" }
+                            GradientStop { position: 0.80; color: "black" }
+                            GradientStop { position: 1.0;  color: "transparent" }
+                        }
+                    }
+                }
+            }
+
             // ~/shell centering: the current item snaps to the middle of the
             // strip; arrows and flicks always land on a centered card.
             highlightRangeMode: ListView.StrictlyEnforceRange
             preferredHighlightBegin: (width / 2) - (picker.itemW / 2)
             preferredHighlightEnd: (width / 2) + (picker.itemW / 2)
-            highlightMoveDuration: Motion.standard
+            highlightMoveDuration: Motion.morph   // unified with the card grow
             highlightMoveVelocity: -1
 
             /**
@@ -453,18 +471,18 @@ PanelWindow {
             // and out, and let the survivors glide to their new slots so the
             // strip re-centers smoothly instead of snapping.
             add: Transition {
-                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Motion.standard; easing.type: Motion.easeStandard }
-                NumberAnimation { property: "scale"; from: 0.85; to: 1; duration: Motion.standard; easing.type: Motion.easeStandard }
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Motion.morph; easing.type: Motion.easeStandard }
+                NumberAnimation { property: "scale"; from: 0.85; to: 1; duration: Motion.morph; easing.type: Motion.easeStandard }
             }
             remove: Transition {
                 NumberAnimation { property: "opacity"; to: 0; duration: Motion.fast; easing.type: Motion.easeStandard }
             }
             displaced: Transition {
-                NumberAnimation { property: "x"; duration: Motion.standard; easing.type: Motion.easeStandard }
-                NumberAnimation { property: "opacity"; to: 1; duration: Motion.standard }
+                NumberAnimation { property: "x"; duration: Motion.morph; easing.type: Motion.easeStandard }
+                NumberAnimation { property: "opacity"; to: 1; duration: Motion.morph; easing.type: Motion.easeStandard }
             }
             move: Transition {
-                NumberAnimation { property: "x"; duration: Motion.standard; easing.type: Motion.easeStandard }
+                NumberAnimation { property: "x"; duration: Motion.morph; easing.type: Motion.easeStandard }
             }
 
             model: ScriptModel {
@@ -519,9 +537,9 @@ PanelWindow {
                     height: picker.itemH
                     Behavior on width {
                         NumberAnimation {
-                            duration: Motion.expressiveDefaultSpatialDur
+                            duration: Motion.morph
                             easing.type: Motion.easeBezier
-                            easing.bezierCurve: Motion.expressiveDefaultSpatial
+                            easing.bezierCurve: Motion.emphasizedDecel
                         }
                     }
 
@@ -574,9 +592,9 @@ PanelWindow {
                     }
                     Behavior on anchors.horizontalCenterOffset {
                         NumberAnimation {
-                            duration: Motion.expressiveDefaultSpatialDur
+                            duration: Motion.morph
                             easing.type: Motion.easeBezier
-                            easing.bezierCurve: Motion.expressiveDefaultSpatial
+                            easing.bezierCurve: Motion.emphasizedDecel
                         }
                     }
 
@@ -586,12 +604,12 @@ PanelWindow {
 
                     Behavior on scale {
                         NumberAnimation {
-                            duration: Motion.expressiveDefaultSpatialDur
+                            duration: Motion.morph
                             easing.type: Motion.easeBezier
                             easing.bezierCurve: Motion.expressiveDefaultSpatial
                         }
                     }
-                    Behavior on opacity { NumberAnimation { duration: Motion.expressiveDefaultSpatialDur } }
+                    Behavior on opacity { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeStandard } }
 
                     /**
                      * Parallelogram shear — every child (frame, borders)
@@ -648,9 +666,9 @@ PanelWindow {
                             anchors.horizontalCenterOffset: restOffset
                             Behavior on anchors.horizontalCenterOffset {
                                 NumberAnimation {
-                                    duration: Motion.expressiveDefaultSpatialDur
+                                    duration: Motion.morph
                                     easing.type: Motion.easeBezier
-                                    easing.bezierCurve: Motion.expressiveDefaultSpatial
+                                    easing.bezierCurve: Motion.emphasizedDecel
                                 }
                             }
 
@@ -820,7 +838,7 @@ PanelWindow {
                         border.width: picker.borderW
                         border.color: Qt.alpha(Colors.primary, 0.28)
                         opacity: delegateRoot.isCurrent ? 1 : 0
-                        Behavior on opacity { NumberAnimation { duration: Motion.standard } }
+                        Behavior on opacity { NumberAnimation { duration: Motion.morph; easing.type: Motion.easeStandard } }
                     }
 
                     // border ring: primary on the centered card, a hovered

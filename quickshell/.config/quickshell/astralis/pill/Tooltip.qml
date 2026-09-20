@@ -43,7 +43,7 @@ Item {
 
     visible: armed || opacity > 0.01
     opacity: armed ? 1 : 0
-    Behavior on opacity { NumberAnimation { duration: root.armed ? Motion.standard : Motion.fast } }
+    Behavior on opacity { NumberAnimation { duration: root.armed ? Motion.standard : Motion.fast ; easing.type: Motion.easeStandard } }
 
     Timer {
         id: delay

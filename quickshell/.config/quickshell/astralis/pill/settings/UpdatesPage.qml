@@ -396,7 +396,7 @@ SettingsPage {
         opacity: root.checking ? 0.55 : 1
         Behavior on color { ColorAnimation { duration: Motion.fast } }
         Behavior on border.color { ColorAnimation { duration: Motion.fast } }
-        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
 
         scale: (checkArea.pressed && !root.checking) ? 0.98 : 1
         Behavior on scale {

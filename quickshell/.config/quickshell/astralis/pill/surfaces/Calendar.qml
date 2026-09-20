@@ -908,7 +908,7 @@ PillSurface {
                         border.width: 1
                         border.color: cell.selEdge ? Qt.alpha(Colors.tertiary, 0.55)
                             : (cell.sel ? Qt.alpha(Colors.tertiary, 0.22) : Colors.primary)
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
                         Behavior on border.color { ColorAnimation { duration: Motion.fast } }
                     }
@@ -927,7 +927,7 @@ PillSurface {
                         font.weight: cell.current || cell.hasEvent ? Font.DemiBold : Font.Normal
                         font.features: ({ "tnum": 1 })
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                     }
 
                     // Ember dot for a day holding a stored event.
@@ -941,7 +941,7 @@ PillSurface {
                         height: 3 * root.s
                         radius: width / 2
                         color: Colors.tertiary
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                     }
 
                     MouseArea {
@@ -1318,7 +1318,7 @@ PillSurface {
                                 width: 16 * root.s
                                 height: 16 * root.s
                                 opacity: evArea.hovered ? 1 : 0.32
-                                Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                                Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
 
                                 Accessible.role: Accessible.Button
                                 Accessible.name: "Remove event"
