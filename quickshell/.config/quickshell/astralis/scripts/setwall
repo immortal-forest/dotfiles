@@ -1,22 +1,61 @@
 #!/usr/bin/env bash
-# astralis — set wallpaper + retheme the whole shell in one action.
-#   setwall <image> [extra awww args…]
-# Transition = Ricelin's signature WAVE (angle 30, wave 60,30, step 90, 60fps) by
-# default — the diagonal ripple that sweeps the new wallpaper in. Override with
-# TRANSITION=grow for a cursor-origin growing circle (POS "fx,fy" 0-1 percent, y
-# from the BOTTOM per awww, + Ricelin's cubic-bezier(0.16,1,0.3,1) ease-out).
+# astralis — retheme the whole shell from a wallpaper.
+#   setwall <image>
+# Wallpaper DISPLAY is owned by skwd-wall (skwd-walld draws via its own skwd-paper
+# engine); this script is the theming half only — matugen scheme + chroma rescue +
+# base16/pywal overlay + terminal live-reload — invoked by skwd per pick via its
+# externalMatugenCommand hook, and by the shell on settings changes.
 #
-# RETHEME_ONLY=1 recolours from the CURRENT wallpaper without re-sweeping it in
-# (no awww) — used for a live palette refresh when the "Wallpaper boost" setting
-# changes. NORESCUE=1 skips the chroma rescue entirely.
+# RETHEME_ONLY=1 recolours without recording a new current-wallpaper (used for a
+# live palette/boost refresh where the wallpaper itself didn't change).
+# NORESCUE=1 skips the chroma rescue entirely.
 set -euo pipefail
 
 img="${1:-}"
 if [ -z "$img" ]; then
-    echo "usage: setwall <image> [awww args…]" >&2
+    echo "usage: setwall <image>" >&2
     exit 1
 fi
 shift
+
+# ── resolve a skwd-wall thumbnail back to the full wallpaper ───────────────────
+# skwd-wall's externalMatugenCommand hook substitutes %path% with the cached
+# THUMBNAIL (~/.cache/skwd-wall-v2/thumbs/<Folder>--<name>.webp), not the full
+# image. matugen on a downscaled webp washes the extraction — the dominant colour
+# collapses toward a pale tone, so most wallpapers themed nearly the same (the
+# "same colour for every wallpaper" bug, on top of the scheme-vibrant collapse
+# fixed below). Recover the real file so matugen (and the recorded
+# current-wallpaper → lock screen) sees full resolution:
+#   1. skwd's last-wallpaper.json holds the authoritative applied path+extension.
+#   2. else the thumb basename "<Folder>--<name>" → ~/wallpapers/<Folder>/<name>.*
+#   3. else a recursive match under ~/wallpapers.
+# Non-library wallpapers that resolve to nothing keep the original path (no worse
+# than before). Split on the FIRST "--" so folder/file names with hyphens survive.
+case "$img" in
+    "$HOME/.cache/skwd-wall-v2/thumbs/"*|"$HOME/.cache/skwd-wall-v2/thumbs-sm/"*)
+        _tbase="${img##*/}"; _tbase="${_tbase%.*}"      # <Folder>--<name>
+        _tfolder="${_tbase%%--*}"; _tname="${_tbase#*--}"
+        _full=""
+        _lw="$HOME/.cache/skwd-wall-v2/last-wallpaper.json"
+        if [ -f "$_lw" ] && command -v jq >/dev/null 2>&1; then
+            _cand="$(jq -r '.path // empty' "$_lw" 2>/dev/null || true)"
+            if [ -n "$_cand" ] && [ -f "$_cand" ]; then
+                _cb="${_cand##*/}"; _cb="${_cb%.*}"
+                [ "$_cb" = "$_tname" ] && _full="$_cand"   # only if it's THIS wallpaper
+            fi
+        fi
+        if [ -z "$_full" ]; then
+            for _f in "$HOME/wallpapers/$_tfolder/$_tname".*; do
+                [ -f "$_f" ] && { _full="$_f"; break; }
+            done
+        fi
+        if [ -z "$_full" ]; then
+            _full="$(find "$HOME/wallpapers" -type f -name "$_tname.*" 2>/dev/null | head -n1)"
+        fi
+        [ -n "$_full" ] && [ -f "$_full" ] && img="$_full"
+        ;;
+esac
+
 mkdir -p "$HOME/.cache/astralis"
 # Serialize concurrent/rapid runs: matugen's Colors.json write + the base16
 # read-modify-write below must not interleave with another setwall (a settings
@@ -35,22 +74,16 @@ mkdir -p "$HOME/.cache/wal" "$HOME/.config/spicetify/Themes/Sleek" \
 FLAGS_FILE="${FLAGS:-$HOME/.cache/astralis/flags.json}"
 CJSON="$HOME/.config/quickshell/astralis/colors/Colors.json"
 
-if [ -z "${RETHEME_ONLY:-}" ]; then
-    tt="${TRANSITION:-wave}"
-    if [ "$tt" = "grow" ] || [ "$tt" = "outer" ]; then
-        awww img "$img" --transition-type "$tt" --transition-pos "${POS:-center}" \
-            --transition-bezier ".16,1,.3,1" --transition-fps 60 --transition-duration 1 "$@" || true
-    else
-        # Ricelin wallpaper.sh:83-88 verbatim
-        awww img "$img" --transition-type "$tt" --transition-angle 30 --transition-wave "60,30" \
-            --transition-fps 60 --transition-step 90 "$@" || true
-    fi
-fi
+# Wallpaper DISPLAY is owned by skwd-wall: skwd-walld draws the picked image via its
+# own skwd-paper engine (GPU shader transition), then calls this script
+# (externalMatugenCommand) only to RE-THEME from it. setwall never sets the wallpaper
+# itself. Any extra "$@" args are accepted for back-compat but unused.
 
-# scheme-vibrant follows the wallpaper's real colours (punchy, distinct per image);
-# the config's default (tonal-spot) is too muted to read against the dark surfaces.
-# Override with SCHEME=scheme-content (softer) or scheme-tonal-spot (old look).
-matugen -m dark -t "${SCHEME:-scheme-vibrant}" image "$img" || true   # rewrites Colors.json + hypr/cava/kitty/etc + fires post_hooks (best-effort)
+# scheme-content follows the wallpaper's OWN colours faithfully → distinct palette per
+# image. scheme-vibrant was the old default but it hue-collapses warm/red wallpapers to
+# an identical pale pink (the "same colour for most wallpapers" bug); content keeps them
+# distinct, and the chroma-rescue below re-adds saturation. Override with SCHEME=... .
+matugen -m dark -t "${SCHEME:-scheme-content}" image "$img" || true   # rewrites Colors.json + hypr/cava/kitty/etc + fires post_hooks (best-effort)
 
 # ── chroma rescue ────────────────────────────────────────────────────────────
 # Material Color Utilities (matugen's engine) falls back to a FIXED seed
@@ -127,7 +160,7 @@ except Exception:
 PY
 )" || true
     case "$action" in
-        reseed\ *) matugen -m dark -t "${SCHEME:-scheme-vibrant}" color hex "${action#reseed }" || true ;;
+        reseed\ *) matugen -m dark -t "${SCHEME:-scheme-content}" color hex "${action#reseed }" || true ;;
         neutral)   matugen -m dark -t scheme-neutral image "$img" || true ;;   # grayscale → grey, not blue
     esac
 fi

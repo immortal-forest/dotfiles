@@ -16,3 +16,6 @@
 **/settings.local.json
 .claude/
 **/.claude/
+
+# Generated knowledge-graph output (graphify) — local tool artifact, not the rice.
+quickshell/.config/quickshell/astralis/graphify-out/

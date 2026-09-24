@@ -109,6 +109,9 @@ Item {
     // dedicated signal (not requestSurface) so the pill never latches
     // `surface` for it and the morph engine is untouched.
     signal requestPower()
+    // Settings is a standalone floating window (modules/settings/SettingsWindow),
+    // not a pill surface — shell.qml wires this to its `settingsOpen` flag.
+    signal requestSettings()
 
     // ── size constants (Ricelin numbers, ×s) ────────────────────────────────
     readonly property real restW: 160 * s
@@ -168,9 +171,6 @@ Item {
         launcher:  { size: () => { surfaceItem(ldLauncher);  return Qt.size(360 * s, 332 * s); }, ame: () => surfaceItem(ldLauncher) },
         clipboard: { size: () => { surfaceItem(ldClipboard); return Qt.size(360 * s, 332 * s); }, ame: () => surfaceItem(ldClipboard) },
         notifications: { size: () => { surfaceItem(ldNotifications); return Qt.size(400 * s, 460 * s); }, ame: () => surfaceItem(ldNotifications) },
-        // Sidebar tree (190) + divider gutter + content pane (~370, Ricelin
-        // sub-surface width) wide; tall enough for the 9-row index column.
-        settings:  { size: () => { surfaceItem(ldSettings);  return Qt.size(620 * s, 500 * s); }, ame: () => surfaceItem(ldSettings) },
         // Ricelin sizes sysmon 392×(content+33): header 24 + 16 + dials 110 +
         // 18 + divider 1 + 13 + cells 30 = 212 content ⇒ 245 fixed. Height is
         // GPU-independent (dials recentre, the cell row just gets wider cells).
@@ -431,8 +431,6 @@ Item {
             return inboxIcon.mapToItem(pill, inboxIcon.width / 2, inboxIcon.height / 2 + glyphFoot);
         if (soulTarget === "power")
             return powerIcon.mapToItem(pill, powerIcon.width / 2, powerIcon.height / 2 + glyphFoot);
-        if (soulTarget === "settings")
-            return settingsIcon.mapToItem(pill, settingsIcon.width / 2, settingsIcon.height / 2 + glyphFoot);
         if (soulTarget === "recorder")
             return recorderIcon.mapToItem(pill, recorderIcon.width / 2, recorderIcon.height / 2 + glyphFoot);
         if (soulTarget === "ws" && soulWsIndex >= 0) {
@@ -1122,11 +1120,10 @@ Item {
                         // camcorder is the same stroked family as the bell, the
                         // gear and the power mark, and says the same thing.
                         StatusGlyph { id: recorderIcon; order: 1; icon: "video"; surface: "recorder"; dot: ScreenRec.busy; soulKey: "recorder"; accessibleName: "Screen recorder"; accessibleDescription: ScreenRec.busy ? "Recording in progress" : "Not recording" }
-                        StatusGlyph { id: settingsIcon; order: 2; icon: "cog";      surface: "settings"; soulKey: "settings"; accessibleName: "Settings" }
                         // No `surface`: the power icon opens the standalone full-screen
                         // session menu (requestPower), not a pill surface morph.
                         // `soulKey` still lets the Ame bead ride this icon on hover.
-                        StatusGlyph { id: powerIcon; order: 3;    icon: "shutdown"; interactive: true; soulKey: "power"; accessibleName: "Session"; accessibleDescription: "Opens the power menu"; onActivated: pill.requestPower() }
+                        StatusGlyph { id: powerIcon; order: 2;    icon: "shutdown"; interactive: true; soulKey: "power"; accessibleName: "Session"; accessibleDescription: "Opens the power menu"; onActivated: pill.requestPower() }
                     }
                 }
             }
@@ -1275,6 +1272,7 @@ Item {
                 open: pill.mode === "launcher"
                 morphCloseness: pill.morphCloseness
                 onRequestClose: pill.requestClose()
+                onRequestSettings: pill.requestSettings()
             }
         }
 
@@ -1330,19 +1328,6 @@ Item {
             }
         }
 
-        Loader {
-            id: ldSettings
-            active: false
-            anchors.fill: parent
-            // Qualified: unqualified `Settings` is shadowed by the services
-            // singleton of the same name (see the import aliases).
-            sourceComponent: Surfaces.Settings {
-                s: pill.s
-                open: pill.mode === "settings"
-                morphCloseness: pill.morphCloseness
-                onRequestClose: pill.requestClose()
-            }
-        }
     }
 
     // Pin toggle. A passive TapHandler so it never swallows pointer events

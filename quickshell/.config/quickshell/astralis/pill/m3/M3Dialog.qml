@@ -103,9 +103,9 @@ FocusScope {
         MouseArea {
             anchors.fill: parent
             // Full-screen dismiss surface, not a discrete affordance — same
-            // call PowerMenu/WallpaperPicker make for their own scrims: the
-            // pointer cursor signals it's clickable, but there's no shape
-            // here for a press dip to scale against.
+            // call PowerMenu makes for its own scrim: the pointer cursor
+            // signals it's clickable, but there's no shape here for a press
+            // dip to scale against.
             cursorShape: Qt.PointingHandCursor
             onClicked: dialog.cancelled()
         }
@@ -157,9 +157,8 @@ FocusScope {
         // Blocks the scrim's dismiss-on-click from firing when the click
         // lands on blank padding inside the card instead of a button —
         // without this, any point inside `container` that isn't covered by
-        // a child MouseArea falls straight through to the scrim underneath
-        // (WallpaperPicker's card hit-area comment documents this exact
-        // trap). An empty handler is enough to claim the point.
+        // a child MouseArea falls straight through to the scrim underneath.
+        // An empty handler is enough to claim the point.
         MouseArea { anchors.fill: parent; onClicked: {} }
 
         Column {

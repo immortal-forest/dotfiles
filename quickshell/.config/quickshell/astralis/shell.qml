@@ -10,8 +10,8 @@ import "services"
 import "config"
 import "pill"
 import "modules/visualizer"
-import "modules/wallpaper"
 import "modules/powermenu"
+import "modules/settings"
 import "lock"
 
 /**
@@ -41,11 +41,11 @@ ShellRoot {
     /** Full-screen music visualizer pair (bottom + flipped top) per monitor. */
     property bool vizEnabled: false
 
-    /** Standalone full-width wallpaper carousel overlay (modules/wallpaper). */
-    property bool wallpaperOpen: false
-
     /** Standalone full-screen session/power menu overlay (modules/powermenu). */
     property bool powerMenuOpen: false
+
+    /** Standalone floating settings window (modules/settings/SettingsWindow). */
+    property bool settingsOpen: false
 
     /**
      * Force-loads the Hypridle singleton at startup so it writes
@@ -55,6 +55,17 @@ ShellRoot {
      * would instantiate it.
      */
     readonly property var idleDaemon: Hypridle
+
+    /**
+     * Force-load the Wallpaper singleton at startup. It hosts the Connections on
+     * Flags (paletteMode / wallReseed / base16Shell) that fire retheme() →
+     * `setwall RETHEME_ONLY`, so a settings-driven recolour only works while it
+     * is instantiated. Wallpaper selection lives in the standalone skwd-wall now,
+     * so nothing else references this singleton until the lock screen mounts —
+     * without this force-load a Palette / Wallpaper-boost change in Settings
+     * silently no-ops (flags.json updates but the theme never regenerates).
+     */
+    readonly property var wallpaperService: Wallpaper
 
     /**
      * QS 0.3.0-git gotcha: calling Hyprland.refreshMonitors() (especially early,
@@ -164,17 +175,9 @@ ShellRoot {
         function launcher(mon: string): void { root.toggleSurface(mon, "launcher"); }
         function link(mon: string): void { root.toggleSurface(mon, "link"); }
         function clipboard(mon: string): void { root.toggleSurface(mon, "clipboard"); }
-
-        /**
-         * The wallpaper picker is NOT a pill surface: it is the standalone
-         * full-width carousel overlay (modules/wallpaper/WallpaperPicker.qml).
-         * Kept on the `pill` target so the existing Super+C keybind
-         * (`ipc call pill wallpaper ""`) keeps working.
-         */
-        function wallpaper(mon: string): void { root.wallpaperOpen = !root.wallpaperOpen; }
         function media(mon: string): void { root.toggleSurface(mon, "media"); }
         function notifications(mon: string): void { root.toggleSurface(mon, "notifications"); }
-        function settings(mon: string): void { root.toggleSurface(mon, "settings"); }
+        function settings(mon: string): void { root.settingsOpen = !root.settingsOpen; }
         function sysmon(mon: string): void { root.toggleSurface(mon, "sysmon"); }
         function system(mon: string): void { root.toggleSurface(mon, "sysmon"); }
         function recorder(mon: string): void { root.toggleSurface(mon, "recorder"); }
@@ -314,26 +317,6 @@ ShellRoot {
         }
     }
 
-    // ── wallpaper picker: standalone full-width carousel overlay ───────────
-    Variants {
-        model: Quickshell.screens
-
-        Scope {
-            id: wpScope
-            required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
-
-            WallpaperPicker {
-                screen: wpScope.modelData
-                s: wpScope.s
-                // Also Overlay layer — force it shut while locked so it can't
-                // bleed over the session lock either. (#3)
-                open: root.wallpaperOpen && !lockScope.locked
-                onRequestClose: root.wallpaperOpen = false
-            }
-        }
-    }
-
     // ── power menu: standalone full-screen session overlay ─────────────────
     Variants {
         model: Quickshell.screens
@@ -352,6 +335,13 @@ ShellRoot {
                 onRequestClose: root.powerMenuOpen = false
             }
         }
+    }
+
+    // ── settings: standalone floating window (single toplevel, not per-screen) ─
+    SettingsWindow {
+        // Force shut while locked so it never lingers over the lock screen.
+        visible: root.settingsOpen && !lockScope.locked
+        onRequestClose: root.settingsOpen = false
     }
 
     // ── lockscreen: real WlSessionLock + PAM (lock/Lock.qml) ───────────────
@@ -559,6 +549,8 @@ ShellRoot {
                     // Hover-row power icon: open the standalone full-screen
                     // session menu (modules/powermenu), not a pill surface.
                     onRequestPower: root.powerMenuOpen = true
+                    // Launcher "Settings" entry: open the floating settings window.
+                    onRequestSettings: root.settingsOpen = true
                 }
             }
 
