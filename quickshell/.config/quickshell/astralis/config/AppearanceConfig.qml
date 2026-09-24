@@ -96,7 +96,7 @@ QtObject {
         /**
          * CJK companion for every kanji mark across the shell — the pill's
          * 時 clock glyph, each settings page's header kanji (相 動 設 字 探…),
-         * the lock's 鎖/開, PowerMenu, Clipboard, Mixer, WallpaperPicker.
+         * the lock's 鎖/開, PowerMenu, Clipboard, Mixer.
          *
          * Was Noto Sans CJK JP: a generic system gothic with square, uniform
          * strokes and no relationship to the shape system the rest of the

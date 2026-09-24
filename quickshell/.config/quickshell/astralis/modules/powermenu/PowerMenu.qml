@@ -12,8 +12,7 @@ import "../../pill/m3"
 
 /**
  * astralis — full-screen session/power menu. NOT a pill surface: its own
- * layer-shell overlay window that fills the WHOLE monitor, mirroring
- * modules/wallpaper/WallpaperPicker.qml's pattern (own PanelWindow,
+ * layer-shell overlay window that fills the WHOLE monitor (own PanelWindow,
  * WlrLayer.Overlay, exclusive keyboard focus while open, whole-screen frost
  * via the Hyprland layerrule on ^astralis-powermenu$ + a light scrim here).
  * Deliberately carries NO Ame soul bead — this is a modal outside the pill's

@@ -50,6 +50,35 @@ PillSurface {
     property string query: ""
     property int selectedIndex: 0
 
+    /** Emitted when the synthetic "Settings" row is activated; shell opens the window. */
+    signal requestSettings()
+
+    /**
+     * Synthetic launcher row that opens the floating settings window instead of
+     * executing a desktop app. Shaped like the fields the delegate reads (name,
+     * genericName, icon) plus an `action` marker `activate()` branches on. Spliced
+     * into `results` on a "settings" query — never fed through Fuzzy.rank.
+     */
+    readonly property var settingsEntry: ({
+        name: "Settings",
+        genericName: "astralis shell",
+        icon: "preferences-system",
+        action: "settings"
+    })
+
+    /**
+     * Synthetic launcher row that opens the skwd-wall picker (wallpaper selection
+     * + display live in skwd; astralis only re-themes from the pick). Same shape
+     * as settingsEntry; `activate()` execs it rather than routing through a signal
+     * since it launches an external process, not an in-shell window.
+     */
+    readonly property var wallpaperEntry: ({
+        name: "Wallpaper",
+        genericName: "skwd-wall picker",
+        icon: "preferences-desktop-wallpaper",
+        action: "wallpaper"
+    })
+
     /** Per-app launch counts ({ desktopId: count }), fed into Fuzzy.rank. */
     property var usage: ({})
     readonly property string usageFile: Quickshell.env("HOME") + "/.cache/astralis/launcher-usage.json"
@@ -90,7 +119,19 @@ PillSurface {
         return out;
     }
 
-    readonly property var results: Fuzzy.rank(allEntries, query, usage)
+    readonly property var results: {
+        var base = Fuzzy.rank(allEntries, query, usage);
+        // Surface synthetic rows (Settings, Wallpaper) when the query reads
+        // toward their name (never in calc mode, never on an empty query — keeps
+        // the app list clean).
+        var q = query.trim().toLowerCase();
+        if (root.calcActive || q.length < 2)
+            return base;
+        var pre = [];
+        if ("settings".indexOf(q) !== -1)  pre.push(root.settingsEntry);
+        if ("wallpaper".indexOf(q) !== -1) pre.push(root.wallpaperEntry);
+        return pre.length ? pre.concat(base) : base;
+    }
 
     ameForm: "caret"
     amePoint: {
@@ -133,6 +174,16 @@ PillSurface {
             return;
         var entry = results[selectedIndex];
         if (entry) {
+            if (entry.action === "settings") {
+                root.requestSettings();
+                root.requestClose();
+                return;
+            }
+            if (entry.action === "wallpaper") {
+                Quickshell.execDetached(["skwd-wall-v2"]);
+                root.requestClose();
+                return;
+            }
             if (entry.id) {
                 root.usage[entry.id] = (root.usage[entry.id] || 0) + 1;
                 root.saveUsage();
