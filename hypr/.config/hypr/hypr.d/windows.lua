@@ -31,6 +31,16 @@ hl.window_rule({ name = "float-portal",      match = { class = "^xdg-desktop-por
 hl.window_rule({ name = "float-firefox-lib", match = { class = "^firefox$", title = "^Library$" },  float = true })
 hl.window_rule({ name = "float-qt5ct",       match = { class = "^qt5ct$" },                         float = true })
 hl.window_rule({ name = "float-qt6ct",       match = { class = "^qt6ct$" },                         float = true })
+-- astralis: settings floating window (Quickshell FloatingWindow, title set in
+-- modules/settings/SettingsWindow.qml). Float + centre it, and drop Hyprland's
+-- own rounding/border so they don't fight the Panel's own rounded corners
+-- (Hyprland rounds at 10 + a 2px border while the Panel rounds larger — that
+-- mismatch was the squared, bordered corner). The Panel's radius over the
+-- transparent window is then the only corner.
+hl.window_rule({ name = "astralis-settings-float",    match = { title = "^astralis-settings$" }, float = true })
+hl.window_rule({ name = "astralis-settings-center",   match = { title = "^astralis-settings$" }, center = true })
+hl.window_rule({ name = "astralis-settings-rounding", match = { title = "^astralis-settings$" }, rounding = 0 })
+hl.window_rule({ name = "astralis-settings-noborder", match = { title = "^astralis-settings$" }, border_size = 0 })
 
 -- Tearing (immediate mode for games)
 hl.window_rule({ name = "tear-lunar",     match = { class = "^Lunar Client" },      immediate = true })
@@ -66,9 +76,22 @@ hl.layer_rule({
 -- band. ignore_alpha is deliberately OFF (unlike the pill) so the blur renders
 -- behind the near-transparent scrim too — the whole window reads as blurred
 -- glass instead of a dark dim, and the carousel cards pop over it.
+-- astralis's own QML picker is no longer bound to a key (superseded by
+-- skwd-wall below) but this rule is left in place — harmless if unused.
 hl.layer_rule({
 	name  = "astralis-wallpaper",
 	match = { namespace = "^astralis-wallpaper$" },
+	blur         = true,
+	ignore_alpha = false,
+})
+-- skwd-wall v2 (standalone, github.com/liixini/skwd-wall — Rust/iced_layershell
+-- rewrite, default branch): same whole-screen frost treatment, keyed on ITS
+-- OWN layer-shell namespace. Confirmed from its actual source
+-- (src/shell/shell.rs: `fn namespace() -> String { String::from("skwd-wall") }`),
+-- not the README — can't be renamed without patching skwd-wall itself.
+hl.layer_rule({
+	name  = "skwd-wall",
+	match = { namespace = "^skwd-wall$" },
 	blur         = true,
 	ignore_alpha = false,
 })

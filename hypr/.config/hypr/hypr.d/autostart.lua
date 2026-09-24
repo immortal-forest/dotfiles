@@ -8,8 +8,9 @@ hl.on("hyprland.start", function()
 	-- Polkit agent
 	hl.exec_cmd("systemctl --user start hyprpolkitagent")
 
-	-- Wallpaper daemon (awww) + restore last wallpaper & retheme (matugen)
-	hl.exec_cmd("awww-daemon --format argb")
+	-- Wallpaper: skwd-paper (standalone daemon) is the render backend; its CLI
+	-- auto-spawns the daemon on first `apply`. This restore script displays the
+	-- cached wallpaper via skwd-paper and re-themes astralis (matugen) from it.
 	hl.exec_cmd("~/.local/bin/restore-wallpaper.sh")
 
 	-- Clipboard history

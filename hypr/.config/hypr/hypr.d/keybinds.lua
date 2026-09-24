@@ -26,7 +26,8 @@ hl.bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd("firefox"))
 --   errors out silently.
 hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd('qs -c astralis ipc call pill launcher ""'))      -- app launcher
 hl.bind(mainMod .. " + M",     hl.dsp.exec_cmd('qs -c astralis ipc call pill media ""'))         -- media / now-playing
-hl.bind(mainMod .. " + C",     hl.dsp.exec_cmd('qs -c astralis ipc call pill wallpaper ""'))     -- wallpaper picker
+hl.bind(mainMod .. " + C",         hl.dsp.exec_cmd('skwd-wall-v2'))                              -- wallpaper picker (skwd-wall)
+hl.bind(mainMod .. " + SHIFT + C", hl.dsp.exec_cmd('skwd-helm random'))                          -- random wallpaper (skwd picks + astralis re-themes)
 hl.bind(mainMod .. " + V",     hl.dsp.exec_cmd('qs -c astralis ipc call pill clipboard ""'))     -- clipboard history
 hl.bind(mainMod .. " + L",      hl.dsp.exec_cmd("loginctl lock-session"))                        -- lock screen (astralis WlSessionLock)
 hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd('qs -c astralis ipc call power toggle'))          -- full-screen power / session menu
