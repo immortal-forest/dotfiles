@@ -16,3 +16,4 @@ singleton Sysmon Sysmon.qml
 singleton Wallpaper Wallpaper.qml
 singleton Weather Weather.qml
 singleton Workspacerules Workspacerules.qml
+singleton Udev Udev.qml

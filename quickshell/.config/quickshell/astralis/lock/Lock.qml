@@ -107,7 +107,10 @@ Scope {
         property int watchFails: 0
         property double watchStart: 0
 
-        command: ["sh", "-c",
+        // setpriv --pdeathsig: gdbus only writes on a login1 signal, so if qs
+        // dies it would never meet a SIGPIPE — every relaunch leaked one (see
+        // services/Udev.qml). The exec below keeps the death signal.
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "sh", "-c",
             'p=""; ' +
             'if [ -n "$XDG_SESSION_ID" ]; then ' +
             'p=$(busctl --system call org.freedesktop.login1 /org/freedesktop/login1 ' +
