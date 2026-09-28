@@ -45,7 +45,7 @@ hl.bind(mainMod .. " + comma",     hl.dsp.exec_cmd('qs -c astralis ipc call pill
 hl.bind(mainMod .. " + R",         hl.dsp.exec_cmd('qs -c astralis ipc call pill recorder ""'))  -- astralis: recorder surface
 hl.bind(mainMod .. " + ALT + R",   hl.dsp.exec_cmd("qs -c astralis ipc call recorder toggle"))   -- astralis: record this screen / stop
 hl.bind(mainMod .. " + CTRL + R",  hl.dsp.exec_cmd("qs -c astralis ipc call recorder region"))   -- astralis: record a region / stop
-hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("sh -c 'qs -c astralis kill; sleep 0.3; qs -c astralis -d'"))  -- astralis: relaunch the shell
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("sh -c 'qs -c astralis kill; sleep 0.3; MALLOC_CONF=narenas:4,background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:0 qs -c astralis -d --log-rules quickshell.dbus.properties.warning=false'"))  -- astralis: relaunch the shell (env + flags: see autostart.lua)
 -- astralis: stash/restore the focused window on special:minimized — the pill's
 -- hover tray shows the stashed windows as app-icon chips that restore on click.
 hl.bind(mainMod .. " + SHIFT + M", hl.dsp.exec_cmd("~/.config/quickshell/astralis/scripts/special-toggle.sh minimized"))
