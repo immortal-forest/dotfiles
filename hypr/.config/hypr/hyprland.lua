@@ -17,6 +17,7 @@ local modules = {
 	"input",
 	"autostart",
 	"keybinds",
+	"popout",
 	"windows",
 	"userpref",
 	"extra",
