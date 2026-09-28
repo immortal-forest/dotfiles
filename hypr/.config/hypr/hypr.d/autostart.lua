@@ -20,5 +20,13 @@ hl.on("hyprland.start", function()
 	-- Shell (astralis). Respawn loop: qs can abort on suspend/resume
 	-- (quickshell #1155). Restart on crash, break on clean quit, back off 5s on
 	-- a fast crash-loop so a broken config can't spin the CPU.
-	hl.exec_cmd("bash -c 'while true; do t=$(date +%s); qs -c astralis; [ $? -eq 0 ] && break; [ $(( $(date +%s) - t )) -lt 5 ] && sleep 5 || sleep 1; done'")
+	-- MALLOC_CONF: qs links jemalloc, which defaults to 4 arenas per CPU (64 on
+	-- this box) and each one hoards freed pages — ~60MB of dead heap. 4 arenas +
+	-- fast decay keeps the same shell at ~100MB anon instead of ~160MB.
+	-- --log-rules: Quickshell re-reads IconName on every tray NewIcon even when
+	-- the app has no such property (Electron/Discord), so each icon flip logged
+	-- two warnings — nonstop during a voice call, into a log that lives in
+	-- /run (RAM).
+	-- Keep in sync with the Super+Shift+R relaunch bind in keybinds.lua.
+	hl.exec_cmd("bash -c 'export MALLOC_CONF=narenas:4,background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:0; while true; do t=$(date +%s); qs -c astralis --log-rules quickshell.dbus.properties.warning=false; [ $? -eq 0 ] && break; [ $(( $(date +%s) - t )) -lt 5 ] && sleep 5 || sleep 1; done'")
 end)
