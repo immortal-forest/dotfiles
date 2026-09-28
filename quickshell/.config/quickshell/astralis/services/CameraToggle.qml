@@ -11,11 +11,11 @@ import Quickshell.Io
  * permission-free signal that needs no group membership.
  *
  * Detection, layered:
- *  - udevadm monitor (video4linux) — event-driven; an add/remove lands within
- *    ms of the switch, a short settle coalesces the node burst, then a
- *    one-shot presence probe reads the truth.
- *  - a ~1.5s presence poll (Privacy's self-loop pattern, prints only on
- *    change) — the correctness backstop, and what primes the initial state.
+ *  - Udev (the shell's one `udevadm monitor`) — event-driven; a video4linux
+ *    add/remove lands within ms of the switch, a short settle coalesces the
+ *    node burst, then a one-shot presence probe reads the truth. The same
+ *    probe primes the initial state at startup. (A 1.5s presence poll used to
+ *    back this up; it forked `sleep` forever to re-learn what udev reports.)
  *  - optional evdev accelerant: the "Ideapad extra buttons" node emits
  *    KEY_CAMERA_ACCESS_* on the key itself, but /dev/input/event* is
  *    input-group-only (`sudo usermod -aG input $USER` + relogin for instant,
@@ -51,17 +51,15 @@ Singleton {
     }
 
     // ── event path: udev add/remove on the v4l subsystem ────────────────────
-    Process {
-        running: true
-        command: ["udevadm", "monitor", "--udev", "--subsystem-match=video4linux"]
-        stdout: SplitParser {
-            onRead: (line) => {
-                // "UDEV  [ts] add|remove   /devices/.../video4linux/videoN (video4linux)"
-                if (line.indexOf("UDEV") === 0 && (line.indexOf(" add ") !== -1 || line.indexOf(" remove ") !== -1))
-                    settle.restart();
-            }
+    Connections {
+        target: Udev
+        function onEvent(subsystem, action) {
+            if (subsystem === "video4linux" && (action === "add" || action === "remove"))
+                settle.restart();
         }
     }
+
+    Component.onCompleted: recheck.running = true
 
     /** Coalesces the event burst (video0+video1 flip together), then re-probes. */
     Timer {
@@ -78,27 +76,18 @@ Singleton {
         }
     }
 
-    // ── poll backstop: presence loop, prints only on change ─────────────────
-    Process {
-        running: true
-        command: ["sh", "-c",
-            "last=''; while true; do "
-            + "if [ -e /dev/video0 ]; then cur=on; else cur=off; fi; "
-            + "if [ \"$cur\" != \"$last\" ]; then echo \"$cur\"; last=\"$cur\"; fi; "
-            + "sleep 1.5; done"]
-        stdout: SplitParser {
-            onRead: (line) => root.apply(line.trim() === "on")
-        }
-    }
-
     // ── optional evdev accelerant (silent no-op without input group/evtest) ─
+    // pdeathsig cascades down the pipeline: qs dies → sh gets TERM → evtest
+    // and grep (sh's children) get theirs. grep writes only on a key press,
+    // so without it an orphaned pair would outlive the shell indefinitely.
     Process {
         running: true
-        command: ["sh", "-c",
+        command: ["setpriv", "--pdeathsig", "TERM", "--", "sh", "-c",
             "command -v evtest >/dev/null 2>&1 || exit 0; "
             + "dev=$(awk -v RS= '/Ideapad extra buttons/{for(i=1;i<=NF;i++)if($i~/^event[0-9]+$/){print $i;exit}}' /proc/bus/input/devices 2>/dev/null); "
             + "[ -n \"$dev\" ] && [ -r \"/dev/input/$dev\" ] || exit 0; "
-            + "evtest \"/dev/input/$dev\" 2>/dev/null | grep --line-buffered KEY_CAMERA_ACCESS"]
+            + "setpriv --pdeathsig TERM -- evtest \"/dev/input/$dev\" 2>/dev/null "
+            + "| setpriv --pdeathsig TERM -- grep --line-buffered KEY_CAMERA_ACCESS"]
         stdout: SplitParser {
             // any KEY_CAMERA_ACCESS_* traffic just accelerates a presence re-probe;
             // presence stays the single source of truth

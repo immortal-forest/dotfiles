@@ -37,15 +37,27 @@ FloatingWindow {
     // Escape closes regardless of which child currently holds focus.
     Shortcut { sequences: ["Escape"]; onActivated: win.requestClose() }
 
-    // Latch-once: don't build the settings tree until the window is first opened
-    // (the pill lazy-loads every surface the same way — no startup cost for a
-    // window the user may never open this session).
-    property bool everShown: false
-    onVisibleChanged: if (visible) everShown = true
+    // Lazy: don't build the settings tree until the window opens, and drop it
+    // again once it has been closed for 30s (the pill's surfaceReaper does the
+    // same) — a dozen settings pages are dead weight for a window opened once.
+    property bool warm: false
+    onVisibleChanged: {
+        if (visible) {
+            coolDown.stop();
+            warm = true;
+        } else {
+            coolDown.restart();
+        }
+    }
+    Timer {
+        id: coolDown
+        interval: 30000
+        onTriggered: win.warm = false
+    }
 
     Loader {
         anchors.fill: parent
-        active: win.everShown
+        active: win.visible || win.warm
 
         sourceComponent: Item {
             Panel {

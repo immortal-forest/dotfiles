@@ -97,7 +97,11 @@ Item {
                     height: 16 * tray.s
                     fillMode: Image.PreserveAspectFit
                     smooth: true
-                    cache: true
+                    // Uncached: a pixmap tray icon's URL carries a generation
+                    // counter that bumps on every NewIcon (Discord flips its
+                    // icon on each speaking change in a call), so every entry
+                    // is used exactly once and caching only hoards stale ones.
+                    cache: false
                     asynchronous: true
                 }
 

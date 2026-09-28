@@ -124,13 +124,13 @@ Item {
     readonly property real openCorner: Appearance.rounding.pillOpen * s    // 22
 
     /**
-     * Latch-once lazy load. Every surface sleeps in an inactive Loader until
-     * its first open; the size thunks below resolve items through here. The
-     * ordering is the trick: flip `active` before any read of the loader, so
-     * the calling binding never has the loader registered as a dep when the
-     * flip fires mid-evaluation (that read-then-write would be a binding
-     * loop). The write is idempotent and the Loader loads synchronously.
-     * Nothing ever deactivates a loaded surface.
+     * Lazy load. Every surface sleeps in an inactive Loader until it is
+     * opened; the size thunks below resolve items through here. The ordering
+     * is the trick: flip `active` before any read of the loader, so the
+     * calling binding never has the loader registered as a dep when the flip
+     * fires mid-evaluation (that read-then-write would be a binding loop).
+     * The write is idempotent and the Loader loads synchronously. Only
+     * `surfaceReaper` deactivates, and only loaders nothing is reading.
      */
     function surfaceItem(ld) {
         ld.active = true;
@@ -534,18 +534,27 @@ Item {
             Accessible.ignored: !pdot.active
 
             Rectangle {
+                id: pdotFill
                 anchors.fill: parent
                 radius: width / 2
                 color: pdot.tint
 
-                // The same breath, at the same rate, as the capture chip's
-                // recording dot. Gated on the rest face actually showing, so
-                // no infinite animation ticks behind an open surface.
+                // Announce, then hold: three breaths at the capture chip's
+                // rate when the source goes live (and again whenever the rest
+                // face comes back), then a steady dot. NOT infinite — a mic
+                // stays live for a whole call, and every tick repaints this
+                // full-screen overlay, which Hyprland then re-blurs: measured
+                // ~8% qs CPU plus the compositor's share, for hours, to say
+                // what the colour already says. The capture chip keeps its
+                // endless breath; there it separates recording from paused.
                 SequentialAnimation on opacity {
                     running: pdot.active && rest.visible && !Motion.reduceMotion
-                    loops: Animation.Infinite
+                    loops: 3
                     NumberAnimation { to: 0.35; duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1;    duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
+                    // Stopped mid-breath (rest face hidden) must not strand
+                    // the dot half-faded when it comes back.
+                    onStopped: pdotFill.opacity = 1
                 }
             }
         }
@@ -1200,10 +1209,11 @@ Item {
         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
     }
 
-    // ── surface host — one latch-once Loader per surface ────────────────────
+    // ── surface host — one lazy Loader per surface ──────────────────────────
     // Eager surfaces would dominate startup; a surface is built synchronously
-    // on its first open (surfaceItem latches `active`) and kept forever. Each
-    // loader fills the pill so the content anchors as a direct child would.
+    // on open (surfaceItem flips `active`) and torn down by surfaceReaper once
+    // it has sat closed for a while. Each loader fills the pill so the content
+    // anchors as a direct child would.
     // The Loaders carry no opacity/visible gating of their own: PillSurface
     // self-gates from open + morphCloseness + its settled latch, and a second
     // gate here would double-fade every surface.
@@ -1329,6 +1339,28 @@ Item {
         }
 
     }
+
+    /**
+     * Idle unload. Kept forever, every surface ever opened stays resident —
+     * ~30MB once all ten have been visited. A rebuild costs 1–30ms, so tear
+     * down whatever has sat closed for 30s and keep recent ones warm. Only the
+     * current `mode`'s loader is read by any binding (targetSize/ameSurface),
+     * so deactivating the others from a timer can never feed a binding loop;
+     * the open surface is recognised by its own `open` flag and kept.
+     */
+    Timer {
+        id: surfaceReaper
+        interval: 30000
+        onTriggered: {
+            const lds = surfaceHost.children;
+            for (let i = 0; i < lds.length; i++) {
+                const ld = lds[i];
+                if (ld.active && !(ld.item && ld.item.open))
+                    ld.active = false;
+            }
+        }
+    }
+    onSurfaceChanged: surfaceReaper.restart()
 
     // Pin toggle. A passive TapHandler so it never swallows pointer events
     // from content stacked above (surface controls get their own clicks).

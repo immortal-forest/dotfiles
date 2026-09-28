@@ -115,6 +115,37 @@ Singleton {
         var critical = n.urgency === NotificationUrgency.Critical;
         if (!root.dnd || critical)
             root.popups = root.popups.concat([n]).slice(-3);
+        // Deferred: the new arrival only joins trackedNotifications after
+        // onNotification returns, so counting now would run one over the cap.
+        Qt.callLater(root.boundLive);
+    }
+
+    /**
+     * Cap on LIVE notifications. Every arrival stays tracked until someone
+     * closes it, and a chat app (Discord) rarely does — so a day of unread
+     * messages kept hundreds of Notification objects alive, avatar pixels and
+     * all. Past the cap, the oldest non-critical ones that aren't on screen as
+     * a toast are expire()d: the closed hook snapshots them into `history`
+     * (text + icon source, still listed in the center) and the object and
+     * its image are released. Same thing mako/dunst do on a timeout.
+     */
+    readonly property int liveCap: 50
+
+    function boundLive() {
+        var live = server.trackedNotifications.values.slice();
+        var excess = live.length - root.liveCap;
+        if (excess <= 0)
+            return;
+        live.sort(function(x, y) {
+            return (root.arrivalMs[x.id] || 0) - (root.arrivalMs[y.id] || 0);
+        });
+        for (var i = 0; i < live.length && excess > 0; i++) {
+            var o = live[i];
+            if (o.urgency === NotificationUrgency.Critical || root.popups.indexOf(o) !== -1)
+                continue;
+            excess--;
+            o.expire();
+        }
     }
 
     /**
