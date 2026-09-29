@@ -1,0 +1,115 @@
+# astralis — matugen configuration
+#
+# Deployed via GNU stow to ~/.config/matugen (this file -> ~/.config/matugen/config.toml).
+# `matugen image <wallpaper>` reads this, renders every [templates.*] entry from its
+# input_path, writes the result to output_path, and fires any post_hook.
+#
+# The quickshell template is the live-color pipeline: it writes Colors.json, which the
+# Quickshell `Colors` singleton watches with a FileView and reloads on a 100ms debounce,
+# so the whole shell recolors the instant the wallpaper changes — no restart.
+
+[config]
+# `prefer = "darkness"` biases the neutral surfaces toward a deeper, darker M3 tone.
+prefer = "darkness"
+
+[settings]
+# Color mode + scheme used when generating the palette from a wallpaper.
+mode = "dark"
+# scheme = "material" is the balanced default. Punchier alternatives:
+#   "tonal-spot"  — the Material You / Pixel default, softer accents
+#   "expressive"  — wider hue spread, more saturated accents
+#   "vibrant"     — maximum chroma accents
+scheme = "material"
+palette = "material"
+
+# --- Quickshell: the live-color pipeline (all 49 M3 roles as JSON) -----------------
+[templates.quickshell]
+input_path  = "~/.config/matugen/templates/quickshell.json.hbs"
+# Absolute + expanded. ~/.config/quickshell is a symlink into the dotfiles repo, so this
+# lands at <dotfiles>/quickshell/.config/quickshell/astralis/colors/Colors.json (gitignored).
+output_path = "/home/immortalforest/.config/quickshell/astralis/colors/Colors.json"
+
+# --- Hyprland: colors.conf + live reload -------------------------------------------
+[templates.hyprland]
+input_path  = "~/.config/matugen/templates/hyprland.conf"
+output_path = "/home/immortalforest/.config/hypr/colors.conf"
+post_hook   = "hyprctl reload"
+
+# --- cava: recolor the audio spectrum to match the accent ---------------------------
+[templates.cava]
+input_path  = "~/.config/matugen/templates/cava"
+output_path = "/home/immortalforest/.config/cava/config"
+
+# --- Terminals (the user runs both ghostty and kitty) -------------------------------
+[templates.kitty]
+input_path  = "~/.config/matugen/templates/kitty"
+output_path = "/home/immortalforest/.config/kitty/colors.conf"
+
+[templates.ghostty]
+input_path  = "~/.config/matugen/templates/ghostty"
+output_path = "/home/immortalforest/.config/ghostty/themes/matugen"
+
+# --- Spotify (spicetify "Sleek" theme) — M3 baseline of the "Palette" setting -------
+# The base16 overlay (config-base16-apps.toml) writes this SAME path from a base16
+# template, so a re-run in material mode restores the M3 scheme here. post_hook is
+# guarded: spicetify is installed later (Wave-2), so this is a safe no-op until then.
+#
+# `spicetify apply` is backgrounded (the `( ... &)` subshell) rather than run
+# inline: matugen waits for a post_hook to finish before it returns, and
+# `apply` itself force-kills+relaunches a running Spotify — a slow round trip
+# (repatching xpui, then a full Electron cold start) that was stalling the
+# REST of setwall behind it (base16 overlay, kitty/ghostty SIGUSR reload,
+# writing current-wallpaper) on every wallpaper change or palette toggle
+# while Spotify was open. Backgrounding lets matugen return immediately;
+# Spotify still relaunches, just without holding up everything after it.
+#
+# `9>&-` closes setwall's flock fd (exec 9>...setwall.lock) in this subshell
+# BEFORE spicetify launches Spotify. Without it, bash's default fd
+# inheritance carries that open (write-mode, still-flocked) fd all the way
+# into the new Spotify process — a long-lived process that never closes it,
+# so the lock stays held for as long as Spotify keeps running. Every LATER
+# setwall run's `flock -w 30 9` then blocks for the full 30s (proceeding
+# only via its own `|| true`) before awww even starts — this is the
+# "awww doesn't start instantly" symptom, and it doesn't clear on its own
+# short of quitting Spotify (confirmed live: `fuser -v setwall.lock` showed
+# a running spotify process, not setwall, holding it open for writing).
+[templates.spotify]
+input_path  = "~/.config/matugen/templates/spotify-m3.ini"
+output_path = "/home/immortalforest/.config/spicetify/Themes/Sleek/color.ini"
+post_hook   = "command -v spicetify >/dev/null 2>&1 && pgrep -x spotify >/dev/null 2>&1 && (spicetify -q apply >/dev/null 2>&1 9>&- &) || true"
+
+# --- Browser (pywalfox reads a pywal-format colors.json) — M3 baseline ---------------
+[templates.pywalfox]
+input_path  = "~/.config/matugen/templates/pywalfox-m3.json"
+output_path = "/home/immortalforest/.cache/wal/colors.json"
+post_hook   = "command -v pywalfox >/dev/null 2>&1 && pywalfox update >/dev/null 2>&1 || true"
+
+# --- GTK 3 / 4 + libadwaita (@define-color overrides) ------------------------------
+# Recolours libadwaita's named palette. GTK has no external live-reload, so apps
+# pick these up on their next launch (the shell itself is Quickshell, unaffected).
+[templates.gtk3]
+input_path  = "~/.config/matugen/templates/gtk.css"
+output_path = "/home/immortalforest/.config/gtk-3.0/gtk.css"
+
+[templates.gtk4]
+input_path  = "~/.config/matugen/templates/gtk.css"
+output_path = "/home/immortalforest/.config/gtk-4.0/gtk.css"
+
+# --- Qt (qt5ct / qt6ct custom palette) --------------------------------------------
+# qt5ct.conf / qt6ct.conf point [Appearance] color_scheme_path at these with
+# custom_palette=true + style=Fusion; Qt apps read the palette at startup.
+[templates.qt5ct]
+input_path  = "~/.config/matugen/templates/qtct.conf"
+output_path = "/home/immortalforest/.config/qt5ct/colors/matugen.conf"
+
+[templates.qt6ct]
+input_path  = "~/.config/matugen/templates/qtct.conf"
+output_path = "/home/immortalforest/.config/qt6ct/colors/matugen.conf"
+
+# --- fastfetch (accent-coloured keys/title + logo, wallpaper-derived) --------------
+# The whole config.jsonc is matugen-owned (fastfetch had no config before); edit
+# the template, not the output. Colours apply the next time fastfetch runs.
+[templates.fastfetch]
+input_path  = "~/.config/matugen/templates/fastfetch.jsonc"
+output_path = "/home/immortalforest/.config/fastfetch/config.jsonc"
+

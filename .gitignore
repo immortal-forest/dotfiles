@@ -2,3 +2,20 @@
 **/wal
 .config/ghostty/themes/*
 .config/tmux/plugins
+
+# ── runtime data captured by stow packages (never rice) ──────────────────────
+# The `icons` package only means to track the Google.Violet cursor theme;
+# everything else swept in under ~/.local/share is XDG runtime data — nvim/zinit
+# plugin trees, the NSS pki secrets db (key4.db!), icon/mime/gvfs caches. Out.
+/icons/.local/share/*
+!/icons/.local/share/icons/
+/icons/.local/share/icons/*
+!/icons/.local/share/icons/Google.Violet/
+
+# Per-machine agent settings + agent tooling/docs — not part of the rice.
+**/settings.local.json
+.claude/
+**/.claude/
+
+# Generated knowledge-graph output (graphify) — local tool artifact, not the rice.
+quickshell/.config/quickshell/astralis/graphify-out/

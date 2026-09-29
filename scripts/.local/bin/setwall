@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# astralis — thin delegate. The canonical, maintained setwall (flock guard,
+# chroma rescue, base16/pywal overlay, etc.) lives in the astralis tree;
+# this file exists only because Hyprland's login-restore path expects a
+# setwall co-located with restore-wallpaper.sh in ~/.local/bin. Edit the
+# canonical copy, not this one.
+exec "$HOME/.config/quickshell/astralis/scripts/setwall" "$@"
