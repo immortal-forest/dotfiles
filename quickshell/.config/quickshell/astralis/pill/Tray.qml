@@ -24,6 +24,12 @@ Item {
     property real s: 1
     property var barWindow
 
+    // True while the item's menu card is up. The menu is its own full-screen
+    // overlay window, so the pointer leaves the pill's window the moment it
+    // opens; the pill reads this to stay expanded instead of collapsing
+    // underneath the menu it spawned.
+    readonly property bool menuOpen: menu.open
+
     visible: SystemTray.items.values.length > 0
     implicitWidth: visible ? row.implicitWidth : 0
     implicitHeight: 24 * tray.s

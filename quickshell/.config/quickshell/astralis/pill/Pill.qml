@@ -47,7 +47,9 @@ Item {
     property bool hovered: false
     property bool pinned: false
     property bool forcePinned: false
-    readonly property bool held: pinned || forcePinned
+    // The tray menu counts as holding the pill: it opens a separate overlay
+    // window, which takes the pointer (and so the window-level hover) away.
+    readonly property bool held: pinned || forcePinned || trayIcons.menuOpen
 
     readonly property bool surfaceOpen: surface.length > 0
     property bool hoverLatch: false
