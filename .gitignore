@@ -19,3 +19,6 @@
 
 # Generated knowledge-graph output (graphify) — local tool artifact, not the rice.
 quickshell/.config/quickshell/astralis/graphify-out/
+
+# astralis build-spec kit — agent prompts, local only.
+quickshell/.config/quickshell/astralis/astralis-*.md
