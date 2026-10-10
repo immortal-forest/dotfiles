@@ -1,6 +1,9 @@
 hl.config({
 	misc = {
-		vrr = 0,
+		-- VRR always on: the panel only refreshes when a frame changes instead of
+		-- redrawing at a fixed 165Hz, so an idle desktop costs the iGPU far less.
+		-- If the panel flickers at low refresh, use 2 (fullscreen games only).
+		vrr = 1,
 		disable_hyprland_logo = true,
 		disable_splash_rendering = true,
 		force_default_wallpaper = 0,
