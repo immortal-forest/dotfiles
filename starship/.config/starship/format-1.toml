@@ -4,8 +4,8 @@ command_timeout = 6000
 
 # prompt
 format = '''
-[╭╴](#808080)$username$os$directory$git_branch$git_status$python$java$kotlin$nodejs$fill$cmd_duration
-[╰─](#808080)$character'''
+[╭╴](gray)$username$os$directory$git_branch$git_status$python$java$kotlin$nodejs$fill$cmd_duration
+[╰─](blue)$character'''
 
 
 [fill]
@@ -22,12 +22,12 @@ format = '[$user]($style) '
 # character
 [character]
 format = '$symbol '
-error_symbol = "[󰰲](red)"
-success_symbol = "[󰊱](green)"
-vimcmd_symbol = "[󰚕](dim green)"
-vimcmd_replace_one_symbol = "[󰚕](dim purple)"
-vimcmd_replace_symbol = "[󰚕](dim purple)"
-vimcmd_visual_symbol = "[󰚕](dim yellow)"
+error_symbol = "[](red)"
+success_symbol = "[](green)"
+vimcmd_symbol = "[󱡓](pink)"
+vimcmd_replace_one_symbol = "[󱡓](purple)"
+vimcmd_replace_symbol = "[󱡓](purple)"
+vimcmd_visual_symbol = "[󱡓](yellow)"
 
 # OS
 [os]
