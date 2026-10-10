@@ -27,6 +27,10 @@ hl.on("hyprland.start", function()
 	-- the app has no such property (Electron/Discord), so each icon flip logged
 	-- two warnings — nonstop during a voice call, into a log that lives in
 	-- /run (RAM).
+	-- GL vendors pinned to Mesa: qs renders on the AMD iGPU (AQ_DRM_DEVICES),
+	-- but glvnd still loaded NVIDIA's EGL vendor, and the global
+	-- __GLX_VENDOR_LIBRARY_NAME=nvidia (graphics.lua) pulled in libGLX_nvidia +
+	-- gpucomp. Neither draws a pixel; together they cost ~125MB RSS.
 	-- Keep in sync with the Super+Shift+R relaunch bind in keybinds.lua.
-	hl.exec_cmd("bash -c 'export MALLOC_CONF=narenas:4,background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:0; while true; do t=$(date +%s); qs -c astralis --log-rules quickshell.dbus.properties.warning=false; [ $? -eq 0 ] && break; [ $(( $(date +%s) - t )) -lt 5 ] && sleep 5 || sleep 1; done'")
+	hl.exec_cmd("bash -c 'export MALLOC_CONF=narenas:4,background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:0 __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json __GLX_VENDOR_LIBRARY_NAME=mesa; while true; do t=$(date +%s); qs -c astralis --log-rules quickshell.dbus.properties.warning=false; [ $? -eq 0 ] && break; [ $(( $(date +%s) - t )) -lt 5 ] && sleep 5 || sleep 1; done'")
 end)
