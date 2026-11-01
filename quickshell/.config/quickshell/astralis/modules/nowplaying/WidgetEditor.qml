@@ -36,6 +36,12 @@ PanelWindow {
     property bool folded: false
     /** Open settings panel under the dock: "" | "cover" | "lyrics". */
     property string panel: ""
+    /** Dock button the open panel hangs from (its pointer aims at it). */
+    property Item panelBtn: null
+    function togglePanel(name, btn) {
+        win.panelBtn = btn;
+        win.panel = win.panel === name ? "" : name;
+    }
     onFoldedChanged: if (folded) panel = ""
 
     function mix(a, b, f) {
@@ -66,24 +72,25 @@ PanelWindow {
             && a.y < r.y + r.h + win.gap && a.y + a.h + win.gap > r.y;
     }
     function collides(key, x, y, w, h) {
-        if (!Widgets.avoid)
+        // The depth clock sits under the wallpaper's subject, so widgets may overlap it freely.
+        if (!Widgets.avoid || key === "depth")
             return false;
         for (var i = 0; i < win.keys.length; i++) {
             var k = win.keys[i];
-            if (k !== key && Widgets[k].on && win.hits({ x: x, y: y, w: w, h: h }, win.rectOf(k)))
+            if (k !== key && k !== "depth" && Widgets[k].on && win.hits({ x: x, y: y, w: w, h: h }, win.rectOf(k)))
                 return true;
         }
         return false;
     }
     /** Slide a moved box out of every visible neighbour, the shortest way that stays on screen. */
     function resolveMove(key, x, y, w, h) {
-        if (!Widgets.avoid)
+        if (!Widgets.avoid || key === "depth")
             return { x: x, y: y };
         for (var it = 0; it < 4; it++) {
             var moved = false;
             for (var i = 0; i < win.keys.length; i++) {
                 var k = win.keys[i];
-                if (k === key || !Widgets[k].on)
+                if (k === key || k === "depth" || !Widgets[k].on)
                     continue;
                 var r = win.rectOf(k);
                 if (!win.hits({ x: x, y: y, w: w, h: h }, r))
@@ -478,40 +485,67 @@ PanelWindow {
                 property string label: ""
                 property string tip: ""
                 property string tipDesc: ""
+                /** Its menu is open: filled pill. */
                 property bool on: false
+                /** A toggle that is on: primary icon + a dot underneath. */
+                property bool active: false
                 property bool accent: false
                 /** Widget hidden — the icon greys out. */
                 property bool dim: false
-                opacity: dim && !on ? 0.5 : 1
+                opacity: dim && !on ? 0.45 : 1
                 signal clicked()
                 width: label.length > 0 ? Math.max(height, lbl.implicitWidth + 16 * win.s) : height
                 height: 30 * win.s
                 radius: height / 2
-                color: b.accent ? Colors.primary
-                     : b.on ? Qt.alpha(Colors.primary, 0.16)
-                     : bh.hovered ? Qt.alpha(Colors.on_surface, 0.08) : "transparent"
+                color: b.accent ? (bh.hovered ? Qt.lighter(Colors.primary, 1.1) : Colors.primary)
+                     : b.on ? Colors.primary_container
+                     : bh.hovered ? Qt.alpha(Colors.primary, 0.12) : "transparent"
+                border.width: b.on ? 1 : 0
+                border.color: Qt.alpha(Colors.primary, 0.45)
+                scale: tap.pressed ? 0.9 : 1
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on scale { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutBack } }
+                readonly property color ink: b.accent ? Colors.on_primary
+                    : b.on ? Colors.on_primary_container
+                    : b.active ? Colors.primary
+                    : bh.hovered ? Colors.on_surface : Colors.on_surface_variant
                 GlyphIcon {
                     visible: b.label.length === 0
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: b.active && !b.on ? -2 * win.s : 0
                     width: 15 * win.s
                     height: width
                     name: b.icon
-                    color: b.accent ? Colors.on_primary : b.on ? Colors.primary : Colors.on_surface_variant
+                    color: b.ink
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
                 }
                 Text {
                     id: lbl
                     visible: b.label.length > 0
                     anchors.centerIn: parent
+                    anchors.verticalCenterOffset: b.active && !b.on ? -2 * win.s : 0
                     text: b.label
-                    color: b.on ? Colors.primary : Colors.on_surface_variant
+                    color: b.ink
                     font.family: Appearance.font.family
                     font.pixelSize: 11 * win.s
                     font.weight: Font.Bold
                     font.features: { "tnum": 1 }
                 }
+                // toggle-on dot
+                Rectangle {
+                    visible: !b.on && !b.accent
+                    width: 4 * win.s
+                    height: width
+                    radius: width / 2
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 3 * win.s
+                    color: Colors.primary
+                    opacity: b.active ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast } }
+                }
                 HoverHandler { id: bh; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: b.clicked() }
+                TapHandler { id: tap; onTapped: b.clicked() }
                 Tooltip {
                     s: win.s
                     title: b.tip
@@ -539,12 +573,12 @@ PanelWindow {
                 // the second cover hue fading out on the right.
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
-                    GradientStop { position: 0; color: win.mix(Colors.surface_container, TrackInfo.accentDeep, 0.34) }
-                    GradientStop { position: 0.55; color: Colors.surface_container }
-                    GradientStop { position: 1; color: win.mix(Colors.surface_container, TrackInfo.accent2, 0.16) }
+                    GradientStop { position: 0; color: win.mix(Colors.surface_container, TrackInfo.accentDeep, 0.16) }
+                    GradientStop { position: 0.5; color: Colors.surface_container }
+                    GradientStop { position: 1; color: win.mix(Colors.surface_container, TrackInfo.accent2, 0.07) }
                 }
                 border.width: 1
-                border.color: Qt.alpha(TrackInfo.accent, 0.18)
+                border.color: Qt.alpha(Colors.on_surface, 0.08)
                 Behavior on width { NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveFastSpatial } }
 
                 DragHandler {
@@ -579,30 +613,33 @@ PanelWindow {
                     Btn { icon: "chevron-left"; tip: "Fold"; onClicked: win.folded = true }
                     Sep {}
                     Btn {
+                        id: coverBtn
                         icon: "image"; on: win.panel === "cover"; dim: !Widgets.cover.on
                         tip: "Cover art"; tipDesc: "Style, halo, show / hide"
-                        onClicked: win.panel = win.panel === "cover" ? "" : "cover"
+                        onClicked: win.togglePanel("cover", coverBtn)
                     }
                     Btn {
+                        id: lyricsBtn
                         icon: "type"; on: win.panel === "lyrics"; dim: !Widgets.lyrics.on
                         tip: "Lyrics"; tipDesc: "Size, lines, colour, romanization"
-                        onClicked: win.panel = win.panel === "lyrics" ? "" : "lyrics"
+                        onClicked: win.togglePanel("lyrics", lyricsBtn)
                     }
                     Btn {
-                        icon: "clock"; on: Widgets.depth.on
-                        tip: Widgets.depth.on ? "Hide depth clock" : "Show depth clock"
-                        onClicked: Widgets.set("depth", "on", !Widgets.depth.on)
+                        id: depthBtn
+                        icon: "clock"; on: win.panel === "depth"; dim: !Widgets.depth.on
+                        tip: "Clock"; tipDesc: "Depth or plain, style, date"
+                        onClicked: win.togglePanel("depth", depthBtn)
                     }
                     Sep {}
                     Btn {
                         label: Widgets.grid > 0 ? "#" + Widgets.grid : "#"
-                        on: Widgets.grid > 0
+                        active: Widgets.grid > 0
                         tip: "Snap grid"
                         tipDesc: Widgets.grid > 0 ? Widgets.grid + " columns · G cycles" : "Off · G cycles"
                         onClicked: win.cycleGrid()
                     }
                     Btn {
-                        icon: "app-window"; on: Widgets.avoid
+                        icon: "app-window"; active: Widgets.avoid
                         tip: "No overlap"
                         tipDesc: Widgets.avoid ? "On · widgets slide around each other" : "Off · widgets may overlap"
                         onClicked: Widgets.set("avoid", !Widgets.avoid)
@@ -639,7 +676,7 @@ PanelWindow {
                 height: childrenRect.height
             }
         }
-        /** Segmented choice. opts: [{ label, value }]. */
+        /** Segmented choice. opts: [{ label, value, swatch? }] — swatch = colour chip. */
         component Seg: Row {
             id: sg
             property var opts: []
@@ -652,13 +689,23 @@ PanelWindow {
                     id: chip
                     required property var modelData
                     readonly property bool sel: sg.value === modelData.value
-                    width: Math.max(26 * win.s, chipText.implicitWidth + 14 * win.s)
+                    width: modelData.swatch !== undefined ? height : Math.max(26 * win.s, chipText.implicitWidth + 14 * win.s)
                     height: 24 * win.s
                     radius: height / 2
                     color: sel ? Qt.alpha(Colors.primary, 0.2) : chipHov.hovered ? Qt.alpha(Colors.on_surface, 0.08) : Qt.alpha(Colors.on_surface, 0.03)
                     border.width: sel ? 1 : 0
                     border.color: Qt.alpha(Colors.primary, 0.5)
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    Rectangle {
+                        visible: chip.modelData.swatch !== undefined
+                        anchors.centerIn: parent
+                        width: parent.height - 8 * win.s
+                        height: width
+                        radius: width / 2
+                        color: chip.modelData.swatch ?? "transparent"
+                        border.width: 1
+                        border.color: Qt.alpha(Colors.on_surface, 0.2)
+                    }
                     Text {
                         id: chipText
                         anchors.centerIn: parent
@@ -730,32 +777,68 @@ PanelWindow {
 
         Rectangle {
             id: panelCard
-            readonly property bool below: dock.y < win.sh / 2
             readonly property var ly: Widgets.lyrics
             readonly property var cv: Widgets.cover
+            readonly property var dc: Widgets.depth
+            readonly property var swatches: ["primary", "tertiary", "secondary", "on_surface"].map(v => ({ value: v, swatch: Colors[v], label: "" }))
+            readonly property bool shown: win.panel.length > 0 && !win.folded
+
+            // ── placement: hang from the button that opened it, on whichever
+            // side of the dock has room; cap the height to that room (scrolls).
+            readonly property real gap: 12 * win.s
+            readonly property real margin: 8 * win.s
+            readonly property real natural: panelCol.implicitHeight + 24 * win.s
+            readonly property real roomBelow: win.sh - (dock.y + dock.height) - gap - margin
+            readonly property real roomAbove: dock.y - gap - margin
+            readonly property bool below: roomBelow >= natural || roomBelow >= roomAbove
+            readonly property real aimX: win.panelBtn ? dock.x + dockRow.x + win.panelBtn.x + win.panelBtn.width / 2 : dock.x + dock.width / 2
+
             visible: opacity > 0.01 && win.chrome
-            opacity: win.panel.length > 0 && !win.folded ? 1 : 0
+            opacity: shown ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-            width: 330 * win.s
-            height: panelCol.implicitHeight + 24 * win.s
-            x: Math.max(8 * win.s, Math.min(win.sw - width - 8 * win.s, dock.x + dock.width / 2 - width / 2))
-            y: below ? dock.y + dock.height + 8 * win.s : dock.y - height - 8 * win.s
-            radius: 20 * win.s
-            gradient: Gradient {
-                GradientStop { position: 0; color: win.mix(Colors.surface_container, TrackInfo.accentDeep, 0.22) }
-                GradientStop { position: 0.45; color: Colors.surface_container }
-                GradientStop { position: 1; color: win.mix(Colors.surface_container, TrackInfo.accent2, 0.08) }
+            transform: Translate {
+                y: panelCard.shown ? 0 : (panelCard.below ? -8 : 8) * win.s
+                Behavior on y { NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveFastSpatial } }
             }
+            width: 330 * win.s
+            height: Math.max(80 * win.s, Math.min(natural, below ? roomBelow : roomAbove))
+            x: Math.max(margin, Math.min(win.sw - width - margin, aimX - width / 2))
+            y: below ? dock.y + dock.height + gap : dock.y - height - gap
+            radius: 20 * win.s
+            color: win.mix(Colors.surface_container, TrackInfo.accentDeep, 0.08)
             border.width: 1
-            border.color: Qt.alpha(TrackInfo.accent, 0.18)
+            border.color: Qt.alpha(Colors.on_surface, 0.08)
             // Swallow clicks so they don't fall through to the frames.
             TapHandler {}
 
+            // Pointer nub aiming at the opening button (drawn behind the card,
+            // so only the outer half shows).
+            Rectangle {
+                z: -1
+                width: 14 * win.s
+                height: width
+                rotation: 45
+                color: panelCard.color
+                border.width: 1
+                border.color: panelCard.border.color
+                x: Math.max(panelCard.radius, Math.min(panelCard.width - panelCard.radius - width, panelCard.aimX - panelCard.x - width / 2))
+                y: panelCard.below ? -height / 2 : panelCard.height - height / 2
+            }
+
+            Flickable {
+                id: panelFlick
+                anchors.fill: parent
+                anchors.margins: 1
+                clip: true
+                contentHeight: panelCol.implicitHeight + 24 * win.s
+                interactive: contentHeight > height
+                boundsBehavior: Flickable.StopAtBounds
+
             Column {
                 id: panelCol
-                x: 14 * win.s
-                y: 12 * win.s
-                width: parent.width - 28 * win.s
+                x: 13 * win.s
+                y: 11 * win.s
+                width: panelCard.width - 28 * win.s
                 spacing: 6 * win.s
 
                 // Header: name + show/hide.
@@ -764,7 +847,7 @@ PanelWindow {
                     height: 28 * win.s
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: win.panel === "cover" ? "Cover art" : "Lyrics"
+                        text: win.panel === "cover" ? "Cover art" : win.panel === "lyrics" ? "Lyrics" : "Clock"
                         color: Colors.on_surface
                         font.family: Appearance.font.family
                         font.pixelSize: 13 * win.s
@@ -773,7 +856,7 @@ PanelWindow {
                     Sw {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        on: win.panel === "cover" ? panelCard.cv.on : panelCard.ly.on
+                        on: win.panel.length > 0 && Widgets[win.panel] ? Widgets[win.panel].on : false
                         onToggled: Widgets.set(win.panel, "on", !on)
                     }
                 }
@@ -900,6 +983,111 @@ PanelWindow {
                             : ""
                     }
                 }
+
+                // ── clock ──
+                Column {
+                    visible: win.panel === "depth"
+                    width: parent.width
+                    spacing: 6 * win.s
+                    PRow {
+                        name: "Style"
+                        Seg {
+                            opts: [{ label: "Depth", value: true }, { label: "Plain clock", value: false }]
+                            value: panelCard.dc.cut
+                            onPicked: (v) => Widgets.set("depth", "cut", v)
+                        }
+                    }
+                    Lbl {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        font.weight: Font.Medium
+                        opacity: 0.8
+                        text: panelCard.dc.cut ? "Numerals tuck behind the wallpaper's subject — other widgets can sit on top."
+                                               : "Just the clock, drawn over the wallpaper."
+                    }
+                    PRow {
+                        visible: panelCard.dc.cut
+                        name: "Foreground cutoff"
+                        Stepper {
+                            value: Math.round(panelCard.dc.threshold * 100); step: 5; from: 5; to: 95; suffix: "%"
+                            onEdited: (v) => Widgets.set("depth", "threshold", v / 100)
+                        }
+                    }
+                    PRow {
+                        name: "Layout"
+                        Seg {
+                            opts: [{ label: "Classic", value: "classic" }, { label: "Stacked", value: "stacked" }, { label: "Date below", value: "below" }]
+                            value: panelCard.dc.layout
+                            onPicked: (v) => Widgets.set("depth", "layout", v)
+                        }
+                    }
+                    PRow {
+                        name: "Fill"
+                        Seg {
+                            opts: [{ label: "Solid", value: "solid" }, { label: "Outline", value: "outline" }, { label: "Gradient", value: "gradient" }]
+                            value: panelCard.dc.fill
+                            onPicked: (v) => Widgets.set("depth", "fill", v)
+                        }
+                    }
+                    PRow {
+                        name: panelCard.dc.fill === "gradient" ? "Colours" : "Colour"
+                        Row {
+                            spacing: 8 * win.s
+                            Seg { opts: panelCard.swatches; value: panelCard.dc.color; onPicked: (v) => Widgets.set("depth", "color", v) }
+                            Seg {
+                                visible: panelCard.dc.fill === "gradient"
+                                opts: panelCard.swatches; value: panelCard.dc.color2
+                                onPicked: (v) => Widgets.set("depth", "color2", v)
+                            }
+                        }
+                    }
+                    PRow {
+                        name: "Weight"
+                        Seg {
+                            opts: [{ label: "Light", value: 300 }, { label: "Reg", value: 400 }, { label: "Bold", value: 700 }, { label: "Black", value: 900 }]
+                            value: panelCard.dc.weight
+                            onPicked: (v) => Widgets.set("depth", "weight", v)
+                        }
+                    }
+                    PRow {
+                        name: "Hours"
+                        Seg {
+                            opts: [{ label: "Auto", value: "auto" }, { label: "24 h", value: "24" }, { label: "12 h", value: "12" }]
+                            value: panelCard.dc.hour
+                            onPicked: (v) => Widgets.set("depth", "hour", v)
+                        }
+                    }
+                    PRow {
+                        name: "Date"
+                        Seg {
+                            opts: [{ label: "Long", value: "long" }, { label: "Short", value: "short" }, { label: "Off", value: "off" }]
+                            value: panelCard.dc.dateFormat
+                            onPicked: (v) => Widgets.set("depth", "dateFormat", v)
+                        }
+                    }
+                    PRow {
+                        visible: panelCard.dc.dateFormat !== "off"
+                        name: "Date colour"
+                        Seg { opts: panelCard.swatches; value: panelCard.dc.dateColor; onPicked: (v) => Widgets.set("depth", "dateColor", v) }
+                    }
+                    PRow {
+                        name: "Align"
+                        Seg {
+                            opts: [{ label: "Left", value: "left" }, { label: "Center", value: "center" }, { label: "Right", value: "right" }]
+                            value: panelCard.dc.align
+                            onPicked: (v) => Widgets.set("depth", "align", v)
+                        }
+                    }
+                    PRow { name: "Shadow"; Sw { on: panelCard.dc.shadow; onToggled: Widgets.set("depth", "shadow", !on) } }
+                    Lbl {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        font.weight: Font.Medium
+                        opacity: 0.7
+                        text: "Font, tracking and date size: the gear button."
+                    }
+                }
+            }
             }
         }
 
