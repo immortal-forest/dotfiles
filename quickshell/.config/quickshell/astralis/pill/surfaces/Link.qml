@@ -37,6 +37,11 @@ PillSurface {
 
     ameForm: "dock"
     amePoint: Qt.point(width / 2, height - 8 * s)
+    // Main view hugs its rows (+ the 静 block when empty, + the bead's dock);
+    // the Wi-Fi / Bluetooth drill-ins keep the full fixed height for lists.
+    desiredH: subview === "main"
+        ? mainCol.implicitHeight + (notifCount === 0 ? 92 * s : 4 * s) + 16 * s
+        : 0
 
     /**
      * Pops one navigation level: drill-in back to main returns true, main
@@ -86,6 +91,12 @@ PillSurface {
             || ((b.signalStrength || 0) - (a.signalStrength || 0)));
         return out;
     }
+    /** 0–100 regardless of whether the backend reports a 0–1 fraction. */
+    function pct(net) {
+        var v = (net && net.signalStrength) || 0;
+        return v <= 1 ? v * 100 : v;
+    }
+
     readonly property var wifiActive: {
         for (var i = 0; i < nets.length; i++)
             if (nets[i].connected === true)
@@ -602,73 +613,103 @@ PillSurface {
         default property alias rightContent: subRight.data
 
         width: parent ? parent.width : 0
-        height: 24 * root.s
+        height: 34 * root.s
 
-        Row {
+        Item {
+            id: backBtn
             anchors.left: parent.left
+            anchors.leftMargin: -4 * root.s
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8 * root.s
+            width: 30 * root.s
+            height: 30 * root.s
 
-            Item {
-                anchors.verticalCenter: parent.verticalCenter
-                width: 17 * root.s
-                height: 17 * root.s
+            // Named for where it goes, not what it looks like — "chevron"
+            // means nothing read aloud, and the title beside it is the only
+            // other clue to depth a screen reader gets.
+            Accessible.role: Accessible.Button
+            Accessible.name: "Back"
+            Accessible.description: "Return to the connectivity list"
+            Accessible.focusable: true
+            Accessible.onPressAction: root.back()
 
-                // Named for where it goes, not what it looks like — "chevron"
-                // means nothing read aloud, and the title beside it is the only
-                // other clue to depth a screen reader gets.
-                Accessible.role: Accessible.Button
-                Accessible.name: "Back"
-                Accessible.description: "Return to the connectivity list"
-                Accessible.focusable: true
-                Accessible.onPressAction: root.back()
-
-                GlyphIcon {
-                    anchors.fill: parent
-                    name: "chevron-left"
-                    color: backArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
-                    stroke: 1.8
-                    scale: backArea.pressed ? 0.92 : 1
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Motion.glide
-                            easing.type: Motion.easeBezier
-                            easing.bezierCurve: Motion.expressiveFastSpatial
-                        }
-                    }
-                }
-
-                MouseArea {
-                    id: backArea
-                    anchors.fill: parent
-                    anchors.margins: -6 * root.s
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.back()
+            scale: backArea.pressed ? 0.92 : 1
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
                 }
             }
 
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: backArea.containsMouse ? Colors.surface_container_highest : "transparent"
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+            }
+
+            GlyphIcon {
+                anchors.centerIn: parent
+                width: 16 * root.s
+                height: 16 * root.s
+                name: "chevron-left"
+                color: backArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
+                stroke: 1.9
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+            }
+
+            MouseArea {
+                id: backArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.back()
+            }
+        }
+
+        // Title over live status — the drill-in names where you are in the
+        // same voice as the rows that led here, not as a tracked-out caption.
+        Column {
+            anchors.left: backBtn.right
+            anchors.leftMargin: 6 * root.s
+            anchors.right: subRight.left
+            anchors.rightMargin: 8 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 1 * root.s
+
             Text {
-                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width
                 text: subHead.title
-                color: Colors.on_surface_variant
+                color: Colors.on_surface
                 font.family: Appearance.font.family
-                font.pixelSize: 10 * root.s
+                font.pixelSize: 13 * root.s
                 font.weight: Font.DemiBold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.6 * root.s
+                elide: Text.ElideRight
             }
 
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
+            Row {
                 visible: subHead.status.length > 0
-                text: "· " + subHead.status
-                color: subHead.statusLit ? Colors.primary : Qt.alpha(Colors.on_surface_variant, 0.65)
-                font.family: Appearance.font.family
-                font.pixelSize: 9.5 * root.s
-                font.weight: Font.Medium
-                elide: Text.ElideRight
+                spacing: 5 * root.s
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 5 * root.s
+                    height: width
+                    radius: width / 2
+                    color: subHead.statusLit ? Colors.primary : Qt.alpha(Colors.on_surface_variant, 0.4)
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: subHead.status
+                    color: subHead.statusLit ? Colors.primary : Colors.on_surface_variant
+                    font.family: Appearance.font.family
+                    font.pixelSize: 10 * root.s
+                    font.weight: Font.Medium
+                    elide: Text.ElideRight
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                }
             }
         }
 
@@ -693,6 +734,8 @@ PillSurface {
         property bool toggleOn: false
         /** The switch controls a radio, which is rarely the row's own name. */
         property string toggleName: ""
+        /** ≥ 0 swaps the glyph for live Wi-Fi bars at this strength. */
+        property real strength: -1
         signal toggled()
         signal drill()
 
@@ -740,11 +783,19 @@ PillSurface {
             width: 17 * root.s
             height: 17 * root.s
             name: lrow.glyph
+            visible: lrow.strength < 0
             color: lrow.glyphLit ? Colors.primary : Colors.on_surface_variant
             stroke: 1.7
             // The lit tint tracks live link state (associate/drop), so it
             // blooms into the accent instead of flicking as the radio settles.
             Behavior on color { ColorAnimation { duration: Motion.fast } }
+        }
+
+        WifiSignal {
+            anchors.fill: lrowGlyph
+            visible: lrow.strength >= 0
+            strength: lrow.strength
+            color: lrow.glyphLit ? Colors.primary : Colors.on_surface_variant
         }
 
         Column {
@@ -858,7 +909,7 @@ PillSurface {
                     id: airplaneCtl
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6 * root.s
+                    spacing: 10 * root.s
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
@@ -895,7 +946,7 @@ PillSurface {
                 // Unread pulse (Ricelin Link header ember + "N NEW").
                 Row {
                     anchors.right: airplaneCtl.left
-                    anchors.rightMargin: 12 * root.s
+                    anchors.rightMargin: 18 * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 6 * root.s
                     visible: root.notifUnread > 0
@@ -928,11 +979,15 @@ PillSurface {
                 }
             }
 
+            Item { width: 1; height: 4 * root.s }
+
             Rectangle {
                 width: parent.width
                 height: 1
                 color: Qt.alpha(Colors.on_surface, 0.06)
             }
+
+            Item { width: 1; height: 4 * root.s }
 
             LinkRow {
                 // Airplane blocks the radio: dim and lock the row out.
@@ -940,6 +995,7 @@ PillSurface {
                 opacity: root.airplaneOn ? 0.4 : 1
                 Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                 glyph: root.wired ? "ethernet" : "wifi"
+                strength: (!root.wired && root.wifiOn) ? (root.wifiActive ? root.pct(root.wifiActive) : 0) : -1
                 glyphLit: root.wired || (root.wifiOn && root.wifiActive !== null)
                 label: "Network"
                 subText: root.netzSubText
@@ -969,10 +1025,12 @@ PillSurface {
                 onDrill: root.subview = "bt"
             }
 
+            Item { width: 1; height: 8 * root.s }
+
             // ── 報 INBOX — compact recent-notifications glance ──────────────
             Item {
                 width: parent.width
-                height: 20 * root.s
+                height: 32 * root.s
 
                 Row {
                     anchors.left: parent.left
@@ -1030,32 +1088,41 @@ PillSurface {
                     Accessible.focusable: true
                     Accessible.onPressAction: Services.Notifications.clearAll()
 
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: Flags.showGlyphs
-                        text: "払"
-                        color: inboxClearArea.containsMouse ? Colors.error : Qt.alpha(Colors.error, 0.75)
-                        font.family: Appearance.font.jp
-                        font.pixelSize: 9 * root.s
-                        font.weight: Font.Bold
+                    Rectangle {
+                        height: 26 * root.s
+                        width: chipRowC.implicitWidth + 22 * root.s
+                        radius: height / 2
+                        color: Qt.alpha(Colors.error, inboxClearArea.pressed ? 0.22 : inboxClearArea.containsMouse ? 0.16 : 0.10)
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "CLEAR"
-                        color: inboxClearArea.containsMouse ? Colors.error : Qt.alpha(Colors.error, 0.75)
-                        font.family: Appearance.font.family
-                        font.pixelSize: 9 * root.s
-                        font.weight: Font.Bold
-                        font.letterSpacing: 1.4 * root.s
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                        Row {
+                            id: chipRowC
+                            anchors.centerIn: parent
+                            spacing: 6 * root.s
+
+                            GlyphIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 13 * root.s
+                                height: 13 * root.s
+                                name: "trash"
+                                stroke: 1.8
+                                color: Colors.error
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Clear"
+                                color: Colors.error
+                                font.family: Appearance.font.family
+                                font.pixelSize: 11 * root.s
+                                font.weight: Font.DemiBold
+                            }
+                        }
                     }
                 }
 
                 MouseArea {
                     id: inboxClearArea
                     anchors.fill: inboxClear
-                    anchors.margins: -5 * root.s
                     visible: root.notifCount > 0
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
@@ -1068,7 +1135,7 @@ PillSurface {
             Column {
                 visible: root.notifCount > 0
                 width: parent.width
-                spacing: 2 * root.s
+                spacing: 4 * root.s
 
                 Repeater {
                     model: root.inboxEntries
@@ -1080,8 +1147,8 @@ PillSurface {
                         readonly property var n: modelData.entry.n
 
                         width: parent.width
-                        height: 26 * root.s
-                        radius: 7 * root.s
+                        height: 30 * root.s
+                        radius: 9 * root.s
                         color: growHover.hovered ? Colors.surface_container_highest : "transparent"
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
 
@@ -1306,7 +1373,7 @@ PillSurface {
         SubHeader {
             id: wifiHeader
             anchors.top: parent.top
-            title: "WIFI"
+            title: "Wi-Fi"
             status: root.wifiStatusText
             statusLit: root.wifiActive !== null
 
@@ -1362,7 +1429,7 @@ PillSurface {
                  */
                 readonly property string a11y: {
                     var parts = [netItem.secured ? "secured" : "open"];
-                    var sig = Math.round((netItem.modelData && netItem.modelData.signalStrength) || 0);
+                    var sig = Math.round(root.pct(netItem.modelData));
                     parts.push("signal " + sig + "%");
                     if (netItem.isActive)
                         parts.push("connected");
@@ -1420,21 +1487,18 @@ PillSurface {
                         onClicked: root.activateNetwork(netItem.modelData)
                     }
 
-                    GlyphIcon {
+                    WifiSignal {
                         id: netGlyph
                         anchors.left: parent.left
-                        anchors.leftMargin: 8 * root.s
+                        anchors.leftMargin: 10 * root.s
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 15 * root.s
-                        height: 15 * root.s
-                        name: "wifi"
-                        color: netItem.isActive ? Colors.primary : Colors.on_surface_variant
-                        stroke: 1.7
-                        opacity: 0.45 + 0.55 * (((netItem.modelData && netItem.modelData.signalStrength) || 0) / 100)
-                        // Association lands asynchronously; the row lights into
+                        width: 16 * root.s
+                        height: 16 * root.s
+                        strength: root.pct(netItem.modelData)
+                        // Association lands asynchronously; the bars light into
                         // the accent rather than flicking the instant nmcli
                         // reports back.
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        color: netItem.isActive ? Colors.primary : Colors.on_surface_variant
                     }
 
                     Text {
@@ -1497,7 +1561,7 @@ PillSurface {
                     enabled: netItem.asking
                     clip: true
                     width: parent.width
-                    height: netItem.asking ? 30 * root.s : 0
+                    height: netItem.asking ? 42 * root.s : 0
                     Behavior on opacity {
                         NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
                     }
@@ -1509,60 +1573,112 @@ PillSurface {
                         }
                     }
 
-                    TextField {
-                        id: pwField
+                    // Filled field: lock, masked entry, reveal, and a round
+                    // connect button that carries the pulse while nmcli runs.
+                    Rectangle {
+                        id: pwBox
                         anchors.left: parent.left
-                        anchors.leftMargin: 10 * root.s
-                        anchors.right: pwRight.left
-                        anchors.rightMargin: 8 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        background: null
-                        padding: 0
-                        color: Colors.on_surface
-                        font.family: Appearance.font.family
-                        font.pixelSize: 11.5 * root.s
-                        echoMode: TextInput.Password
-                        placeholderText: "Password"
-                        Accessible.name: "Password for " + netItem.ssid
-                        placeholderTextColor: Qt.alpha(Colors.on_surface_variant, 0.65)
-                        selectByMouse: true
-                        selectionColor: Colors.primary
-                        onTextEdited: root.pwDraft = text
-                        onAccepted: root.connectWithPassword(netItem.ssid, text)
-                    }
-
-                    Row {
-                        id: pwRight
                         anchors.right: parent.right
-                        anchors.rightMargin: 10 * root.s
+                        anchors.leftMargin: 4 * root.s
+                        anchors.rightMargin: 4 * root.s
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 7 * root.s
+                        height: 34 * root.s
+                        radius: height / 2
+                        color: Colors.surface_container_highest
+                        border.width: 1.2 * root.s
+                        border.color: root.connectFailed && netItem.asking ? Colors.error
+                            : pwField.activeFocus ? Colors.primary : "transparent"
+                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
-                        Rectangle {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: root.connecting && netItem.asking
-                            width: 4 * root.s
-                            height: 4 * root.s
-                            radius: width / 2
-                            color: Colors.primary
-
-                            SequentialAnimation on opacity {
-                                running: root.connecting && netItem.asking && !Motion.reduceMotion
-                                loops: Animation.Infinite
-                                NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                            }
-                        }
+                        property bool reveal: false
 
                         GlyphIcon {
+                            id: pwLock
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12 * root.s
                             anchors.verticalCenter: parent.verticalCenter
                             width: 14 * root.s
                             height: 14 * root.s
-                            name: "return"
-                            color: enterArea.containsMouse ? Colors.on_surface : Colors.primary
-                            stroke: 1.8
-                            scale: enterArea.pressed ? 0.92 : 1
+                            name: "lock-outline"
+                            stroke: 1.7
+                            color: pwField.activeFocus ? Colors.primary : Colors.on_surface_variant
                             Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        }
+
+                        TextField {
+                            id: pwField
+                            anchors.left: pwLock.right
+                            anchors.leftMargin: 8 * root.s
+                            anchors.right: pwEye.left
+                            anchors.rightMargin: 4 * root.s
+                            anchors.verticalCenter: parent.verticalCenter
+                            background: null
+                            padding: 0
+                            color: Colors.on_surface
+                            font.family: Appearance.font.family
+                            font.pixelSize: 12 * root.s
+                            echoMode: pwBox.reveal ? TextInput.Normal : TextInput.Password
+                            placeholderText: "Password"
+                            Accessible.name: "Password for " + netItem.ssid
+                            placeholderTextColor: Qt.alpha(Colors.on_surface_variant, 0.65)
+                            selectByMouse: true
+                            selectionColor: Colors.primary
+                            selectedTextColor: Colors.on_primary
+                            onTextEdited: root.pwDraft = text
+                            onAccepted: root.connectWithPassword(netItem.ssid, text)
+                        }
+
+                        Item {
+                            id: pwEye
+                            anchors.right: pwGo.left
+                            anchors.rightMargin: 4 * root.s
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 26 * root.s
+                            height: 26 * root.s
+                            visible: pwField.text.length > 0
+
+                            Accessible.role: Accessible.Button
+                            Accessible.name: pwBox.reveal ? "Hide password" : "Show password"
+                            Accessible.onPressAction: pwBox.reveal = !pwBox.reveal
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: eyeArea.containsMouse ? Qt.alpha(Colors.on_surface, 0.08) : "transparent"
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            }
+                            GlyphIcon {
+                                anchors.centerIn: parent
+                                width: 14 * root.s
+                                height: 14 * root.s
+                                name: pwBox.reveal ? "eye-off" : "eye"
+                                stroke: 1.7
+                                color: Colors.on_surface_variant
+                            }
+                            MouseArea {
+                                id: eyeArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    pwBox.reveal = !pwBox.reveal;
+                                    pwField.forceActiveFocus();
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            id: pwGo
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4 * root.s
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 26 * root.s
+                            height: 26 * root.s
+                            radius: width / 2
+                            readonly property bool ready: pwField.text.length > 0
+                            color: ready ? Colors.primary : Qt.alpha(Colors.on_surface, 0.1)
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            scale: enterArea.pressed ? 0.92 : 1
                             Behavior on scale {
                                 NumberAnimation {
                                     duration: Motion.glide
@@ -1571,18 +1687,35 @@ PillSurface {
                                 }
                             }
 
-                            // The glyph is a return arrow; read aloud it has to
-                            // say what pressing it actually does.
+                            // While nmcli runs the button breathes instead of
+                            // a separate dot competing with it.
+                            SequentialAnimation on opacity {
+                                running: root.connecting && netItem.asking && !Motion.reduceMotion
+                                loops: Animation.Infinite
+                                alwaysRunToEnd: true
+                                NumberAnimation { from: 1; to: 0.45; duration: Motion.pulse; easing.type: Easing.InOutSine }
+                                NumberAnimation { from: 0.45; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
+                            }
+
                             Accessible.role: Accessible.Button
                             Accessible.name: "Connect"
                             Accessible.description: "Join " + netItem.ssid + " with the entered password"
                             Accessible.focusable: true
                             Accessible.onPressAction: root.connectWithPassword(netItem.ssid, pwField.text)
 
+                            GlyphIcon {
+                                anchors.centerIn: parent
+                                width: 14 * root.s
+                                height: 14 * root.s
+                                name: "arrow-right"
+                                stroke: 2
+                                color: pwGo.ready ? Colors.on_primary : Colors.on_surface_variant
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            }
+
                             MouseArea {
                                 id: enterArea
                                 anchors.fill: parent
-                                anchors.margins: -6 * root.s
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: root.connectWithPassword(netItem.ssid, pwField.text)
@@ -1602,8 +1735,9 @@ PillSurface {
                     text: "Connection failed"
                     color: Colors.error
                     font.family: Appearance.font.family
-                    font.pixelSize: 9.5 * root.s
-                    leftPadding: 10 * root.s
+                    font.pixelSize: 10 * root.s
+                    leftPadding: 18 * root.s
+                    bottomPadding: 4 * root.s
                     Behavior on opacity {
                         NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
                     }
@@ -1648,7 +1782,7 @@ PillSurface {
         SubHeader {
             id: btHeader
             anchors.top: parent.top
-            title: "BLUETOOTH"
+            title: "Bluetooth"
             status: root.btSubText
             statusLit: root.btPrimary !== null
 

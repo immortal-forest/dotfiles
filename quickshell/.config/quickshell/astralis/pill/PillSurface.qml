@@ -31,6 +31,15 @@ Item {
     property real mBottom: Appearance.padding.surface
     property string title: ""
 
+    /**
+     * Content height the surface actually needs (scaled px, margins excluded).
+     * 0 = use the fixed size from Pill.qml's table; > 0 caps it there so a
+     * short list doesn't leave dead space. Must be derived from top-anchored
+     * content only — never from this item's own height.
+     */
+    property real desiredH: 0
+
+
     signal requestClose()
 
     // Soul-bead hooks (consumed by Stage 6; surfaces re-bind them).

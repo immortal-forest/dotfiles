@@ -43,6 +43,7 @@ SettingsPage {
             { item: vizRow, kind: "toggle", get: function () { return Flags.musicViz; }, set: function (v) { Flags.musicViz = v; } },
             { item: vizCycleRow, kind: "toggle", get: function () { return Flags.vizColorCycle; }, set: function (v) { Flags.vizColorCycle = v; } },
             { item: scaleRow, kind: "seg", vals: [0.9, 1.0, 1.1, 1.25], get: function () { return Flags.uiScale; }, set: function (v) { Flags.uiScale = v; } },
+            { item: dashScaleRow, kind: "seg", vals: [0.7, 0.8, 0.9, 1.0], get: function () { return Flags.dashScale; }, set: function (v) { Flags.dashScale = v; } },
             { item: motionRow, kind: "toggle", get: function () { return Flags.reduceMotion; }, set: function (v) { Flags.reduceMotion = v; } },
             { item: fontRow, kind: "nav", surface: "fontpicker" }
         );
@@ -228,6 +229,22 @@ SettingsPage {
                     options: [{ label: "90%", value: 0.9 }, { label: "100%", value: 1.0 }, { label: "110%", value: 1.1 }, { label: "125%", value: 1.25 }]
                     value: Flags.uiScale
                     onPicked: (v) => Flags.uiScale = v
+                }
+            }
+
+            SettingsRow {
+                id: dashScaleRow
+                surface: root
+                name: "Overview size"
+                sub: "How much of the screen the 覧 overview (Super+O) covers"
+                captionOnFocus: true
+                icon: "app-window"
+
+                SettingsSeg {
+                    s: root.s
+                    options: [{ label: "70%", value: 0.7 }, { label: "80%", value: 0.8 }, { label: "90%", value: 0.9 }, { label: "100%", value: 1.0 }]
+                    value: Flags.dashScale
+                    onPicked: (v) => Flags.dashScale = v
                 }
             }
 

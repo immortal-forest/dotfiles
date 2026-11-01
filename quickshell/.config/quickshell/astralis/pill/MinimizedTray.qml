@@ -8,7 +8,7 @@ import "../services"
 /**
  * astralis — row of icon chips for windows parked on Hyprland's
  * `special:minimized` workspace (ported from Ricelin pill/MinimizedTray.qml,
- * hl.dsp→vanilla dispatcher, tooltip dropped). Clicking a chip moves the
+ * tooltip dropped). Clicking a chip moves the
  * window back to the active workspace of the monitor THIS pill lives on, so
  * it reappears on the screen the user clicked.
  */
@@ -79,7 +79,9 @@ Row {
         var addr = String((t && t.address) || "");
         if (addr.indexOf("0x") !== 0)
             addr = "0x" + addr;
-        Hyprland.dispatch("movetoworkspacesilent " + root.restoreWorkspace() + ",address:" + addr);
+        // Lua config: dispatch takes hl.dsp.* expressions, not vanilla strings.
+        Hyprland.dispatch("hl.dsp.window.move({ workspace = " + JSON.stringify(String(root.restoreWorkspace()))
+            + ", follow = false, window = " + JSON.stringify("address:" + addr) + " })");
     }
 
     Repeater {

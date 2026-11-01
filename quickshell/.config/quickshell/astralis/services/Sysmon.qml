@@ -27,6 +27,34 @@ Singleton {
     id: root
 
     property bool open: false
+    /** The 覧 dashboard overlay is up — polls like an open surface. */
+    property bool dashOpen: false
+    readonly property bool polling: open || dashOpen
+
+    /**
+     * Rolling CPU / RAM history for the dashboard sparklines: one sample per
+     * histStep ms, histLen samples (4 min). Sampled even while nothing is
+     * open — the fast probe runs once per step in the background — so the
+     * graph already has a past when the dashboard appears.
+     */
+    readonly property int histLen: 60
+    readonly property int histStep: 4000
+    property var cpuHist: []
+    property var memHist: []
+    property real lastHistT: 0
+    function pushHist() {
+        var now = Date.now();
+        if (now - lastHistT < histStep - 250)
+            return;
+        lastHistT = now;
+        var c = cpuHist.slice(), m = memHist.slice();
+        c.push(cpu);
+        m.push(memPct);
+        if (c.length > histLen) c.shift();
+        if (m.length > histLen) m.shift();
+        cpuHist = c;
+        memHist = m;
+    }
 
     property int cpu: 0
     property int cpuTemp: -1
@@ -73,7 +101,7 @@ Singleton {
         slowProc.running = true;
     }
 
-    onOpenChanged: if (open) primeAll()
+    onPollingChanged: if (polling) primeAll()
 
     function fmtUptime(sec) {
         var d = Math.floor(sec / 86400);
@@ -153,6 +181,8 @@ Singleton {
                         root.memTotalGb = mt / 1048576;
                         root.memUsedGb = (mt - ma) / 1048576;
                         root.memPct = mt > 0 ? Math.round(100 * (mt - ma) / mt) : 0;
+                        if (root.prevCpuTotal > 0)
+                            root.pushHist();
                         root.swapUsedGb = (st - sf) / 1048576;
                     } else if (p[0] === "NET") {
                         var rx = parseFloat(p[1]);
@@ -231,21 +261,29 @@ Singleton {
 
     Timer {
         interval: 500
-        running: root.open
+        running: root.polling
+        repeat: true
+        onTriggered: if (!fastProc.running) fastProc.running = true
+    }
+
+    // Background history sampler (see histLen) while nothing is polling.
+    Timer {
+        interval: root.histStep
+        running: !root.polling
         repeat: true
         onTriggered: if (!fastProc.running) fastProc.running = true
     }
 
     Timer {
         interval: 1000
-        running: root.open && root.hasGpu
+        running: root.polling && root.hasGpu
         repeat: true
         onTriggered: if (!gpuProc.running) gpuProc.running = true
     }
 
     Timer {
         interval: 5000
-        running: root.open
+        running: root.polling
         repeat: true
         onTriggered: if (!slowProc.running) slowProc.running = true
     }

@@ -58,6 +58,9 @@ var glyphs = ({
     "droplet": { d: "M12 3c3.5 4.2 5.5 7 5.5 9.5a5.5 5.5 0 0 1-11 0C6.5 10 8.5 7.2 12 3z", fill: false },
     "check": { d: "M20 6 9 17l-5-5", fill: false },
     "arrow-up": { d: "M12 19V5 M6 11l6-6 6 6", fill: false },
+    "arrow-right": { d: "M5 12h14 M13 6l6 6-6 6", fill: false },
+    "eye": { d: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z", fill: false },
+    "eye-off": { d: "M3 3l18 18 M10.6 6.1A9.7 9.7 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-2.8 3.4 M6.6 6.6C3.7 8.3 2 12 2 12s3.5 6 10 6c1.9 0 3.5-.5 4.9-1.3 M9.9 9.9a3 3 0 0 0 4.2 4.2", fill: false },
     "stopwatch": { d: "M10 2h4 M12 14V9 M19 7l1.5-1.5 M12 22a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", fill: false },
     "type": { d: "M4 7V5h16v2 M12 5v14 M9 19h6", fill: false },
     "language": { d: "M3 5h8 M7 4v2c0 3.5-2 6-4 7 M4 9c0 2 2.5 4 6 4.5 M13 20l4-9 4 9 M14.5 17h5", fill: false },
@@ -102,6 +105,13 @@ var glyphs = ({
     "trash": { d: "M3 6h18 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6", fill: false },
     "return": { d: "M20 6v6a3 3 0 0 1-3 3H5 M9 11l-4 4 4 4", fill: false },
     "wifi": { d: "M4 9.5C9 4.8 15 4.8 20 9.5 M7 13c3-2.8 7-2.8 10 0 M11 16.8a1.4 1.4 0 1 0 2 0a1.4 1.4 0 1 0-2 0", fill: false },
+    // Signal-strength wedges (Material signal_wifi_N): concentric 90° sectors
+    // fanning from (12,21). Drawn as a dim wifi-4 track with the live level
+    // filled over it, so strength reads as bars, not as an icon's opacity.
+    "wifi-4": { d: "M12 21L0 9A17 17 0 0 1 24 9Z", fill: true },
+    "wifi-3": { d: "M12 21L2.81 11.81A13 13 0 0 1 21.19 11.81Z", fill: true },
+    "wifi-2": { d: "M12 21L5.28 14.28A9.5 9.5 0 0 1 18.72 14.28Z", fill: true },
+    "wifi-1": { d: "M12 21L7.76 16.76A6 6 0 0 1 16.24 16.76Z", fill: true },
     "ethernet": { d: "M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 5z M8 19h8 M12 16v3 M8 8.5v3.5 M12 8.5v3.5 M16 8.5v3.5", fill: false },
     "bluetooth": { d: "M12 2.8v18.4 M12 2.8l5.2 4.6-10.4 9 M12 21.2l5.2-4.6-10.4-9", fill: false },
     // Airplane mode. Lived as a hand-written Shape inside surfaces/Link.qml

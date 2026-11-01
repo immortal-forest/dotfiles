@@ -17,8 +17,8 @@ import "../../config"
  * header with output/input route pickers and mute chips on the right, a
  * hairline divider, then a row of vertical ink-faders: a laptop-backlight
  * brightness fader (leftmost, only when a panel is present), the default sink
- * (master) plus one per Pipewire playback stream, each a thin thread with a
- * rising fill and a flat tick, the app icon and a short label beneath.
+ * (master) plus one per Pipewire playback stream, each an M3 Expressive slider (thick track, gapped
+ * handle bar, stop dots), the app icon and a short label beneath.
  * Hover targets a fader column; the wheel nudges the targeted fader and
  * clicking a fader's icon toggles its mute.
  */
@@ -31,7 +31,10 @@ PillSurface {
     mBottom: 12
 
     ameForm: "dock"
-    amePoint: Qt.point(width / 2, height - 8 * s)
+    // Dock on the column boundary nearest centre: a column's centre is where
+    // its icon + label sit, so with an odd fader count width/2 landed on a label.
+    amePoint: Qt.point(faderCount > 1 ? width * Math.round(faderCount / 2) / faderCount
+        : width - 16 * s, height - 8 * s)
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
@@ -66,9 +69,31 @@ PillSurface {
         return out;
     }
 
+    /**
+     * Streams folded per app: a browser keeps one idle playback stream per
+     * tab/media element (Zen held 33), and a fader each is a wall of
+     * identical columns. One fader per app; its writes fan out to every
+     * stream in the group, its reading follows the first.
+     */
+    readonly property var streamGroups: {
+        var byKey = {};
+        var out = [];
+        for (var i = 0; i < streams.length; i++) {
+            var n = streams[i];
+            var p = n.properties || {};
+            var key = p["application.process.binary"] || p["application.name"] || n.name || ("node" + n.id);
+            if (!byKey[key]) {
+                byKey[key] = { key: key, lead: n, nodes: [] };
+                out.push(byKey[key]);
+            }
+            byKey[key].nodes.push(n);
+        }
+        return out;
+    }
+
     /** Brightness column only exists on machines with a laptop panel. */
     readonly property int brCount: Backlight.present ? 1 : 0
-    readonly property int faderCount: brCount + 1 + streams.length
+    readonly property int faderCount: brCount + 1 + streamGroups.length
 
     /**
      * Optimistic brightness while the fader is moving: the sysfs poller lags
@@ -411,6 +436,7 @@ PillSurface {
         }
 
         Row {
+            id: hdrActions
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6 * root.s
@@ -422,6 +448,7 @@ PillSurface {
             // action, and a filter chip would slide a check glyph in to mean
             // "menu open", which is a lie about what was selected.
             M3Chip {
+                id: codecChip
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.sinkIsBluez && root.btCodecs.length > 0
                 // Mid-switch the chip goes to M3's disabled treatment rather
@@ -445,6 +472,7 @@ PillSurface {
             // transparent border over a transparent container, so the active
             // picker would lose its container instead of gaining one.
             M3IconButton {
+                id: outBtn
                 anchors.verticalCenter: parent.verticalCenter
                 s: root.hdrBtnS
                 icon: "speaker"
@@ -455,6 +483,7 @@ PillSurface {
                 onClicked: root.openPicker = root.openPicker === "out" ? "" : "out"
             }
             M3IconButton {
+                id: inBtn
                 anchors.verticalCenter: parent.verticalCenter
                 s: root.hdrBtnS
                 icon: "mic"
@@ -497,156 +526,69 @@ PillSurface {
         color: Qt.alpha(Colors.on_surface, 0.06)
     }
 
+    // Outside-click catcher: a press off an open dropdown closes it. Sits
+    // under the header (z 5) so its toggles still switch menus in one click.
+    MouseArea {
+        anchors.fill: parent
+        z: 4
+        enabled: root.openPicker !== ""
+        onPressed: root.openPicker = ""
+    }
+
     /**
-     * Device dropdown overlay. Both pickers reuse this: `kind` ("out"/"in")
-     * keys it to root.openPicker, `model` is the node list, `current` the
-     * active default, `onPick` writes the matching preferredDefault. It
-     * floats above the faders right-aligned under the header so the mixer
-     * height stays fixed while a list is open.
+     * Device dropdown. All three pickers share pill/DropMenu: `kind` keys it
+     * to root.openPicker, `anchorItem` is the header control that opened it —
+     * the menu hangs under that control, right edges aligned, clamped inside
+     * the surface. It floats over the faders so the mixer height stays fixed.
      */
-    component DeviceMenu: Item {
+    component DeviceMenu: DropMenu {
         id: menu
         property string kind: ""
-        property var model: []
+        property Item anchorItem
         property var current
-        /**
-         * Row-label and current-row tests, overridable so the codec menu can
-         * feed plain {profile,label,active} objects through the same panel.
-         */
-        property var labelOf: (m) => root.deviceLabel(m)
-        property var isCurrent: (m) => m === menu.current
-        property real menuWidth: 300 * root.s
-        signal pick(var node)
-
-        readonly property bool open: root.openPicker === kind
+        s: root.s
         z: 7
-        visible: open
-        anchors.top: divider.bottom
-        anchors.topMargin: 6 * root.s
-        anchors.right: parent.right
-        width: menuWidth
-        height: panel.height
-
-        /**
-         * Shadow caster kept apart from the option text so the labels stay
-         * unlayered and crisp.
-         */
-        Rectangle {
-            anchors.fill: panel
-            visible: menu.open
-            radius: panel.radius
-            color: Colors.surface_container
-            layer.enabled: true
-            layer.effect: MultiEffect {
-                shadowEnabled: true
-                shadowColor: Qt.rgba(0, 0, 0, Appearance.elevation.shadowOpacity)
-                shadowBlur: 0.6
-                shadowVerticalOffset: 4 * root.s
-            }
-        }
-
-        Rectangle {
-            id: panel
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: Math.min(menu.model.length * 24 * root.s + 4 * root.s, 150 * root.s)
-            clip: true
-            radius: 9 * root.s
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Colors.surface_container_high }
-                GradientStop { position: 1.0; color: Colors.surface_container }
-            }
-            border.width: 1
-            border.color: Qt.alpha(Colors.outline_variant, 0.9)
-
-            ListView {
-                anchors.fill: parent
-                anchors.margins: 2 * root.s
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                model: menu.model
-
-                delegate: Rectangle {
-                    id: devRow
-                    required property var modelData
-                    readonly property bool current: menu.isCurrent(modelData)
-
-                    width: ListView.view.width
-                    height: 24 * root.s
-                    radius: 7 * root.s
-                    color: devRowHover.hovered ? Colors.surface_container_highest
-                        : (devRow.current ? Qt.alpha(Colors.primary, 0.16) : "transparent")
-
-                    // One device among a list, so it reads as a choice, not an
-                    // unrelated button (SettingsSeg idiom).
-                    Accessible.role: Accessible.RadioButton
-                    Accessible.name: menu.labelOf(devRow.modelData)
-                    Accessible.checkable: true
-                    Accessible.checked: devRow.current
-                    Accessible.focusable: true
-                    Accessible.onPressAction: {
-                        menu.pick(devRow.modelData);
-                        root.openPicker = "";
-                    }
-
-                    HoverHandler { id: devRowHover }
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 9 * root.s
-                        anchors.right: parent.right
-                        anchors.rightMargin: 9 * root.s
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: menu.labelOf(devRow.modelData)
-                        elide: Text.ElideRight
-                        color: devRow.current ? Colors.on_surface : Colors.on_surface_variant
-                        font.family: Appearance.font.family
-                        font.pixelSize: 10.5 * root.s
-                        font.weight: devRow.current ? Font.Bold : Font.Medium
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            menu.pick(devRow.modelData);
-                            root.openPicker = "";
-                        }
-                    }
-                }
-            }
-        }
+        open: root.openPicker === kind
+        labelOf: (m) => root.deviceLabel(m)
+        isCurrent: (m) => m === menu.current
+        width: 300 * root.s
+        y: divider.y + 4 * root.s
+        x: anchorItem ? Math.max(0, Math.min(root.width - width,
+            hdrActions.x + anchorItem.x + anchorItem.width - width)) : root.width - width
+        onPicked: root.openPicker = ""
     }
 
     DeviceMenu {
         kind: "out"
-        model: root.outputSinks
+        anchorItem: outBtn
+        options: root.outputSinks
         current: root.sink
-        onPick: (node) => Pipewire.preferredDefaultAudioSink = node
+        onPicked: (node) => Pipewire.preferredDefaultAudioSink = node
     }
 
     DeviceMenu {
         kind: "in"
-        model: root.inputSources
+        anchorItem: inBtn
+        options: root.inputSources
         current: root.source
-        onPick: (node) => Pipewire.preferredDefaultAudioSource = node
+        onPicked: (node) => Pipewire.preferredDefaultAudioSource = node
     }
 
     // Bluetooth A2DP codec list; entries are {profile,label,active} from the
     // pactl card probe, picking one switches the bluez card profile.
     DeviceMenu {
         kind: "codec"
-        model: root.btCodecs
-        menuWidth: 150 * root.s
+        anchorItem: codecChip
+        options: root.btCodecs
+        width: Math.max(150 * root.s, codecChip.width)
         labelOf: (m) => (m && m.label) ? m.label : ""
         isCurrent: (m) => m !== null && m !== undefined && m.active === true
-        onPick: (entry) => root.switchCodec(entry)
+        onPicked: (entry) => root.switchCodec(entry)
     }
 
     /**
-     * Vertical ink-fader (Ricelin VFader visual): a thin matte thread with a
-     * rising fill and a flat tick marker, readout + icon + label beneath. Dim
+     * Vertical ink-fader: M3 Expressive slider track split by a
+     * thin handle with gaps either side, readout + icon + label beneath. Dim
      * at rest; saturates and reveals its readout when the pointer column
      * focuses it. Clicking the icon/label toggles the node's mute.
      */
@@ -654,6 +596,8 @@ PillSurface {
         id: fader
 
         property var node: null
+        /** Every node this fader drives (a folded app group); defaults to `node`. */
+        property var nodes: node ? [node] : []
         property string label: ""
         property string iconSource: ""
         property string glyph: "music"
@@ -685,10 +629,19 @@ PillSurface {
             if (brightnessMode)
                 root.setBrightness(v);
             else if (ready)
-                node.audio.volume = v;
+                for (var i = 0; i < nodes.length; i++)
+                    if (nodes[i] && nodes[i].audio)
+                        nodes[i].audio.volume = v;
         }
 
         /** Nudge by a signed percentage, clamped, for wheel stepping. */
+        function toggleMute() {
+            var m = !node.audio.muted;
+            for (var i = 0; i < nodes.length; i++)
+                if (nodes[i] && nodes[i].audio)
+                    nodes[i].audio.muted = m;
+        }
+
         function step(deltaPct) {
             setVolume(value + deltaPct / 100);
         }
@@ -707,66 +660,98 @@ PillSurface {
             id: trackArea
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
-            width: 22 * root.s
+            width: 34 * root.s
             height: fader.trackH
 
-            Rectangle {
-                id: thread
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 2 * root.s
-                height: parent.height
-                radius: width / 2
-                color: Colors.surface_container_highest
+            // M3 Expressive slider, vertical: a thick rounded track split by
+            // a thin handle bar, with a gap either side of it. Active segment
+            // below in primary, inactive above in secondary_container, and
+            // stop dots marking the top end (and 100% when it can over-amp).
+            readonly property real frac: Math.max(0, Math.min(1, fader.value / fader.faderMax))
+            readonly property real trackW: 18 * root.s
+            readonly property real gap: 4 * root.s
+            readonly property real handleH: 4 * root.s
+            property real handleY: (1 - frac) * fader.trackH
+            readonly property real outerR: 8 * root.s
+            readonly property real innerR: 2 * root.s
+            readonly property color activeColor: fader.muted ? Colors.outline
+                : (fader.overAmp ? Colors.error : Colors.primary)
 
-                Rectangle {
-                    id: fill
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    height: parent.height * Math.max(0, Math.min(1, fader.value / fader.faderMax))
-                    radius: parent.radius
-                    gradient: Gradient {
-                        GradientStop {
-                            position: 0.0
-                            color: fader.muted ? Qt.alpha(Colors.outline, 0.7)
-                                : (fader.overAmp ? Colors.error
-                                    : (fader.lit ? Colors.primary : Qt.alpha(Colors.primary, 0.6)))
-                        }
-                        GradientStop {
-                            position: 1.0
-                            color: fader.muted ? Qt.alpha(Colors.outline, 0.5)
-                                : (fader.lit ? Qt.darker(Colors.primary, 1.18)
-                                    : Qt.alpha(Qt.darker(Colors.primary, 1.18), 0.6))
-                        }
-                    }
-                    Behavior on height { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
+            Behavior on handleY {
+                enabled: !dragArea.pressed
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
                 }
             }
 
-            // 100% reference — above this the sink is over-amplified.
             Rectangle {
-                visible: !fader.brightnessMode
+                id: inactiveSeg
                 anchors.horizontalCenter: parent.horizontalCenter
-                y: fader.trackH * (1 - 1 / fader.faderMax) - height / 2
-                width: 8 * root.s
-                height: 1.5 * root.s
-                radius: height / 2
-                color: Qt.alpha(Colors.on_surface, 0.4)
+                y: 0
+                width: trackArea.trackW
+                height: Math.max(0, trackArea.handleY - trackArea.handleH / 2 - trackArea.gap)
+                visible: height > 0.5
+                color: Colors.secondary_container
+                topLeftRadius: trackArea.outerR
+                topRightRadius: trackArea.outerR
+                bottomLeftRadius: Math.min(trackArea.innerR, height / 2)
+                bottomRightRadius: Math.min(trackArea.innerR, height / 2)
+            }
+
+            Rectangle {
+                id: activeSeg
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: Math.min(fader.trackH, trackArea.handleY + trackArea.handleH / 2 + trackArea.gap)
+                width: trackArea.trackW
+                height: Math.max(0, fader.trackH - y)
+                visible: height > 0.5
+                color: trackArea.activeColor
+                opacity: fader.lit || fader.muted ? 1 : 0.8
+                bottomLeftRadius: trackArea.outerR
+                bottomRightRadius: trackArea.outerR
+                topLeftRadius: Math.min(trackArea.innerR, height / 2)
+                topRightRadius: Math.min(trackArea.innerR, height / 2)
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            }
+
+            // Stop indicator at the top end of the inactive track.
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 5 * root.s
+                width: 4 * root.s
+                height: width
+                radius: width / 2
+                color: Colors.on_secondary_container
+                visible: inactiveSeg.height > 12 * root.s
+            }
+
+            // 100% stop — above it the sink is over-amplified.
+            Rectangle {
+                readonly property real yC: fader.trackH * (1 - 1 / fader.faderMax)
+                visible: !fader.brightnessMode
+                    && Math.abs(yC - trackArea.handleY) > trackArea.handleH / 2 + trackArea.gap + 3 * root.s
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: yC - height / 2
+                width: 4 * root.s
+                height: width
+                radius: width / 2
+                color: yC > trackArea.handleY ? Colors.on_primary : Colors.on_secondary_container
                 z: 1
             }
 
             Rectangle {
-                id: tick
+                id: handle
                 anchors.horizontalCenter: parent.horizontalCenter
-                y: Math.max(0, Math.min(fader.trackH - height,
-                    (1 - Math.max(0, Math.min(1, fader.value / fader.faderMax))) * fader.trackH - height / 2))
-                width: 11 * root.s
-                height: 2.5 * root.s
-                radius: 2 * root.s
-                color: Colors.on_surface_variant
-                opacity: fader.focused ? 0 : 1
-                Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
-                Behavior on y { enabled: !dragArea.pressed; NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
+                y: trackArea.handleY - height / 2
+                width: (fader.lit || dragArea.pressed ? 34 : 30) * root.s
+                height: (dragArea.pressed ? 3 : trackArea.handleH / root.s) * root.s
+                radius: height / 2
+                color: trackArea.activeColor
+                Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
 
             MouseArea {
@@ -853,14 +838,14 @@ PillSurface {
             width: 30 * root.s
             enabled: fader.ready && !fader.brightnessMode
             cursorShape: Qt.PointingHandCursor
-            onClicked: fader.node.audio.muted = !fader.node.audio.muted
+            onClicked: fader.toggleMute()
 
             Accessible.role: Accessible.CheckBox
             Accessible.name: "Mute " + (fader.label.length > 0 ? fader.label : "device")
             Accessible.checkable: true
             Accessible.checked: fader.muted
             Accessible.focusable: muteArea.enabled
-            Accessible.onPressAction: fader.node.audio.muted = !fader.node.audio.muted
+            Accessible.onPressAction: fader.toggleMute()
         }
     }
 
@@ -911,16 +896,17 @@ PillSurface {
         }
 
         Repeater {
-            model: root.streams
+            model: root.streamGroups
 
             InkFader {
                 required property var modelData
                 required property int index
                 width: faderRow.colW
                 height: faderRow.height
-                node: modelData
-                label: root.nodeLabel(modelData)
-                iconSource: root.nodeIcon(modelData)
+                node: modelData.lead
+                nodes: modelData.nodes
+                label: root.nodeLabel(modelData.lead)
+                iconSource: root.nodeIcon(modelData.lead)
                 glyph: "music"
                 focused: root.focusIndex === index + root.brCount + 1
             }

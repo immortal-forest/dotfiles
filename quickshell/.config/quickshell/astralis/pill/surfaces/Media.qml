@@ -13,7 +13,7 @@ import "../../config"
  * edge-to-edge on the left, faded into the card; a blurred copy glows through
  * a near-opaque wash behind everything. Right of the cover: Marquee title,
  * artist, a dim source/time line, the play/pause seal (奏/休) flanked by 前/次
- * skips. Playback runs as a brush stroke along the bottom, its painted head
+ * skips. Playback runs as a sumi brush stroke along the bottom, its dry-brush head
  * the dock for the pill's soul bead. All now-playing data comes from the
  * Players singleton; when two or more players run, the source token glows
  * into a bubble that opens a picker.
@@ -39,7 +39,9 @@ PillSurface {
      * player reusing one file path still reloads on a new song.
      */
     readonly property string coverSource: {
-        if (!root.active)
+        // Held through the close fade (visible) so the art doesn't drop to the
+        // placeholder in the first collapsing frame; freed once hidden.
+        if (!root.active && !root.visible)
             return "";
         var u = Players.artUrl;
         if (!u)
@@ -80,6 +82,9 @@ PillSurface {
 
     readonly property real textX: 134 * s
     readonly property real edgePad: 18 * s
+    /** Vertical rhythm: title block, source/transport row, progress row. */
+    readonly property real midBottom: 42 * s
+    readonly property real barBottom: 12 * s
     readonly property color washMid: mix(Colors.surface_container_high, Colors.surface_container, 0.5)
     property real sealPulse: 0
 
@@ -142,7 +147,7 @@ PillSurface {
             anchors.centerIn: parent
             text: skip.kanjiText
             font.family: Appearance.font.jp
-            font.pixelSize: 13 * root.s
+            font.pixelSize: 15 * root.s
             color: skipArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
             Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
@@ -176,136 +181,152 @@ PillSurface {
 
     // ── art bleed: blurred cover under a warm wash, hard cover on the left ──
     ClippingRectangle {
-        anchors.fill: parent
+        // Clipped to the LIVE morphing body (the host), not this fixed
+        // card, so mid-morph the art keeps the pill's rounded corners; the
+        // inner item steps back into layout coords so nothing slides.
+        // root → its fixed-size Loader → the morphing body (surfaceHost).
+        readonly property Item body: root.parent ? root.parent.parent : null
+        x: body ? -(root.x + root.parent.x) : 0
+        y: body ? -(root.y + root.parent.y) : 0
+        width: body ? body.width : root.width
+        height: body ? body.height : root.height
         radius: Appearance.rounding.pillOpen * root.s
         color: "transparent"
 
-        Image {
-            id: bleedSrc
-            anchors.fill: parent
-            source: root.coverSource
-            sourceSize: Qt.size(128, 128)
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            retainWhileLoading: true
-            cache: String(source).indexOf("file:") !== 0
-            visible: false
-        }
-
-        MultiEffect {
-            anchors.fill: parent
-            source: bleedSrc
-            scale: 1.12
-            visible: root.active && bleedSrc.status === Image.Ready
-            blurEnabled: true
-            blur: 0.95
-            blurMax: 64
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.alpha(Colors.surface_container_high, 0.88) }
-                GradientStop { position: 1.0; color: Qt.alpha(Colors.surface_container, 0.93) }
-            }
-        }
-
         Item {
-            id: coverBox
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: 118 * root.s
-            // No `clip: true` any more — the mask below fades the cover's
-            // own alpha out before it reaches this box's edge, so there is
-            // nothing left at the boundary for a hard clip to cut through.
+            x: -parent.x
+            y: -parent.y
+            width: root.width
+            height: root.height
 
-            Rectangle {
-                anchors.fill: parent
-                color: Colors.surface_container_highest
-                visible: !root.everReady
-            }
 
             Image {
-                id: cover
+                id: bleedSrc
                 anchors.fill: parent
                 source: root.coverSource
-                sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
+                sourceSize: Qt.size(128, 128)
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 retainWhileLoading: true
                 cache: String(source).indexOf("file:") !== 0
-                onStatusChanged: if (status === Image.Ready) root.everReady = true
-                // Painted through maskedCover below instead of directly —
-                // the sharp pixels themselves need to fade, not just get
-                // painted over.
                 visible: false
             }
 
-            // Alpha ramp for the mask: opaque through the first ~68% of the
-            // box, then down to nothing at the trailing edge. Qt reads a
-            // mask by its alpha, so the colour underneath is irrelevant —
-            // only the gradient's own opacity stops matter.
-            //
-            // `layer.enabled: true` is not decoration here — it is the whole
-            // fix. MultiEffect.maskSource docs: valid sources are a
-            // ShaderEffectSource, an item with `layer.enabled`, or something
-            // natively textured like Image. A bare Rectangle is none of
-            // those, so without this the mask silently did nothing at all —
-            // full pass-through, hard edge exactly where the old clip was —
-            // which is why the "dissolve" looked unchanged.
-            Rectangle {
-                id: coverFadeMask
+            MultiEffect {
                 anchors.fill: parent
-                visible: false
-                layer.enabled: true
+                source: bleedSrc
+                scale: 1.12
+                visible: (root.active || root.visible) && bleedSrc.status === Image.Ready
+                blurEnabled: true
+                blur: 0.95
+                blurMax: 64
+            }
+
+            Rectangle {
+                anchors.fill: parent
                 gradient: Gradient {
-                    orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0;  color: "#ffffffff" }
-                    GradientStop { position: 0.68; color: "#ffffffff" }
-                    GradientStop { position: 1.0;  color: "#00ffffff" }
+                    GradientStop { position: 0.0; color: Qt.alpha(Colors.surface_container_high, 0.88) }
+                    GradientStop { position: 1.0; color: Qt.alpha(Colors.surface_container, 0.93) }
                 }
             }
 
-            // What used to be a hard clip is now a real dissolve: the sharp
-            // cover thins out and lets the already-blurred `bleedSrc` copy
-            // (painted full-bleed behind everything, see above) show through
-            // in its place — sharp fading INTO blur, not sharp stopping dead
-            // against a flat wash colour.
-            MultiEffect {
-                anchors.fill: parent
-                source: cover
-                maskEnabled: true
-                maskSource: coverFadeMask
-                maskThresholdMin: 0
-                maskSpreadAtMin: 1
+            Item {
+                id: coverBox
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 118 * root.s
+                // No `clip: true` any more — the mask below fades the cover's
+                // own alpha out before it reaches this box's edge, so there is
+                // nothing left at the boundary for a hard clip to cut through.
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: Colors.surface_container_highest
+                    visible: !root.everReady
+                }
+
+                Image {
+                    id: cover
+                    anchors.fill: parent
+                    source: root.coverSource
+                    sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    retainWhileLoading: true
+                    cache: String(source).indexOf("file:") !== 0
+                    onStatusChanged: if (status === Image.Ready) root.everReady = true
+                    // Painted through maskedCover below instead of directly —
+                    // the sharp pixels themselves need to fade, not just get
+                    // painted over.
+                    visible: false
+                }
+
+                // Alpha ramp for the mask: opaque through the first ~68% of the
+                // box, then down to nothing at the trailing edge. Qt reads a
+                // mask by its alpha, so the colour underneath is irrelevant —
+                // only the gradient's own opacity stops matter.
+                //
+                // `layer.enabled: true` is not decoration here — it is the whole
+                // fix. MultiEffect.maskSource docs: valid sources are a
+                // ShaderEffectSource, an item with `layer.enabled`, or something
+                // natively textured like Image. A bare Rectangle is none of
+                // those, so without this the mask silently did nothing at all —
+                // full pass-through, hard edge exactly where the old clip was —
+                // which is why the "dissolve" looked unchanged.
+                Rectangle {
+                    id: coverFadeMask
+                    anchors.fill: parent
+                    visible: false
+                    layer.enabled: true
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0;  color: "#ffffffff" }
+                        GradientStop { position: 0.68; color: "#ffffffff" }
+                        GradientStop { position: 1.0;  color: "#00ffffff" }
+                    }
+                }
+
+                // What used to be a hard clip is now a real dissolve: the sharp
+                // cover thins out and lets the already-blurred `bleedSrc` copy
+                // (painted full-bleed behind everything, see above) show through
+                // in its place — sharp fading INTO blur, not sharp stopping dead
+                // against a flat wash colour.
+                MultiEffect {
+                    anchors.fill: parent
+                    source: cover
+                    maskEnabled: true
+                    maskSource: coverFadeMask
+                    maskThresholdMin: 0
+                    maskSpreadAtMin: 1
+                }
+
+                GlyphIcon {
+                    anchors.centerIn: parent
+                    width: 40 * root.s
+                    height: width
+                    name: "music"
+                    color: Colors.on_surface_variant
+                    visible: !root.everReady
+                }
             }
 
-            GlyphIcon {
-                anchors.centerIn: parent
-                width: 40 * root.s
-                height: width
-                name: "music"
-                color: Colors.on_surface_variant
-                visible: !root.everReady
-            }
-        }
-
-        // Colour-matches the dissolve into the surrounding wash once the
-        // cover's own alpha has already done the actual softening above —
-        // this only needs to carry the last bit of tint continuity now, not
-        // hide a seam on its own.
-        Rectangle {
-            anchors.left: parent.left
-            anchors.leftMargin: 62 * root.s
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: 56 * root.s
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0.0; color: Qt.alpha(root.washMid, 0) }
-                GradientStop { position: 0.7; color: Qt.alpha(root.washMid, 0.8) }
-                GradientStop { position: 1.0; color: root.washMid }
+            // Colour-matches the dissolve into the surrounding wash once the
+            // cover's own alpha has already done the actual softening above —
+            // this only needs to carry the last bit of tint continuity now, not
+            // hide a seam on its own.
+            Rectangle {
+                anchors.left: parent.left
+                anchors.leftMargin: 62 * root.s
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 56 * root.s
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: Qt.alpha(root.washMid, 0) }
+                    GradientStop { position: 0.7; color: Qt.alpha(root.washMid, 0.8) }
+                    GradientStop { position: 1.0; color: root.washMid }
+                }
             }
         }
     }
@@ -317,8 +338,8 @@ PillSurface {
         anchors.right: parent.right
         anchors.rightMargin: root.edgePad
         anchors.top: parent.top
-        anchors.topMargin: 24 * root.s
-        spacing: 3 * root.s
+        anchors.topMargin: 22 * root.s
+        spacing: 2 * root.s
 
         Marquee {
             anchors.left: parent.left
@@ -348,14 +369,8 @@ PillSurface {
         anchors.right: root.picking ? parent.right : transport.left
         anchors.rightMargin: root.picking ? root.edgePad : 10 * root.s
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 36 * root.s
+        anchors.bottomMargin: root.midBottom
         height: 34 * root.s
-
-        readonly property string tail: !root.hasPlayer ? ""
-            : root.live
-                ? " - Live"
-                : " / " + root.fmt(root.dragging ? root.dragFrac * root.lengthSec : root.positionSec)
-                    + " - " + root.fmt(root.lengthSec)
 
         Item {
             id: infoRow
@@ -380,8 +395,8 @@ PillSurface {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.canPick
-                height: 18 * root.s
-                width: bubbleRow.width + 14 * root.s
+                height: 22 * root.s
+                width: bubbleRow.width + 16 * root.s
                 radius: height / 2
                 color: Qt.alpha(Colors.primary, 0.16)
                 border.width: 1
@@ -401,8 +416,8 @@ PillSurface {
                     spacing: 5 * root.s
                     ArtDot {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 12 * root.s
-                        height: 12 * root.s
+                        width: 15 * root.s
+                        height: 15 * root.s
                         url: Players.artUrlFor(root.player)
                     }
                     Text {
@@ -410,14 +425,16 @@ PillSurface {
                         text: root.serviceLabel
                         color: Colors.on_surface
                         font.family: Appearance.font.family
-                        font.pixelSize: 10 * root.s
+                        font.pixelSize: 11 * root.s
                         font.weight: Font.DemiBold
                     }
-                    Text {
+                    GlyphIcon {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "▾"
+                        width: 9 * root.s
+                        height: 9 * root.s
+                        name: "chevron-down"
+                        stroke: 2.2
                         color: Colors.primary
-                        font.pixelSize: 8 * root.s
                     }
                 }
 
@@ -430,18 +447,6 @@ PillSurface {
                 }
             }
 
-            Text {
-                anchors.left: root.canPick ? srcBubble.right : plainSource.right
-                anchors.leftMargin: 3 * root.s
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: srcLine.tail
-                elide: Text.ElideRight
-                color: Colors.on_surface_variant
-                font.family: Appearance.font.family
-                font.pixelSize: 9.5 * root.s
-                font.features: ({ "tnum": 1 })
-            }
         }
 
         Flickable {
@@ -536,8 +541,8 @@ PillSurface {
         anchors.right: parent.right
         anchors.rightMargin: root.edgePad
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 38 * root.s
-        spacing: 14 * root.s
+        anchors.bottomMargin: root.midBottom + 2 * root.s
+        spacing: 18 * root.s
         opacity: root.picking ? 0 : 1
         enabled: !root.picking
         Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
@@ -597,105 +602,50 @@ PillSurface {
         }
     }
 
-    // ── playback brush stroke ───────────────────────────────────────────────
-    // Static waveform outline: painted only on resize / theme change, never on
-    // a playhead frame. The moving primary head lives in `stroke` above it.
-    Canvas {
-        id: baseWave
+    // ── progress: 筆 ink brush stroke (InkStroke) ────────────────────────────
+    // elapsed · [ink body ≡ dry-brush · hairline ┊ ┊ ┊ ▕] · length
+    Text {
+        id: elapsedText
         anchors.left: parent.left
         anchors.leftMargin: root.textX
-        anchors.right: parent.right
-        anchors.rightMargin: root.edgePad
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10 * root.s
-        height: 18 * root.s
-
-        readonly property color tint: Colors.outline_variant
-        onTintChanged: requestPaint()
-        onWidthChanged: requestPaint()
-        onHeightChanged: requestPaint()
-        onVisibleChanged: if (visible) requestPaint()
-
-        onPaint: {
-            const ctx = getContext("2d");
-            ctx.reset();
-            if (width <= 0 || height <= 0)
-                return;
-            const n = 48;
-            const inset = stroke.inset;
-            const usable = stroke.usable;
-            ctx.strokeStyle = Qt.alpha(baseWave.tint, 0.6);
-            ctx.lineWidth = 2.5 * root.s;
-            ctx.lineCap = "round";
-            ctx.lineJoin = "round";
-            ctx.beginPath();
-            ctx.moveTo(inset, stroke.waveY(0));
-            for (let i = 1; i <= n; i++)
-                ctx.lineTo(inset + (i / n) * usable, stroke.waveY(i / n));
-            ctx.stroke();
-        }
+        anchors.verticalCenter: stroke.verticalCenter
+        visible: root.hasPlayer
+        text: root.fmt(root.dragging ? root.dragFrac * root.lengthSec : root.positionSec)
+        color: root.dragging ? Colors.primary : Colors.on_surface
+        font.family: Appearance.font.family
+        font.pixelSize: 10 * root.s
+        font.weight: Font.Medium
+        font.features: ({ "tnum": 1 })
     }
 
-    Canvas {
-        id: stroke
-        anchors.left: parent.left
-        anchors.leftMargin: root.textX
+    Text {
+        id: lengthText
         anchors.right: parent.right
         anchors.rightMargin: root.edgePad
+        anchors.verticalCenter: stroke.verticalCenter
+        visible: root.hasPlayer
+        text: root.live ? "生" : root.fmt(root.lengthSec)
+        color: root.live ? Colors.error : Colors.on_surface_variant
+        font.family: root.live ? Appearance.font.jp : Appearance.font.family
+        font.pixelSize: (root.live ? 12 : 10) * root.s
+        font.weight: root.live ? Font.DemiBold : Font.Normal
+        font.features: ({ "tnum": 1 })
+    }
+
+    InkStroke {
+        id: stroke
+        anchors.left: root.hasPlayer ? elapsedText.right : parent.left
+        anchors.leftMargin: root.hasPlayer ? 10 * root.s : root.textX
+        anchors.right: root.hasPlayer ? lengthText.left : parent.right
+        anchors.rightMargin: root.hasPlayer ? 10 * root.s : root.edgePad
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 10 * root.s
+        anchors.bottomMargin: root.barBottom
         height: 18 * root.s
 
-        readonly property real inset: 3 * root.s
-        readonly property real usable: Math.max(1, width - 2 * inset)
-        property real targetF: root.frac
-        property real lastFrac: 0
-        property real drawF: targetF
-        readonly property real headX: inset + drawF * usable
-        readonly property real headY: waveY(drawF)
-
-        Behavior on drawF {
-            enabled: Math.abs(root.frac - stroke.lastFrac) < 0.02
-            NumberAnimation { duration: Math.round(500 * Motion.mult); easing.type: Easing.Linear }
-        }
-        onTargetFChanged: Qt.callLater(() => { stroke.lastFrac = root.frac; })
-
-        onDrawFChanged: requestPaint()
-        onWidthChanged: requestPaint()
-        onVisibleChanged: if (visible) requestPaint()
-
-        function waveY(u) {
-            return height / 2 - 2.6 * Math.sin(3 * Math.PI * u) * Math.exp(-2.5 * u) * root.s;
-        }
-
-        onPaint: {
-            // Only the moving primary head is repainted here; the static grey
-            // waveform outline lives in the sibling `baseWave` canvas.
-            const ctx = getContext("2d");
-            ctx.reset();
-            if (width <= 0 || height <= 0)
-                return;
-            if (drawF <= 0.002)
-                return;
-            const n = 48;
-            const hTail = 2.5 * root.s;
-            const hHead = 1.75 * root.s;
-            const m = Math.max(2, Math.ceil(n * drawF));
-            ctx.fillStyle = Colors.primary;
-            ctx.beginPath();
-            ctx.arc(inset, waveY(0), hTail, Math.PI / 2, 3 * Math.PI / 2);
-            for (let i = 0; i <= m; i++) {
-                const u = (i / m) * drawF;
-                ctx.lineTo(inset + u * usable, waveY(u) - (hTail + (hHead - hTail) * (i / m)));
-            }
-            ctx.arc(headX, headY, hHead, -Math.PI / 2, Math.PI / 2);
-            for (let i = m; i >= 0; i--) {
-                const u = (i / m) * drawF;
-                ctx.lineTo(inset + u * usable, waveY(u) + (hTail + (hHead - hTail) * (i / m)));
-            }
-            ctx.closePath();
-            ctx.fill();
-        }
+        s: root.s
+        frac: root.frac
+        paper: root.washMid
+        wet: root.playing || root.dragging ? 1 : 0
 
         MouseArea {
             id: seekArea

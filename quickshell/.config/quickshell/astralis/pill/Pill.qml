@@ -44,6 +44,8 @@ Item {
     property string surface: ""
 
     // ── state ───────────────────────────────────────────────────────────────
+    /** Full-screen visualizer is running: the body thins so the wave shows through. */
+    property bool vizBehind: false
     property bool hovered: false
     property bool pinned: false
     property bool forcePinned: false
@@ -159,6 +161,15 @@ Item {
      * loader latches active the instant its surface is targeted. Adding a
      * surface is one entry here plus its Loader in surfaceHost.
      */
+    /** Fixed size, shrunk to the surface's `desiredH` when it reports one. */
+    function fitSize(ld, w, h) {
+        var it = surfaceItem(ld);
+        var fh = h * s;
+        if (it && it.desiredH > 0)
+            fh = Math.min(fh, it.desiredH + (it.mTop + it.mBottom) * s);
+        return Qt.size(w * s, fh);
+    }
+
     readonly property var surfaces: ({
         // Card back to its original 390 — the 430 tried here read too big on
         // screen. The source/time line's truncation this was chasing (see
@@ -166,22 +177,21 @@ Item {
         // is still there when a multi-player picker chip is showing; if that
         // comes up again the fix belongs in that gap specifically, not in
         // widening the whole card.
-        media:     { size: () => { surfaceItem(ldMedia);     return Qt.size(390 * s, 150 * s); }, ame: () => surfaceItem(ldMedia) },
+        media:     { size: () => { surfaceItem(ldMedia);     return Qt.size(390 * s, 150 * s); /* keep in step with ldMedia's size */ }, ame: () => surfaceItem(ldMedia) },
         calendar:  { size: () => { surfaceItem(ldCalendar);  return Qt.size(698 * s, 304 * s); }, ame: () => surfaceItem(ldCalendar) },
         mixer:     { size: () => { surfaceItem(ldMixer);     return Qt.size(440 * s, 214 * s); }, ame: () => surfaceItem(ldMixer) },
-        link:      { size: () => { surfaceItem(ldLink);      return Qt.size(330 * s, 360 * s); }, ame: () => surfaceItem(ldLink) },
+        link:      { size: () => fitSize(ldLink, 350, 420), ame: () => surfaceItem(ldLink) },
         launcher:  { size: () => { surfaceItem(ldLauncher);  return Qt.size(360 * s, 332 * s); }, ame: () => surfaceItem(ldLauncher) },
         clipboard: { size: () => { surfaceItem(ldClipboard); return Qt.size(360 * s, 332 * s); }, ame: () => surfaceItem(ldClipboard) },
-        notifications: { size: () => { surfaceItem(ldNotifications); return Qt.size(400 * s, 460 * s); }, ame: () => surfaceItem(ldNotifications) },
+        notifications: { size: () => fitSize(ldNotifications, 400, 460), ame: () => surfaceItem(ldNotifications) },
         // Ricelin sizes sysmon 392×(content+33): header 24 + 16 + dials 110 +
         // 18 + divider 1 + 13 + cells 30 = 212 content ⇒ 245 fixed. Height is
         // GPU-independent (dials recentre, the cell row just gets wider cells).
         sysmon:    { size: () => { surfaceItem(ldSysmon);    return Qt.size(392 * s, 245 * s); }, ame: () => surfaceItem(ldSysmon) },
-        // Header 24 + 14 + state panel 94 + 12 + rule + 6 + three option rows
-        // 102 + 6 + chip row 28 + 10 + output 24 = 322 content ⇒ 350 fixed;
-        // 430 wide keeps three capture tiles square-ish and fits the frame-rate
-        // and quality strips on one line each.
-        recorder:  { size: () => { surfaceItem(ldRecorder);  return Qt.size(430 * s, 350 * s); }, ame: () => surfaceItem(ldRecorder) }
+        // Header 24 + 14 + state panel 80 + 12 + settings card 134 + 10 +
+        // chip row 34 + 8 + output 36 = 352 content ⇒ 380 fixed; 430 wide fits
+        // the frame-rate and quality strips on one line each.
+        recorder:  { size: () => { surfaceItem(ldRecorder);  return Qt.size(430 * s, 424 * s); }, ame: () => surfaceItem(ldRecorder) }
     })
 
     // Mode ladder (Ricelin Pill.qml:224–231; game/quickChoose/quickCount rungs
@@ -340,6 +350,12 @@ Item {
 
     onModeChanged: {
         hoverHop = (mode === "hover" || mode === "rest") && (lastMode === "hover" || lastMode === "rest");
+        // A toast that gets interrupted (OSD flash, pinned/open surface) is
+        // done: its countdown only runs while it is on screen, so resuming it
+        // brought the same toast back after every workspace switch. It stays
+        // in the notification list; critical ones still come back.
+        if (lastMode === "toast" && mode !== "toast" && toastActive)
+            Services.Notifications.dropInterruptedPopups();
         lastMode = mode;
         if (mode !== "hover") {
             hoverSoulGate = false;
@@ -394,6 +410,9 @@ Item {
         anchors.fill: parent
         s: pill.s
         radius: pill.morphRadius
+        // thinner at rest over the visualizer; firmer once a surface needs reading
+        fillAlpha: !pill.vizBehind ? 1 : pill.surfaceOpen ? 0.88 : 0.6
+        Behavior on fillAlpha { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
     }
 
     // ── Ame, the soul bead ──────────────────────────────────────────────────
@@ -480,7 +499,12 @@ Item {
     Item {
         id: rest
         anchors.fill: parent
-        opacity: pill.mode === "rest" ? Math.pow(pill.morphCloseness, 1.5) : 0
+        // Wider arrival window than morphCloseness: leaving a toast unloads its
+        // content at once, so waiting for the last 110px left the body empty
+        // for ~¼s on every collapse. The rest face is centred, so it can come
+        // up while the body is still narrowing around it.
+        readonly property real arrival: 1 - Math.min(1, Math.max(Math.abs(pill.width - pill.targetW), Math.abs(pill.height - pill.targetH)) / (320 * pill.s))
+        opacity: pill.mode === "rest" ? Math.pow(rest.arrival, 1.5) : 0
         visible: opacity > 0.01
         Behavior on opacity {
             NumberAnimation {
@@ -498,39 +522,37 @@ Item {
         // enough that a wider gap says "different thing" perfectly well.
 
         /**
-         * One live capture source, drawn as a DOT — not as an icon.
+         * One live capture source, drawn as a small kanji SEAL — a hanko-like
+         * rounded square with the source's character: 声 microphone, 写
+         * camera, 映 screen being shared, 録 our own recording.
          *
-         * These were tiny icons twice over: first Material Symbols ligatures,
-         * then GlyphIcons, and both times they read as odd ones out in the
-         * resting pill. The reason is not which icon set they came from. It is
-         * that a 13dp stroked pictogram carries detail nobody can resolve at
-         * that size, and putting three of them in three different accent
-         * colours next to a clock makes a rash rather than a status.
-         *
-         * The pill already has a vocabulary for "something is live", and it is
-         * a coloured dot — the capture chip's recording dot, three centimetres
-         * to the left of these, does exactly this. So do the workspace dots,
-         * the unread badge, the lock screen's colon and the Ame bead. Matching
-         * it costs the pictogram and buys a status line that reads at a glance
-         * and belongs to the shell. WHICH source is live is carried by colour
-         * and, for anyone who needs it stated, by the accessible name.
+         * These were bare coloured dots (and before that, tiny stroked
+         * pictograms). The dots failed the one job they had: tint comes from
+         * the wallpaper palette, so a lone lavender or salmon dot next to the
+         * clock said "something" but never "what", and on a new wallpaper it
+         * said it in a different colour. A character reads at 15px where a
+         * pictogram doesn't, and it is the vocabulary the rest pill already
+         * speaks (時, the media seal 奏/休, 前/次). With glyphs off it falls
+         * back to the plain dot.
          */
-        component PrivacyDot: Item {
+        component PrivacySeal: Item {
             id: pdot
             property color tint: Colors.on_surface
             property bool active: false
+            property string glyph: ""
             property string label: ""
+            /** Breathe for as long as it's live (the recording seal); otherwise three breaths, then hold. */
+            property bool endless: false
+            readonly property bool asSeal: Flags.showGlyphs && glyph.length > 0
             anchors.verticalCenter: parent.verticalCenter
-            width: 8 * pill.s
-            height: 8 * pill.s
+            width: (asSeal ? 17 : 8) * pill.s
+            height: width
             opacity: active ? 1 : 0
             visible: opacity > 0.01
             scale: active ? 1 : 0.5
             Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
             Behavior on scale { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
-            // A dot says "live" but not "live doing what", so the one thing it
-            // cannot show is the one thing a screen reader must say.
             Accessible.role: Accessible.Indicator
             Accessible.name: pdot.label
             Accessible.ignored: !pdot.active
@@ -538,24 +560,36 @@ Item {
             Rectangle {
                 id: pdotFill
                 anchors.fill: parent
-                radius: width / 2
-                color: pdot.tint
+                radius: pdot.asSeal ? 5 * pill.s : width / 2
+                rotation: pdot.asSeal ? -2 : 0
+                color: pdot.asSeal ? Qt.alpha(pdot.tint, 0.2) : pdot.tint
+                border.width: pdot.asSeal ? 1 : 0
+                border.color: Qt.alpha(pdot.tint, 0.65)
 
-                // Announce, then hold: three breaths at the capture chip's
-                // rate when the source goes live (and again whenever the rest
-                // face comes back), then a steady dot. NOT infinite — a mic
-                // stays live for a whole call, and every tick repaints this
-                // full-screen overlay, which Hyprland then re-blurs: measured
-                // ~8% qs CPU plus the compositor's share, for hours, to say
-                // what the colour already says. The capture chip keeps its
+                Text {
+                    anchors.centerIn: parent
+                    visible: pdot.asSeal
+                    text: pdot.glyph
+                    color: pdot.tint
+                    font.family: Appearance.font.jp
+                    font.weight: Font.Bold
+                    font.pixelSize: 11 * pill.s
+                }
+
+                // Announce, then hold: three breaths when the source goes live
+                // (and again whenever the rest face comes back), then steady.
+                // NOT infinite for mic/camera/cast — a mic stays live for a
+                // whole call, and every tick repaints this full-screen overlay,
+                // which Hyprland then re-blurs: measured ~8% qs CPU plus the
+                // compositor's share, for hours. The recording seal keeps its
                 // endless breath; there it separates recording from paused.
                 SequentialAnimation on opacity {
                     running: pdot.active && rest.visible && !Motion.reduceMotion
-                    loops: 3
+                    loops: pdot.endless ? Animation.Infinite : 3
                     NumberAnimation { to: 0.35; duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1;    duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
-                    // Stopped mid-breath (rest face hidden) must not strand
-                    // the dot half-faded when it comes back.
+                    // Stopped mid-breath (rest face hidden, take paused) must
+                    // not strand the seal half-faded.
                     onStopped: pdotFill.opacity = 1
                 }
             }
@@ -588,23 +622,15 @@ Item {
                 Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                 spacing: 6 * pill.s
 
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 8 * pill.s
-                    height: 8 * pill.s
-                    radius: width / 2
-                    color: ScreenRec.arming || ScreenRec.paused
+                // 録 seal: breathes while capturing; a countdown or a paused
+                // take holds steady and greys, so "live" is never ambiguous.
+                PrivacySeal {
+                    active: true
+                    glyph: "録"
+                    label: "Screen recording"
+                    tint: ScreenRec.arming || ScreenRec.paused
                         ? Colors.on_surface_variant : Colors.error
-
-                    // Breathes while capturing; a countdown or a paused take
-                    // holds steady, so "live" is never ambiguous at a glance.
-                    SequentialAnimation on opacity {
-                        running: ScreenRec.recording && !ScreenRec.paused
-                            && rest.visible && !Motion.reduceMotion
-                        loops: Animation.Infinite
-                        NumberAnimation { to: 0.35; duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
-                        NumberAnimation { to: 1;    duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
-                    }
+                    endless: ScreenRec.recording && !ScreenRec.paused
                 }
 
                 TickText {
@@ -713,8 +739,8 @@ Item {
             }
 
             // ── privacy indicators (iOS-style) ──────────────────────────
-            // Something capturing the mic / camera / screen shows as a tiny
-            // pulsing glyph at the trailing end of the same centred row,
+            // Something capturing the mic / camera / screen shows as a small
+            // kanji seal at the trailing end of the same centred row,
             // mirroring the capture chip at the leading end. Both now sit in
             // the same recessed track, so the two read as a matched pair of
             // status wells flanking the clock rather than as two loose groups
@@ -736,13 +762,47 @@ Item {
                 id: privacyRow
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 5 * pill.s
-                opacity: Privacy.anyActive ? 1 : 0
+                // Our own take is already the 録 chip on the left; its
+                // gpu-screen-recorder process must not also light 映 on the
+                // right (two red marks for one recording). A portal cast or
+                // a recorder we didn't start still does.
+                readonly property bool screenLive: Privacy.castCount > 0
+                    || (Privacy.recorderCount > 0 && !ScreenRec.busy)
+                opacity: (Privacy.micActive || Privacy.cameraActive || screenLive) ? 1 : 0
                 visible: opacity > 0.01
                 Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
-                PrivacyDot { active: Privacy.micActive;    tint: Colors.tertiary; label: "Microphone in use" }
-                PrivacyDot { active: Privacy.cameraActive; tint: Colors.primary;  label: "Camera in use" }
-                PrivacyDot { active: Privacy.screenActive; tint: Colors.error;    label: "Screen being shared" }
+                PrivacySeal { active: Privacy.micActive;    glyph: "声"; tint: Colors.tertiary; label: "Microphone in use" }
+                PrivacySeal { active: Privacy.cameraActive; glyph: "写"; tint: Colors.primary;  label: "Camera in use" }
+                PrivacySeal { active: privacyRow.screenLive; glyph: "映"; tint: Colors.error;    label: "Screen being shared" }
+            }
+
+            // Low battery: 電 seal + percentage, only at ≤20% and not charging.
+            // The level otherwise lives in the hover row; the rest face only
+            // speaks up when it is worth interrupting the clock for.
+            Row {
+                id: lowBatt
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 5 * pill.s
+                opacity: Battery.present && Battery.low ? 1 : 0
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+
+                PrivacySeal {
+                    active: lowBatt.opacity > 0
+                    glyph: "電"
+                    tint: Colors.error
+                    label: "Battery low, " + Battery.pct + " percent"
+                }
+
+                TickText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    live: rest.visible
+                    text: Battery.pct + "%"
+                    color: Colors.error
+                    font.pixelSize: 12 * pill.s
+                    font.weight: Font.DemiBold
+                }
             }
         }
     }
@@ -1226,10 +1286,17 @@ Item {
         // instead of spilling past the shrinking edges.
         clip: true
 
+        // Fixed at the card's final size, centred and top-aligned, instead of
+        // filling the morphing body: the growing/shrinking pill (clip above)
+        // reveals the laid-out card rather than squashing it through every
+        // in-between size — bottom-anchored rows used to pile onto the title.
         Loader {
             id: ldMedia
             active: false
-            anchors.fill: parent
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 390 * pill.s
+            height: 150 * pill.s
             sourceComponent: Media {
                 s: pill.s
                 open: pill.mode === "media"

@@ -30,11 +30,14 @@ Singleton {
     property alias paletteMode: adapter.paletteMode
     property alias base16Shell: adapter.base16Shell
     property alias uiScale: adapter.uiScale
+    /** Size of the 覧 overview board, relative to the UI scale. */
+    property alias dashScale: adapter.dashScale
     property alias reduceMotion: adapter.reduceMotion
     property alias uiFont: adapter.uiFont
     property alias lockFont: adapter.lockFont
     property alias recordBackend: adapter.recordBackend
     property alias recordCountdown: adapter.recordCountdown
+    property alias recordSource: adapter.recordSource
     property alias recordDir: adapter.recordDir
     property alias recordFps: adapter.recordFps
     property alias recordQuality: adapter.recordQuality
@@ -205,6 +208,7 @@ Singleton {
             property string paletteMode: "material"
             property bool base16Shell: false
             property real uiScale: 1.0
+            property real dashScale: 0.8
             property bool reduceMotion: false
             property string uiFont: ""
             // The lock screen's DISPLAY face — the clock, the date, and the
@@ -217,6 +221,7 @@ Singleton {
             // pinned binary name (gpu-screen-recorder / wl-screenrec / wf-recorder).
             property string recordBackend: ""
             property int recordCountdown: 5
+            property string recordSource: "screen"
             property string recordDir: ""
             property int recordFps: 60
             property string recordQuality: "high"

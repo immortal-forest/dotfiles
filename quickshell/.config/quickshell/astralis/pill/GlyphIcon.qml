@@ -18,6 +18,11 @@ Item {
     property string name: ""
     property color color: Colors.on_surface_variant
     property real stroke: 1.8
+    /**
+     * Centre the path's own ink box (default). Off for layered glyphs that
+     * must share one 24x24 frame — e.g. WifiSignal's level over its track.
+     */
+    property bool centerInk: true
 
     readonly property real u: Math.min(width, height) / 24
 
@@ -32,10 +37,10 @@ Item {
         height: 24
         scale: root.u
         transformOrigin: Item.TopLeft
-        x: glyph.boundingRect.width > 0
+        x: root.centerInk && glyph.boundingRect.width > 0
            ? root.width / 2 - (glyph.boundingRect.x + glyph.boundingRect.width / 2) * root.u
            : (root.width - 24 * root.u) / 2
-        y: glyph.boundingRect.height > 0
+        y: root.centerInk && glyph.boundingRect.height > 0
            ? root.height / 2 - (glyph.boundingRect.y + glyph.boundingRect.height / 2) * root.u
            : (root.height - 24 * root.u) / 2
         antialiasing: true

@@ -6,8 +6,10 @@ import "../config"
 
 /**
  * astralis — surface search input (ported from Ricelin SearchField.qml): a
- * kanji prefix, a bare TextField with an underline that lights on focus, a
- * live "n / total" counter and a default right-content slot. Up/Down (and
+ * kanji prefix, a filled pill field (outline lights on focus) holding the
+ * input and a live "n / total" counter, and a default right-content slot.
+ * The Ame bead is the caret, so the placeholder sits one bead-width in from
+ * the caret instead of under it. Up/Down (and
  * Left/Right with `horizontalNav`) emit moved(), Enter accepted(), Escape
  * dismissed(). Callers reach the raw input through the `input` alias for
  * focus handling.
@@ -40,7 +42,7 @@ Item {
     signal dismissed()
     signal keyPressed(var event)
 
-    height: 30 * s
+    height: 34 * s
 
     TextMetrics {
         id: glyphMetrics
@@ -70,20 +72,36 @@ Item {
         font.pixelSize: 16 * root.s
     }
 
+    Rectangle {
+        id: box
+        anchors.left: glyph.right
+        anchors.leftMargin: glyph.visible ? 10 * root.s : 0
+        anchors.right: rightSlot.left
+        anchors.rightMargin: rightSlot.width > 0 ? 8 * root.s : 0
+        anchors.verticalCenter: parent.verticalCenter
+        height: parent.height
+        // Concentric with the open pill's 22 corner at the surfaces' ~11
+        // inset, one step above the 9-radius result rows: a full capsule here
+        // ran a different curve from the corner wrapped around it.
+        radius: 11 * root.s
+        color: Colors.surface_container_high
+        border.width: 1.2 * root.s
+        border.color: field.activeFocus ? Qt.alpha(Colors.primary, 0.55) : Qt.alpha(Colors.on_surface, 0.06)
+        Behavior on border.color { ColorAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+    }
+
     TextField {
         id: field
         anchors.verticalCenter: parent.verticalCenter
-        anchors.left: glyph.right
-        anchors.leftMargin: 10 * root.s
+        anchors.left: box.left
+        anchors.leftMargin: 14 * root.s
         anchors.right: counter.left
         anchors.rightMargin: 10 * root.s
         background: null
         padding: 0
         color: Colors.on_surface
         font.family: Appearance.font.family
-        font.pixelSize: 15 * root.s
-        placeholderText: root.placeholder
-        placeholderTextColor: Qt.alpha(Colors.on_surface_variant, 0.65)
+        font.pixelSize: 14 * root.s
         selectByMouse: true
         selectionColor: Qt.alpha(Colors.primary, 0.45)
         cursorDelegate: Item {}
@@ -106,22 +124,34 @@ Item {
         }
     }
 
-    Rectangle {
+    // Own placeholder: TextField's sits at x 0, exactly where the bead caret
+    // parks on an empty query, so the first letter hid behind it.
+    Text {
         anchors.left: field.left
+        anchors.leftMargin: 8 * root.s
         anchors.right: field.right
-        anchors.top: field.bottom
-        anchors.topMargin: 2 * root.s
-        height: 1
+        anchors.verticalCenter: field.verticalCenter
+        visible: field.text.length === 0 && field.preeditText.length === 0
+        text: root.placeholder
         color: Qt.alpha(Colors.on_surface_variant, 0.65)
-        opacity: field.activeFocus ? 0.7 : 0
-        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        font: field.font
+        elide: Text.ElideRight
+    }
+
+    // Centred on the digits' ink, not the line box: the box includes descender
+    // space, so a plain verticalCenter rode the numerals above the trailing icon.
+    FontMetrics {
+        id: counterMetrics
+        font: counter.font
     }
 
     Text {
         id: counter
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.right: rightSlot.left
-        anchors.rightMargin: rightSlot.width > 0 ? 10 * root.s : 0
+        readonly property rect ink: counterMetrics.tightBoundingRect("0")
+        anchors.baseline: parent.verticalCenter
+        anchors.baselineOffset: -(ink.y + ink.height / 2)
+        anchors.right: box.right
+        anchors.rightMargin: 14 * root.s
         text: root.counterText
         color: Qt.alpha(Colors.on_surface_variant, 0.65)
         font.family: Appearance.font.family

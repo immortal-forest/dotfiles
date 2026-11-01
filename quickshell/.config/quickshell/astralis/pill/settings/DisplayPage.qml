@@ -718,9 +718,10 @@ SettingsPage {
                             // Float above the rows below while the dropdown is open
                             // so its overlay panel paints over (and catches clicks
                             // for) Refresh/Scale/Rotation instead of pushing them down.
-                            z: root.openPicker === root.selName + ":res" ? 20 : 0
+                            z: resPick.showing ? 20 : 0
 
                             DisplayPicker {
+                                id: resPick
                                 width: parent.width
                                 s: root.s
                                 label: "Resolution"
@@ -740,9 +741,10 @@ SettingsPage {
                             id: rateRow
                             icon: "reboot"
                             accessibleName: "Refresh rate"
-                            z: root.openPicker === root.selName + ":rate" ? 20 : 0
+                            z: ratePick.showing ? 20 : 0
 
                             DisplayPicker {
+                                id: ratePick
                                 width: parent.width
                                 s: root.s
                                 label: "Refresh"

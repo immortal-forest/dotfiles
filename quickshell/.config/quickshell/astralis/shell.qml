@@ -12,6 +12,7 @@ import "config"
 import "pill"
 import "modules/visualizer"
 import "modules/powermenu"
+import "modules/dashboard"
 import "modules/settings"
 import "lock"
 
@@ -47,6 +48,22 @@ ShellRoot {
 
     /** Standalone floating settings window (modules/settings/SettingsWindow). */
     property bool settingsOpen: false
+
+    /** 覧 overview overlay (modules/dashboard), shown on dashMon only. */
+    property bool dashboardOpen: false
+    property string dashMon: ""
+    /** Idle inhibit ("Stay awake" toggle in the overview), held by the reserve windows. */
+    property bool awake: false
+
+    function toggleDashboard() {
+        if (root.dashboardOpen) {
+            root.dashboardOpen = false;
+            return;
+        }
+        root.dashMon = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
+        root.close();
+        root.dashboardOpen = true;
+    }
 
     /**
      * Force-loads the Hypridle singleton at startup so it writes
@@ -202,6 +219,14 @@ ShellRoot {
      * removed entirely; this is the only power menu now, opened by the pill's
      * power icon, `Super+L`, or `qs -c astralis ipc call power toggle`.
      */
+    /** Overview overlay: `qs -c astralis ipc call dashboard toggle` (Super+O). */
+    IpcHandler {
+        target: "dashboard"
+        function toggle(): void { root.toggleDashboard(); }
+        function open(): void { if (!root.dashboardOpen) root.toggleDashboard(); }
+        function close(): void { root.dashboardOpen = false; }
+    }
+
     IpcHandler {
         target: "power"
         function toggle(): void { root.powerMenuOpen = !root.powerMenuOpen; }
@@ -338,6 +363,30 @@ ShellRoot {
         }
     }
 
+    // ── overview: full-screen glance board on the focused monitor ──────────
+    Variants {
+        model: Quickshell.screens
+
+        Scope {
+            id: dashScope
+            required property var modelData
+            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
+
+            Dashboard {
+                screen: dashScope.modelData
+                s: dashScope.s * Flags.dashScale
+                open: root.dashboardOpen && dashScope.modelData.name === root.dashMon && !lockScope.locked
+                awake: root.awake
+                onRequestClose: root.dashboardOpen = false
+                onToggleAwake: root.awake = !root.awake
+                onOpenSurface: (name) => {
+                    root.dashboardOpen = false;
+                    root.toggleSurface(root.dashMon, name);
+                }
+            }
+        }
+    }
+
     // ── settings: standalone floating window (single toplevel, not per-screen) ─
     SettingsWindow {
         // Force shut while locked so it never lingers over the lock screen.
@@ -384,6 +433,11 @@ ShellRoot {
 
             mask: emptyReserve
             Region { id: emptyReserve }
+
+            IdleInhibitor {
+                window: reserve
+                enabled: root.awake
+            }
         }
     }
 
@@ -512,7 +566,29 @@ ShellRoot {
                 // Hover source is at the window level (not on the resizing
                 // pill) to avoid child-hover flicker during the width morph.
                 HoverHandler {
+                    id: winHover
                     onHoveredChanged: pill.hovered = hovered
+                }
+
+                // Hyprland sends no leave when the input mask shrinks out from
+                // under a still pointer (a toast collapsing), so `hovered` would
+                // latch the pill open until the mouse moved. Once the morph
+                // settles, re-check the last pointer position against the pill.
+                Timer {
+                    id: hoverRecheck
+                    interval: Motion.morph + 60
+                    onTriggered: {
+                        if (!pill.hovered) return;
+                        var p = winHover.point.position;
+                        var r = pill.mapToItem(winHover.parent, 0, 0);
+                        if (p.x < r.x || p.y < r.y || p.x > r.x + pill.width || p.y > r.y + pill.height)
+                            pill.hovered = false;
+                    }
+                }
+                Connections {
+                    target: pill
+                    function onWidthChanged() { hoverRecheck.restart(); }
+                    function onHeightChanged() { hoverRecheck.restart(); }
                 }
                 Keys.onEscapePressed: root.close()
 
@@ -523,6 +599,7 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
 
                     s: overlay.s
+                    vizBehind: root.vizEnabled
                     screenName: overlay.modelData.name
                     barWindow: overlay
                     surface: overlay.surface
