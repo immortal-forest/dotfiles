@@ -17,3 +17,6 @@ singleton Wallpaper Wallpaper.qml
 singleton Weather Weather.qml
 singleton Workspacerules Workspacerules.qml
 singleton Udev Udev.qml
+singleton TrackInfo TrackInfo.qml
+singleton Lyrics Lyrics.qml
+singleton Widgets Widgets.qml

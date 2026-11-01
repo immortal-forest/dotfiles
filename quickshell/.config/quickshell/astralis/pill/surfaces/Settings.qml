@@ -52,8 +52,25 @@ PillSurface {
     onOpenChanged: {
         if (!open)
             root.page = "appearance";
-        else
+        else {
+            root.takePending();
             Qt.callLater(() => kbNav.forceActiveFocus());
+        }
+    }
+    Component.onCompleted: if (open) takePending()
+
+    // Widgets editor's cog lands here on the Widgets page; starting the
+    // editor from that page gets this window out of its way.
+    function takePending() {
+        if (Widgets.pendingPage.length > 0) {
+            root.openPage(Widgets.pendingPage);
+            Widgets.pendingPage = "";
+        }
+    }
+    Connections {
+        target: Widgets
+        function onEditingChanged() { if (Widgets.editing && root.open) root.requestClose(); }
+        function onPendingPageChanged() { if (root.open) root.takePending(); }
     }
 
     // Returning from the font picker (which owns focus for its search field)
@@ -172,6 +189,7 @@ PillSurface {
         case "workspaces": return pgWorkspaces;
         case "idlelock":   return pgIdleLock;
         case "updates":    return pgUpdates;
+        case "widgets":    return pgWidgets;
         case "fontpicker": return pgFontPicker;
         default:           return pgAppearance;
         }
@@ -226,6 +244,7 @@ PillSurface {
             { item: keybindsRow, kind: "nav", surface: "keybinds" },
             { item: workspacesRow, kind: "nav", surface: "workspaces" },
             { item: idleRow, kind: "nav", surface: "idlelock" },
+            { item: widgetsRow, kind: "nav", surface: "widgets" },
             { item: updatesRow, kind: "nav", surface: "updates" }
         ]
 
@@ -249,6 +268,7 @@ PillSurface {
                 case "workspaces": return workspacesRow;
                 case "idlelock":   return idleRow;
                 case "updates":    return updatesRow;
+                case "widgets":    return widgetsRow;
                 default:           return null;
                 }
             }
@@ -388,6 +408,15 @@ PillSurface {
                 name: "Idle / Lock"
                 lit: root.page === "idlelock"
                 NavChevron { row: idleRow }
+            }
+
+            SettingsRow {
+                id: widgetsRow
+                surface: sidebar
+                icon: "music"
+                name: "Widgets"
+                lit: root.page === "widgets"
+                NavChevron { row: widgetsRow }
             }
 
             SettingsRow {
@@ -533,6 +562,19 @@ PillSurface {
                 anchors.fill: parent
                 s: root.s
                 active: root.page === "idlelock" && root.open
+                onRequestPage: (name) => root.openPage(name)
+                onBack: root.requestClose()
+            }
+        }
+
+        PageSlot {
+            current: root.page === "widgets"
+
+            WidgetsPage {
+                id: pgWidgets
+                anchors.fill: parent
+                s: root.s
+                active: root.page === "widgets" && root.open
                 onRequestPage: (name) => root.openPage(name)
                 onBack: root.requestClose()
             }
