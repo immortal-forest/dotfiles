@@ -172,6 +172,7 @@ PillSurface {
         case "workspaces": return pgWorkspaces;
         case "idlelock":   return pgIdleLock;
         case "updates":    return pgUpdates;
+        case "widgets":    return pgWidgets;
         case "fontpicker": return pgFontPicker;
         default:           return pgAppearance;
         }
@@ -226,6 +227,7 @@ PillSurface {
             { item: keybindsRow, kind: "nav", surface: "keybinds" },
             { item: workspacesRow, kind: "nav", surface: "workspaces" },
             { item: idleRow, kind: "nav", surface: "idlelock" },
+            { item: widgetsRow, kind: "nav", surface: "widgets" },
             { item: updatesRow, kind: "nav", surface: "updates" }
         ]
 
@@ -249,6 +251,7 @@ PillSurface {
                 case "workspaces": return workspacesRow;
                 case "idlelock":   return idleRow;
                 case "updates":    return updatesRow;
+                case "widgets":    return widgetsRow;
                 default:           return null;
                 }
             }
@@ -388,6 +391,15 @@ PillSurface {
                 name: "Idle / Lock"
                 lit: root.page === "idlelock"
                 NavChevron { row: idleRow }
+            }
+
+            SettingsRow {
+                id: widgetsRow
+                surface: sidebar
+                icon: "music"
+                name: "Widgets"
+                lit: root.page === "widgets"
+                NavChevron { row: widgetsRow }
             }
 
             SettingsRow {
@@ -533,6 +545,19 @@ PillSurface {
                 anchors.fill: parent
                 s: root.s
                 active: root.page === "idlelock" && root.open
+                onRequestPage: (name) => root.openPage(name)
+                onBack: root.requestClose()
+            }
+        }
+
+        PageSlot {
+            current: root.page === "widgets"
+
+            WidgetsPage {
+                id: pgWidgets
+                anchors.fill: parent
+                s: root.s
+                active: root.page === "widgets" && root.open
                 onRequestPage: (name) => root.openPage(name)
                 onBack: root.requestClose()
             }
