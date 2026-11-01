@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
 import "services"
+import "modules/nowplaying"
 import "config"
 import "pill"
 import "modules/visualizer"
@@ -342,6 +343,12 @@ ShellRoot {
         // Force shut while locked so it never lingers over the lock screen.
         visible: root.settingsOpen && !lockScope.locked
         onRequestClose: root.settingsOpen = false
+    }
+
+    // ── desktop music widgets: cover art + synced lyrics (WlrLayer.Bottom) ──
+    // Layout editor: Settings › Widgets or `ipc call desktop edit`.
+    NowPlaying {
+        onRequestSettings: root.settingsOpen = true
     }
 
     // ── lockscreen: real WlSessionLock + PAM (lock/Lock.qml) ───────────────
