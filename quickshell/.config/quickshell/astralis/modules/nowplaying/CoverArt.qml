@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import "../../colors"
@@ -29,11 +30,15 @@ PanelWindow {
     property real sw: 1920
     property real sh: 1080
     readonly property var cfg: Widgets.cover
-    readonly property real coverSize: Math.round(Math.max(120, cfg.w * sw))
-    readonly property real pad: Math.round(90 * s)
+    readonly property real coverSize: Math.round(Math.max(48, cfg.w * sw))
+    /** Room around the cover for the halo to fade out fully (never clipped
+     *  by the window edge). Tracks the halo's blur reach. */
+    readonly property real haloReach: Math.round(Math.max(36 * s, Math.min(150 * s, coverSize * 0.38)))
+    readonly property real pad: haloReach + Math.round(12 * s)
 
-    // While the placer is open the cover shows even with nothing playing.
-    readonly property bool shown: (Players.has && TrackInfo.art.length > 0) || Widgets.editing
+    // Nothing shows until a cover has actually decoded (no empty placeholder
+    // square); while the placer is open it shows even with nothing playing.
+    readonly property bool shown: (Players.has && TrackInfo.art.length > 0 && slots.ready) || Widgets.editing
 
     color: "transparent"
     WlrLayershell.layer: win.layer
@@ -51,6 +56,25 @@ PanelWindow {
 
     // Which way the last swap went (+1 next, -1 prev) — the slide follows it.
     property int dir: 1
+    // Halo colours, latched when a cover swaps in (and when the cover's
+    // palette lands while nothing is pending), faded across.
+    property color haloA: TrackInfo.accent
+    property color haloB: TrackInfo.accent2
+    property color haloC: TrackInfo.accentDeep
+    Behavior on haloA { ColorAnimation { duration: Motion.largeDur } }
+    Behavior on haloB { ColorAnimation { duration: Motion.largeDur } }
+    Behavior on haloC { ColorAnimation { duration: Motion.largeDur } }
+    function latchHalo() {
+        haloA = TrackInfo.accent;
+        haloB = TrackInfo.accent2;
+        haloC = TrackInfo.accentDeep;
+    }
+    Connections {
+        target: TrackInfo
+        function onAccentChanged() { if (slots.pending < 0) win.latchHalo(); }
+        function onAccent2Changed() { if (slots.pending < 0) win.latchHalo(); }
+        function onAccentDeepChanged() { if (slots.pending < 0) win.latchHalo(); }
+    }
     property int shownIndex: TrackInfo.index
     property string shownKey: TrackInfo.key
 
@@ -62,31 +86,54 @@ PanelWindow {
         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
         Behavior on scale { NumberAnimation { duration: Motion.expressiveDefaultSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveDefaultSpatial } }
 
-        // ── ambient halo: the cover's own colour, blurred out behind it ──
-        Image {
-            id: haloSrc
-            enabled: win.cfg.halo
+        // ── ambient halo: the cover's colours glowing out behind it ──────
+        // Three radial gradients (deep accent centred, the two cover hues
+        // offset to opposite corners), each fading to fully transparent
+        // inside the window pad — a true radial falloff that can never be
+        // clipped into a square, and no blur pass. Colours only change when
+        // a new cover has actually swapped in (win.haloA/B/C, set in flip()).
+        Item {
+            id: halo
+            visible: win.cfg.halo && slots.ready
             anchors.centerIn: frame
-            width: win.coverSize
+            width: win.coverSize + win.haloReach * 2
             height: width
-            source: TrackInfo.art
-            sourceSize: Qt.size(96, 96)
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
-            retainWhileLoading: true
-            visible: false
-        }
-        MultiEffect {
-            anchors.fill: haloSrc
-            source: haloSrc
-            scale: 1.28
-            blurEnabled: true
-            blur: 1
-            blurMax: 64
-            saturation: 0.35
-            visible: win.cfg.halo
-            opacity: Players.playing ? 0.62 : 0.32
+            opacity: Players.playing ? 1 : 0.45
             Behavior on opacity { NumberAnimation { duration: Motion.largeDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecel } }
+
+            component Blob: Shape {
+                id: blob
+                property color tint
+                property real cx: 0.5
+                property real cy: 0.5
+                property real strength: 0.7
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeWidth: 0
+                    strokeColor: "transparent"
+                    fillGradient: RadialGradient {
+                        centerX: blob.width * blob.cx
+                        centerY: blob.height * blob.cy
+                        focalX: centerX
+                        focalY: centerY
+                        centerRadius: blob.width / 2 * (1 - Math.max(Math.abs(blob.cx - 0.5), Math.abs(blob.cy - 0.5)) * 2)
+                        focalRadius: 0
+                        GradientStop { position: 0; color: Qt.alpha(blob.tint, blob.strength) }
+                        GradientStop { position: 0.5; color: Qt.alpha(blob.tint, blob.strength * 0.8) }
+                        GradientStop { position: 0.75; color: Qt.alpha(blob.tint, blob.strength * 0.28) }
+                        GradientStop { position: 1; color: Qt.alpha(blob.tint, 0) }
+                    }
+                    startX: 0; startY: 0
+                    PathLine { x: blob.width; y: 0 }
+                    PathLine { x: blob.width; y: blob.height }
+                    PathLine { x: 0; y: blob.height }
+                    PathLine { x: 0; y: 0 }
+                }
+            }
+            Blob { tint: win.haloC; strength: 0.75 }
+            Blob { tint: win.haloA; cx: 0.44; cy: 0.44; strength: 0.5 }
+            Blob { tint: win.haloB; cx: 0.56; cy: 0.56; strength: 0.45 }
         }
 
         // ── the cover ────────────────────────────────────────────────────
@@ -124,8 +171,10 @@ PanelWindow {
                     maskSpreadAtMin: 1
                 }
 
+                // Placeholder only in the placer with no cover at all.
                 Rectangle {
                     anchors.fill: parent
+                    visible: !slots.ready
                     color: Colors.surface_container_high
                 }
 
@@ -145,8 +194,16 @@ PanelWindow {
                         asynchronous: true
                         retainWhileLoading: true
                         z: front ? 1 : 0
-                        opacity: front ? (status === Image.Ready ? 1 : 0) : 0
-                        onStatusChanged: if (status === Image.Error) TrackInfo.markBad(source)
+                        // The back slot preloads invisibly; it only becomes
+                        // front once decoded (win.flip), so nothing ever
+                        // shows half-loaded or empty.
+                        opacity: front ? 1 : 0
+                        onStatusChanged: {
+                            if (status === Image.Error)
+                                TrackInfo.markBad(source);
+                            else if (status === Image.Ready && index === slots.pending)
+                                win.flip();
+                        }
                         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
                     }
                 }
@@ -166,6 +223,11 @@ PanelWindow {
                 property string a: ""
                 property string b: ""
                 property int front: 0
+                /** Slot preloading the next cover, -1 = none. */
+                property int pending: -1
+                /** A decoded cover is on the front slot. */
+                property bool ready: false
+                property bool sameSong: false
             }
 
             ParallelAnimation {
@@ -279,26 +341,49 @@ PanelWindow {
     }
     Component.onCompleted: win.swap()
 
+    // New art → preload it into the back slot. The old cover (and its halo)
+    // stays up until the new one has decoded; then flip() swaps them.
     function swap() {
         var url = TrackInfo.art;
         var cur = slots.front === 0 ? slots.a : slots.b;
-        if (url === cur)
+        if (url.length === 0) {
+            slots.pending = -1;
             return;
+        }
+        if (url === cur && slots.ready) {
+            slots.pending = -1;
+            return;
+        }
+        var back = 1 - slots.front;
         // A new EDITION of the same song slides along the swap direction; a
         // new SONG just cross-fades in place.
-        var sameSong = TrackInfo.key === win.shownKey && cur.length > 0;
+        slots.sameSong = TrackInfo.key === win.shownKey && cur.length > 0;
         win.shownKey = TrackInfo.key;
-        var back = 1 - slots.front;
+        slots.pending = back;
         if (back === 0)
             slots.a = url;
         else
             slots.b = url;
+        // Already decoded in that slot (e.g. flipping back) → no status change
+        // will fire, so flip now.
+        var img = rep.itemAt(back);
+        if (img && img.status === Image.Ready && String(img.source) === url)
+            win.flip();
+    }
+
+    function flip() {
+        var back = slots.pending;
+        if (back < 0)
+            return;
+        slots.pending = -1;
         slots.front = back;
+        slots.ready = true;
+        win.latchHalo();
         var inc = rep.itemAt(back), out = rep.itemAt(1 - back);
         slide.stop();
         if (inc) inc.x = 0;
         if (out) out.x = 0;
-        if (sameSong && inc && out) {
+        if (slots.sameSong && inc && out) {
             slide.inc = inc;
             slide.out = out;
             slide.d = win.dir * win.coverSize * 0.35;

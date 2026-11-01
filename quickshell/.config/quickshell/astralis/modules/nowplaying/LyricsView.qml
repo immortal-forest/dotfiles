@@ -42,11 +42,28 @@ PanelWindow {
     property real sh: 1080
     readonly property var cfg: Widgets.lyrics
     readonly property real inset: Math.round(28 * s)
-    readonly property real viewW: Math.max(160, cfg.w * sw - inset * 2)
+    readonly property real viewW: Math.max(60, cfg.w * sw - inset * 2)
     readonly property real fontPx: Math.round(cfg.size * s)
     readonly property bool centered: cfg.align === "center"
+    readonly property bool righted: cfg.align === "right"
     /** Where the current line's centre sits, as a fraction of the height. */
-    property real anchorAt: 0.42
+    readonly property real anchorAt: Math.max(0.1, Math.min(0.9, cfg.anchor))
+    readonly property real gapPx: Math.round(fontPx * 0.52 * cfg.spacing)
+    readonly property string romanMode: cfg.roman
+
+    // How many lines show before / after the current one: as many as fit in
+    // the box (a smaller widget shows fewer), optionally capped by `lines`.
+    readonly property real lineStep: fontPx * 1.45 + gapPx + (romanMode === "below" ? fontPx * 0.75 : 0)
+    readonly property int fitAbove: Math.max(0, Math.floor((stage.height * anchorAt - lineStep * 0.5) / lineStep + 0.35))
+    readonly property int fitBelow: Math.max(0, Math.floor((stage.height * (1 - anchorAt) - lineStep * 0.5) / lineStep + 0.35))
+    readonly property int showAbove: Math.min(8, cfg.lines > 0 ? Math.min(cfg.lines, fitAbove) : fitAbove)
+    readonly property int showBelow: Math.min(8, cfg.lines > 0 ? Math.min(cfg.lines, fitBelow) : fitBelow)
+    readonly property int reach: Math.max(showAbove, showBelow)
+
+    // Lit-text gradient (start → end across the line) and the current-line glow.
+    readonly property color litA: cfg.ink === "theme" ? Colors.primary : cfg.ink === "mono" ? Qt.rgba(1, 1, 1, 1) : TrackInfo.accent
+    readonly property color litB: cfg.ink === "theme" ? Colors.tertiary : cfg.ink === "mono" ? Qt.rgba(0.92, 0.92, 0.95, 1) : TrackInfo.accent2
+    readonly property color glowC: cfg.ink === "theme" ? Colors.primary : cfg.ink === "mono" ? Qt.rgba(1, 1, 1, 0.55) : TrackInfo.accentDeep
 
     readonly property bool shown: Players.has && Lyrics.has
 
@@ -59,8 +76,8 @@ PanelWindow {
     anchors.top: true
     margins.left: Math.round(cfg.x * sw)
     margins.top: Math.round(cfg.y * sh)
-    implicitWidth: Math.round(Math.max(200, cfg.w * sw))
-    implicitHeight: Math.round(Math.max(120, cfg.h * sh))
+    implicitWidth: Math.round(Math.max(80, cfg.w * sw))
+    implicitHeight: Math.round(Math.max(40, cfg.h * sh))
     visible: stage.opacity > 0.001
     mask: Region {}
 
@@ -148,7 +165,7 @@ PanelWindow {
             if (!it)
                 continue;
             var d = i - win.cur;
-            if (!it.placed || Math.abs(d) > 6 || Motion.reduceMotion) {
+            if (!it.placed || Math.abs(d) > win.reach + 2 || Motion.reduceMotion) {
                 it.ty = target;
                 it.vy = 0;
                 it.placed = true;
@@ -229,7 +246,7 @@ PanelWindow {
             id: col
             x: win.inset
             width: win.viewW
-            spacing: Math.round(win.fontPx * 0.52)
+            spacing: win.gapPx
 
             Repeater {
                 id: lineRep
@@ -247,8 +264,12 @@ PanelWindow {
 
                     readonly property int dist: index - win.cur
                     readonly property bool current: dist === 0
-                    readonly property bool near: Math.abs(dist) <= 4
-                    readonly property bool cjk: win.hasCJK(modelData.text)
+                    readonly property bool near: Math.abs(dist) <= win.reach
+                    /** What is drawn: the line, or its romanized re-timing ("replace"). */
+                    readonly property var src: win.romanMode === "replace" && Lyrics.romanLines.length > index ? Lyrics.romanLines[index] : modelData
+                    /** Romanization shown under the line ("below"). */
+                    readonly property string rtext: win.romanMode === "below" && Lyrics.roman.length > index && Lyrics.roman[index] !== modelData.text ? Lyrics.roman[index] : ""
+                    readonly property bool cjk: win.hasCJK(src.text)
                     readonly property real prog: current
                         ? Math.max(0, Math.min(1, (win.pos - modelData.t) / modelData.span))
                         : (dist < 0 ? 1 : 0)
@@ -258,17 +279,26 @@ PanelWindow {
                     property real act: current ? 1 : 0
                     Behavior on act { NumberAnimation { duration: Motion.normalDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecel } }
 
+                    // Instrumental breaks only take space while they are the
+                    // current line (else they left an empty hole in the
+                    // column); animated so the column never jumps.
+                    property real gapH: current ? 28 * win.s : 0
+                    Behavior on gapH { NumberAnimation { duration: Motion.normalDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
+
                     width: col.width
-                    height: modelData.gap ? 28 * win.s : dimFlow.height
+                    height: modelData.gap ? gapH : dimFlow.height + (rtext.length > 0 ? romanText.implicitHeight + 4 * win.s : 0)
                     transform: Translate { y: line.ty }
-                    transformOrigin: win.centered ? Item.Center : Item.Left
+                    transformOrigin: win.centered ? Item.Center : win.righted ? Item.Right : Item.Left
                     scale: 0.86 + 0.14 * act
+                    // Fade by distance over however many lines fit (showAbove /
+                    // showBelow); past lines leave faster than upcoming arrive.
                     opacity: {
                         var d = Math.abs(dist);
                         if (d === 0) return 1;
-                        if (d > 4) return 0;
-                        // past lines leave faster than upcoming ones arrive
-                        return dist < 0 ? [0, 0.34, 0.13, 0.04, 0][d] : [0, 0.52, 0.28, 0.13, 0.04][d];
+                        var n = dist < 0 ? win.showAbove : win.showBelow;
+                        if (d > n) return 0;
+                        var f = 1 - (d - 1) / n;
+                        return dist < 0 ? 0.36 * Math.pow(f, 1.4) : 0.55 * Math.pow(f, 1.2);
                     }
                     // No `visible` toggle here: Column drops invisible children
                     // from the layout, so a past line fading out past ±4 used to
@@ -291,7 +321,7 @@ PanelWindow {
                         blurMax: 12
                         shadowEnabled: true
                         readonly property real glow: win.cfg.glow ? line.act : 0
-                        shadowColor: win.mix(Qt.rgba(0, 0, 0, 0.55), Qt.alpha(TrackInfo.accentDeep, 0.9), glow)
+                        shadowColor: win.mix(Qt.rgba(0, 0, 0, 0.55), Qt.alpha(win.glowC, 0.9), glow)
                         shadowBlur: 0.6 + 0.35 * glow
                         shadowVerticalOffset: 2 * win.s * (1 - glow)
                         shadowHorizontalOffset: 0
@@ -300,8 +330,9 @@ PanelWindow {
                     // ── instrumental gap: three dots breathe and fill ──────
                     Row {
                         visible: line.modelData.gap
-                        x: win.centered ? (parent.width - width) / 2 : 0
+                        x: win.centered ? (parent.width - width) / 2 : win.righted ? parent.width - width : 0
                         spacing: 12 * win.s
+                        opacity: line.gapH / (28 * win.s)
                         anchors.verticalCenter: parent.verticalCenter
                         Repeater {
                             model: 3
@@ -314,7 +345,7 @@ PanelWindow {
                                 width: 12 * win.s
                                 height: width
                                 radius: width / 2
-                                color: win.mix(Qt.alpha(TrackInfo.ink, 0.35), index === 1 ? TrackInfo.accent2 : TrackInfo.accent, f)
+                                color: win.mix(Qt.alpha(TrackInfo.ink, 0.35), index === 1 ? win.litB : win.litA, f)
                                 scale: 0.78 + 0.3 * f + breath
                             }
                         }
@@ -349,7 +380,7 @@ PanelWindow {
                             var ws = rows[r], used = 0;
                             for (var j = 0; j < ws.length; j++)
                                 used += j === ws.length - 1 ? dimRep.itemAt(ws[j]).textW : dimRep.itemAt(ws[j]).width;
-                            var cx = win.centered ? (maxW - used) / 2 : 0;
+                            var cx = win.centered ? (maxW - used) / 2 : win.righted ? maxW - used : 0;
                             for (var k = 0; k < ws.length; k++) {
                                 out[ws[k]] = { x: cx, y: r * lh };
                                 cx += dimRep.itemAt(ws[k]).width;
@@ -367,6 +398,7 @@ PanelWindow {
                     Connections {
                         target: win
                         function onCenteredChanged() { relayoutTimer.restart(); }
+                        function onRightedChanged() { relayoutTimer.restart(); }
                     }
 
                     Item {
@@ -375,7 +407,7 @@ PanelWindow {
                         width: parent.width
                         Repeater {
                             id: dimRep
-                            model: line.modelData.words
+                            model: line.src.words
                             onCountChanged: relayoutTimer.restart()
                             Item {
                                 id: word
@@ -422,7 +454,7 @@ PanelWindow {
                         Item {
                             width: dimFlow.width
                             Repeater {
-                                model: line.modelData.words
+                                model: line.src.words
                                 Item {
                                     required property var modelData
                                     required property int index
@@ -434,7 +466,7 @@ PanelWindow {
                                     Text {
                                         y: parent.twin ? -parent.twin.lift : 0
                                         text: parent.modelData.text
-                                        color: win.mix(TrackInfo.accent, TrackInfo.accent2,
+                                        color: win.mix(win.litA, win.litB,
                                                        parent.twin ? Math.min(1, (parent.twin.x + parent.twin.width / 2) / Math.max(1, dimFlow.width * 0.8)) : 0)
                                         font.family: line.cjk ? Appearance.font.jp : Appearance.font.family
                                         font.pixelSize: win.fontPx
@@ -454,7 +486,7 @@ PanelWindow {
                         visible: false
                         layer.enabled: litLayer.visible
                         Repeater {
-                            model: litLayer.visible ? line.modelData.words : []
+                            model: litLayer.visible ? line.src.words : []
                             Item {
                                 required property int index
                                 readonly property Item twin: line.place.length >= 0 ? dimRep.itemAt(index) : null
@@ -480,6 +512,21 @@ PanelWindow {
                                 }
                             }
                         }
+                    }
+
+                    // ── romanization under the line ("below") ──────────────
+                    Text {
+                        id: romanText
+                        visible: line.rtext.length > 0
+                        y: dimFlow.height + 4 * win.s
+                        width: parent.width
+                        text: line.rtext
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: win.centered ? Text.AlignHCenter : win.righted ? Text.AlignRight : Text.AlignLeft
+                        color: win.mix(Qt.alpha(TrackInfo.ink, 0.6), win.litA, line.act * 0.85)
+                        font.family: Appearance.font.family
+                        font.pixelSize: Math.round(win.fontPx * 0.5)
+                        font.weight: Font.Medium
                     }
                 }
             }

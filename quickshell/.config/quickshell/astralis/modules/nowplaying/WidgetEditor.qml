@@ -33,6 +33,13 @@ PanelWindow {
     property bool chrome: true
     /** Dock folded to a bead. */
     property bool folded: false
+    /** Open settings panel under the dock: "" | "cover" | "lyrics". */
+    property string panel: ""
+    onFoldedChanged: if (folded) panel = ""
+
+    function mix(a, b, f) {
+        return Qt.rgba(a.r + (b.r - a.r) * f, a.g + (b.g - a.g) * f, a.b + (b.b - a.b) * f, a.a + (b.a - a.a) * f);
+    }
     property bool anyBusy: coverFrame.busy || lyricsFrame.busy
 
     color: "transparent"
@@ -124,10 +131,10 @@ PanelWindow {
                 property bool square: false
                 readonly property var cfg: Widgets[key]
                 readonly property bool on: cfg.on
-                readonly property bool hot: busy || hov.hovered || gripHov.hovered
+                readonly property bool hot: busy || hov.hovered || gripsHovered > 0
                 readonly property color ink: Colors.primary
 
-                property bool busy: drag.active || resize.active
+                readonly property bool busy: drag.active || resizing > 0
                 property real lx: 0
                 property real ly: 0
                 property real lw: 0
@@ -145,15 +152,64 @@ PanelWindow {
                 opacity: on ? 1 : 0.38
                 Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
+                /** Smallest size, logical px — the widgets honour the same floors. */
+                readonly property real minW: square ? 48 : 80
+                readonly property real minH: square ? 48 : 40
+
+                // Geometry is snapped live while dragging, so what you see is
+                // what you get on release (no bounce).
                 function commit() {
                     var o = {
-                        x: Math.max(0, Math.min(1, win.snap(fr.lx) / win.sw)),
-                        y: Math.max(0, Math.min(1, win.snap(fr.ly) / win.sh)),
-                        w: Math.max(0.04, win.snap(fr.lw) / win.sw)
+                        x: Math.max(0, Math.min(1, fr.lx / win.sw)),
+                        y: Math.max(0, Math.min(1, fr.ly / win.sh)),
+                        w: Math.max(fr.minW / win.sw, fr.lw / win.sw)
                     };
                     if (!fr.square)
-                        o.h = Math.max(0.06, win.snap(fr.lh) / win.sh);
+                        o.h = Math.max(fr.minH / win.sh, fr.lh / win.sh);
                     Widgets.set(fr.key, o);
+                }
+
+                /** Snap an edge to the grid unless that would break the minimum. */
+                function snapEdge(v, other, dir, min) {
+                    var s = win.snap(v);
+                    return dir * (s - other) >= min ? s : v;
+                }
+
+                /** Resize from a grip at (hx, hy) ∈ {-1,0,1}² given the drag delta. */
+                function resizeBy(hx, hy, x0, y0, w0, h0, tx, ty) {
+                    var r0 = x0 + w0, b0 = y0 + h0;
+                    var L = x0, R = r0, T = y0, B = b0;
+                    if (fr.square) {
+                        // One size from the dominant axis; the opposite corner/edge stays put.
+                        var d = hx !== 0 && hy !== 0 ? (hx * tx + hy * ty) / 2 : hx !== 0 ? hx * tx : hy * ty;
+                        var lim = Math.min(hx > 0 ? win.sw - x0 : hx < 0 ? r0 : win.sw,
+                                           hy > 0 ? win.sh - y0 : hy < 0 ? b0 : win.sh);
+                        var sz = Math.max(fr.minW, Math.min(lim, w0 + d));
+                        var edge = hx < 0 ? r0 - sz : x0 + sz;
+                        if (win.cell > 0) {
+                            var se = win.snap(edge);
+                            var ss = hx < 0 ? r0 - se : se - x0;
+                            if (ss >= fr.minW && ss <= lim)
+                                sz = ss;
+                        }
+                        fr.lw = sz;
+                        fr.lh = sz;
+                        fr.lx = hx < 0 ? r0 - sz : x0;
+                        fr.ly = hy < 0 ? b0 - sz : y0;
+                        return;
+                    }
+                    if (hx > 0)
+                        R = fr.snapEdge(Math.max(L + fr.minW, Math.min(win.sw, r0 + tx)), L, 1, fr.minW);
+                    else if (hx < 0)
+                        L = fr.snapEdge(Math.min(R - fr.minW, Math.max(0, x0 + tx)), R, -1, fr.minW);
+                    if (hy > 0)
+                        B = fr.snapEdge(Math.max(T + fr.minH, Math.min(win.sh, b0 + ty)), T, 1, fr.minH);
+                    else if (hy < 0)
+                        T = fr.snapEdge(Math.min(B - fr.minH, Math.max(0, y0 + ty)), B, -1, fr.minH);
+                    fr.lx = L;
+                    fr.ly = T;
+                    fr.lw = R - L;
+                    fr.lh = B - T;
                 }
 
                 // Fill + hairline.
@@ -249,51 +305,57 @@ PanelWindow {
                     onTranslationChanged: {
                         if (!active)
                             return;
-                        fr.lx = Math.max(0, Math.min(win.sw - fr.lw, x0 + translation.x));
-                        fr.ly = Math.max(0, Math.min(win.sh - fr.lh, y0 + translation.y));
+                        fr.lx = Math.max(0, Math.min(win.sw - fr.lw, win.snap(x0 + translation.x)));
+                        fr.ly = Math.max(0, Math.min(win.sh - fr.lh, win.snap(y0 + translation.y)));
                     }
                 }
                 TapHandler {
                     onDoubleTapped: Widgets.set(fr.key, "on", !fr.on)
                 }
 
-                // Resize hit area over the bottom-right bracket.
-                Item {
-                    width: 30 * win.s
-                    height: width
-                    x: fr.width - width + 6 * win.s
-                    y: fr.height - height + 6 * win.s
-                    HoverHandler {
-                        id: gripHov
-                        cursorShape: Qt.SizeFDiagCursor
-                    }
-                    DragHandler {
-                        id: resize
-                        target: null
-                        property real w0: 0
-                        property real h0: 0
-                        onActiveChanged: {
-                            if (active) {
-                                fr.grab();
-                                w0 = fr.lw;
-                                h0 = fr.lh;
-                            } else {
-                                fr.commit();
-                            }
+                // ── resize grips: four corners + four edges ─────────────────
+                // Edge grips are strips along each side (between the corner
+                // grips); the cover keeps to its corners (it stays square).
+                property int resizing: 0
+                property int gripsHovered: 0
+                Repeater {
+                    model: [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]
+                    Item {
+                        id: grip
+                        required property var modelData
+                        readonly property int hx: modelData[0]
+                        readonly property int hy: modelData[1]
+                        readonly property bool corner: hx !== 0 && hy !== 0
+                        readonly property real g: 22 * win.s       // corner grip size
+                        readonly property real t: 12 * win.s       // edge grip thickness
+                        visible: corner || !fr.square
+                        width: corner ? g : hx === 0 ? Math.max(0, fr.width - g * 2) : t
+                        height: corner ? g : hy === 0 ? Math.max(0, fr.height - g * 2) : t
+                        x: hx < 0 ? -width / 2 : hx > 0 ? fr.width - width / 2 : g
+                        y: hy < 0 ? -height / 2 : hy > 0 ? fr.height - height / 2 : g
+                        z: 2
+                        HoverHandler {
+                            cursorShape: grip.corner ? (grip.hx === grip.hy ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor)
+                                        : grip.hx === 0 ? Qt.SizeVerCursor : Qt.SizeHorCursor
+                            onHoveredChanged: fr.gripsHovered += hovered ? 1 : -1
                         }
-                        onTranslationChanged: {
-                            if (!active)
-                                return;
-                            var minW = 120 * win.s, minH = 90 * win.s;
-                            var w = Math.max(minW, Math.min(win.sw - fr.x, w0 + translation.x));
-                            if (fr.square) {
-                                w = Math.min(w, win.sh - fr.y);
-                                fr.lw = w;
-                                fr.lh = w;
-                            } else {
-                                fr.lw = w;
-                                fr.lh = Math.max(minH, Math.min(win.sh - fr.y, h0 + translation.y));
+                        DragHandler {
+                            target: null
+                            property real x0: 0
+                            property real y0: 0
+                            property real w0: 0
+                            property real h0: 0
+                            onActiveChanged: {
+                                if (active) {
+                                    fr.grab();
+                                    x0 = fr.lx; y0 = fr.ly; w0 = fr.lw; h0 = fr.lh;
+                                    fr.resizing++;
+                                } else {
+                                    fr.resizing--;
+                                    fr.commit();
+                                }
                             }
+                            onTranslationChanged: if (active) fr.resizeBy(grip.hx, grip.hy, x0, y0, w0, h0, translation.x, translation.y)
                         }
                     }
                 }
@@ -322,6 +384,9 @@ PanelWindow {
                 property string tipDesc: ""
                 property bool on: false
                 property bool accent: false
+                /** Widget hidden — the icon greys out. */
+                property bool dim: false
+                opacity: dim && !on ? 0.5 : 1
                 signal clicked()
                 width: label.length > 0 ? Math.max(height, lbl.implicitWidth + 16 * win.s) : height
                 height: 30 * win.s
@@ -374,9 +439,16 @@ PanelWindow {
                 width: win.folded ? height : dockRow.implicitWidth + 12 * win.s
                 height: 40 * win.s
                 radius: height / 2
-                color: Colors.surface_container
+                // Cover-tinted gradient: deep accent bleeding in from the left,
+                // the second cover hue fading out on the right.
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: win.mix(Colors.surface_container, TrackInfo.accentDeep, 0.34) }
+                    GradientStop { position: 0.55; color: Colors.surface_container }
+                    GradientStop { position: 1; color: win.mix(Colors.surface_container, TrackInfo.accent2, 0.16) }
+                }
                 border.width: 1
-                border.color: Qt.alpha(Colors.on_surface, 0.08)
+                border.color: Qt.alpha(TrackInfo.accent, 0.18)
                 Behavior on width { NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveFastSpatial } }
 
                 DragHandler {
@@ -411,14 +483,14 @@ PanelWindow {
                     Btn { icon: "chevron-left"; tip: "Fold"; onClicked: win.folded = true }
                     Sep {}
                     Btn {
-                        icon: "image"; on: Widgets.cover.on
-                        tip: Widgets.cover.on ? "Hide cover" : "Show cover"
-                        onClicked: Widgets.set("cover", "on", !Widgets.cover.on)
+                        icon: "image"; on: win.panel === "cover"; dim: !Widgets.cover.on
+                        tip: "Cover art"; tipDesc: "Style, halo, show / hide"
+                        onClicked: win.panel = win.panel === "cover" ? "" : "cover"
                     }
                     Btn {
-                        icon: "type"; on: Widgets.lyrics.on
-                        tip: Widgets.lyrics.on ? "Hide lyrics" : "Show lyrics"
-                        onClicked: Widgets.set("lyrics", "on", !Widgets.lyrics.on)
+                        icon: "type"; on: win.panel === "lyrics"; dim: !Widgets.lyrics.on
+                        tip: "Lyrics"; tipDesc: "Size, lines, colour, romanization"
+                        onClicked: win.panel = win.panel === "lyrics" ? "" : "lyrics"
                     }
                     Sep {}
                     Btn {
@@ -433,6 +505,281 @@ PanelWindow {
                     Btn { icon: "minus"; tip: "Preview"; tipDesc: "Hide the editor · H"; onClicked: win.chrome = false }
                     Sep {}
                     Btn { icon: "check"; accent: true; tip: "Done"; tipDesc: "Esc"; onClicked: Widgets.editing = false }
+                }
+            }
+        }
+
+        // ── settings panel (opened from the dock's cover / lyrics buttons) ──
+        component Lbl: Text {
+            color: Colors.on_surface_variant
+            font.family: Appearance.font.family
+            font.pixelSize: 11 * win.s
+            font.weight: Font.DemiBold
+        }
+        /** A labelled settings row: name on the left, control on the right. */
+        component PRow: Item {
+            id: pr
+            property string name: ""
+            default property alias content: holder.data
+            width: panelCol.width
+            height: Math.max(28 * win.s, holder.childrenRect.height)
+            Lbl { text: pr.name; anchors.verticalCenter: parent.verticalCenter }
+            Item {
+                id: holder
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: childrenRect.width
+                height: childrenRect.height
+            }
+        }
+        /** Segmented choice. opts: [{ label, value }]. */
+        component Seg: Row {
+            id: sg
+            property var opts: []
+            property var value
+            signal picked(var v)
+            spacing: 2 * win.s
+            Repeater {
+                model: sg.opts
+                Rectangle {
+                    id: chip
+                    required property var modelData
+                    readonly property bool sel: sg.value === modelData.value
+                    width: Math.max(26 * win.s, chipText.implicitWidth + 14 * win.s)
+                    height: 24 * win.s
+                    radius: height / 2
+                    color: sel ? Qt.alpha(Colors.primary, 0.2) : chipHov.hovered ? Qt.alpha(Colors.on_surface, 0.08) : Qt.alpha(Colors.on_surface, 0.03)
+                    border.width: sel ? 1 : 0
+                    border.color: Qt.alpha(Colors.primary, 0.5)
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    Text {
+                        id: chipText
+                        anchors.centerIn: parent
+                        text: chip.modelData.label
+                        color: chip.sel ? Colors.primary : Colors.on_surface_variant
+                        font.family: Appearance.font.family
+                        font.pixelSize: 10.5 * win.s
+                        font.weight: chip.sel ? Font.Bold : Font.Medium
+                        font.features: { "tnum": 1 }
+                    }
+                    HoverHandler { id: chipHov; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: sg.picked(chip.modelData.value) }
+                }
+            }
+        }
+        /** − value + stepper. */
+        component Stepper: Row {
+            id: st
+            property real value: 0
+            property real step: 1
+            property real from: 0
+            property real to: 100
+            property int decimals: 0
+            property string suffix: ""
+            signal edited(real v)
+            function nudge(d) {
+                var v = Math.max(st.from, Math.min(st.to, st.value + d * st.step));
+                st.edited(Number(v.toFixed(st.decimals)));
+            }
+            spacing: 2 * win.s
+            Btn { icon: "minus"; height: 24 * win.s; onClicked: st.nudge(-1) }
+            Text {
+                width: 44 * win.s
+                height: 24 * win.s
+                verticalAlignment: Text.AlignVCenter
+                horizontalAlignment: Text.AlignHCenter
+                text: st.value.toFixed(st.decimals) + st.suffix
+                color: Colors.on_surface
+                font.family: Appearance.font.family
+                font.pixelSize: 11 * win.s
+                font.weight: Font.Bold
+                font.features: { "tnum": 1 }
+                WheelHandler { onWheel: (ev) => st.nudge(ev.angleDelta.y > 0 ? 1 : -1) }
+            }
+            Btn { icon: "plus"; height: 24 * win.s; onClicked: st.nudge(1) }
+        }
+        /** On/off switch. */
+        component Sw: Rectangle {
+            id: sw
+            property bool on: false
+            signal toggled()
+            width: 36 * win.s
+            height: 20 * win.s
+            radius: height / 2
+            color: on ? Colors.primary : Qt.alpha(Colors.on_surface, 0.14)
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+            Rectangle {
+                width: parent.height - 6 * win.s
+                height: width
+                radius: width / 2
+                y: 3 * win.s
+                x: sw.on ? parent.width - width - 3 * win.s : 3 * win.s
+                color: sw.on ? Colors.on_primary : Colors.on_surface_variant
+                Behavior on x { NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveFastSpatial } }
+            }
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: sw.toggled() }
+        }
+
+        Rectangle {
+            id: panelCard
+            readonly property bool below: dock.y < win.sh / 2
+            readonly property var ly: Widgets.lyrics
+            readonly property var cv: Widgets.cover
+            visible: opacity > 0.01 && win.chrome
+            opacity: win.panel.length > 0 && !win.folded ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            width: 330 * win.s
+            height: panelCol.implicitHeight + 24 * win.s
+            x: Math.max(8 * win.s, Math.min(win.sw - width - 8 * win.s, dock.x + dock.width / 2 - width / 2))
+            y: below ? dock.y + dock.height + 8 * win.s : dock.y - height - 8 * win.s
+            radius: 20 * win.s
+            gradient: Gradient {
+                GradientStop { position: 0; color: win.mix(Colors.surface_container, TrackInfo.accentDeep, 0.22) }
+                GradientStop { position: 0.45; color: Colors.surface_container }
+                GradientStop { position: 1; color: win.mix(Colors.surface_container, TrackInfo.accent2, 0.08) }
+            }
+            border.width: 1
+            border.color: Qt.alpha(TrackInfo.accent, 0.18)
+            // Swallow clicks so they don't fall through to the frames.
+            TapHandler {}
+
+            Column {
+                id: panelCol
+                x: 14 * win.s
+                y: 12 * win.s
+                width: parent.width - 28 * win.s
+                spacing: 6 * win.s
+
+                // Header: name + show/hide.
+                Item {
+                    width: parent.width
+                    height: 28 * win.s
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: win.panel === "cover" ? "Cover art" : "Lyrics"
+                        color: Colors.on_surface
+                        font.family: Appearance.font.family
+                        font.pixelSize: 13 * win.s
+                        font.weight: Font.Bold
+                    }
+                    Sw {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        on: win.panel === "cover" ? panelCard.cv.on : panelCard.ly.on
+                        onToggled: Widgets.set(win.panel, "on", !on)
+                    }
+                }
+                Rectangle { width: parent.width; height: 1; color: Qt.alpha(Colors.on_surface, 0.08) }
+
+                // ── cover ──
+                Column {
+                    visible: win.panel === "cover"
+                    width: parent.width
+                    spacing: 6 * win.s
+                    PRow {
+                        name: "Corners"
+                        Seg {
+                            opts: [{ label: "Square", value: 0.25 }, { label: "Soft", value: 1 }, { label: "Round", value: 2.2 }, { label: "Circle", value: 99 }]
+                            value: panelCard.cv.radius
+                            onPicked: (v) => Widgets.set("cover", "radius", v)
+                        }
+                    }
+                    PRow { name: "Halo"; Sw { on: panelCard.cv.halo; onToggled: Widgets.set("cover", "halo", !on) } }
+                    PRow { name: "Caption on hover"; Sw { on: panelCard.cv.caption; onToggled: Widgets.set("cover", "caption", !on) } }
+                }
+
+                // ── lyrics ──
+                Column {
+                    visible: win.panel === "lyrics"
+                    width: parent.width
+                    spacing: 6 * win.s
+                    PRow {
+                        name: "Text size"
+                        Stepper { value: panelCard.ly.size; step: 2; from: 14; to: 96; suffix: "px"; onEdited: (v) => Widgets.set("lyrics", "size", v) }
+                    }
+                    PRow {
+                        name: "Lines around"
+                        Seg {
+                            opts: [{ label: "Auto", value: 0 }, { label: "1", value: 1 }, { label: "2", value: 2 }, { label: "3", value: 3 }, { label: "4", value: 4 }, { label: "6", value: 6 }]
+                            value: panelCard.ly.lines
+                            onPicked: (v) => Widgets.set("lyrics", "lines", v)
+                        }
+                    }
+                    PRow {
+                        name: "Line spacing"
+                        Stepper { value: panelCard.ly.spacing; step: 0.1; from: 0.3; to: 2.5; decimals: 1; suffix: "×"; onEdited: (v) => Widgets.set("lyrics", "spacing", v) }
+                    }
+                    PRow {
+                        name: "Current line"
+                        Seg {
+                            opts: [{ label: "Top", value: 0.22 }, { label: "Upper", value: 0.42 }, { label: "Middle", value: 0.5 }, { label: "Low", value: 0.65 }]
+                            value: panelCard.ly.anchor
+                            onPicked: (v) => Widgets.set("lyrics", "anchor", v)
+                        }
+                    }
+                    PRow {
+                        name: "Align"
+                        Seg {
+                            opts: [{ label: "Left", value: "left" }, { label: "Center", value: "center" }, { label: "Right", value: "right" }]
+                            value: panelCard.ly.align
+                            onPicked: (v) => Widgets.set("lyrics", "align", v)
+                        }
+                    }
+                    PRow {
+                        name: "Gradient"
+                        Row {
+                            spacing: 8 * win.s
+                            // Live preview of the lit-text gradient.
+                            Rectangle {
+                                width: 34 * win.s
+                                height: 10 * win.s
+                                radius: height / 2
+                                anchors.verticalCenter: parent.verticalCenter
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0; color: panelCard.ly.ink === "theme" ? Colors.primary : panelCard.ly.ink === "mono" ? "#ffffff" : TrackInfo.accent }
+                                    GradientStop { position: 1; color: panelCard.ly.ink === "theme" ? Colors.tertiary : panelCard.ly.ink === "mono" ? "#ebebf2" : TrackInfo.accent2 }
+                                }
+                            }
+                            Seg {
+                                opts: [{ label: "Cover", value: "cover" }, { label: "Theme", value: "theme" }, { label: "Mono", value: "mono" }]
+                                value: panelCard.ly.ink
+                                onPicked: (v) => Widgets.set("lyrics", "ink", v)
+                            }
+                        }
+                    }
+                    PRow { name: "Glow on current line"; Sw { on: panelCard.ly.glow; onToggled: Widgets.set("lyrics", "glow", !on) } }
+                    PRow { name: "Depth blur"; Sw { on: panelCard.ly.blur; onToggled: Widgets.set("lyrics", "blur", !on) } }
+                    PRow {
+                        name: "Backdrop"
+                        Seg {
+                            opts: [{ label: "Off", value: "off" }, { label: "Soft", value: "soft" }, { label: "Solid", value: "solid" }]
+                            value: panelCard.ly.backdrop
+                            onPicked: (v) => Widgets.set("lyrics", "backdrop", v)
+                        }
+                    }
+                    PRow {
+                        name: "Romanization"
+                        Seg {
+                            opts: [{ label: "Off", value: "off" }, { label: "Below", value: "below" }, { label: "Replace", value: "replace" }]
+                            value: panelCard.ly.roman
+                            onPicked: (v) => Widgets.set("lyrics", "roman", v)
+                        }
+                    }
+                    Lbl {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: text.length > 0
+                        color: Lyrics.romanStatus === "nokakasi" || Lyrics.romanStatus === "error" ? Colors.error : Colors.on_surface_variant
+                        font.weight: Font.Medium
+                        text: panelCard.ly.roman === "off" ? ""
+                            : Lyrics.romanStatus === "nokakasi" ? "Japanese needs kakasi:  sudo pacman -S kakasi  — then toggle this again."
+                            : Lyrics.romanStatus === "none" ? "This song has nothing to romanize."
+                            : Lyrics.romanStatus === "busy" ? "Romanizing…"
+                            : Lyrics.romanStatus === "error" ? "Romanization failed — toggle to retry."
+                            : ""
+                    }
                 }
             }
         }

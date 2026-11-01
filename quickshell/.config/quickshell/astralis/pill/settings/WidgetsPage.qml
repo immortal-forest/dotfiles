@@ -25,7 +25,7 @@ SettingsPage {
         { label: "Off", value: "off" }, { label: "Soft", value: "soft" }, { label: "Solid", value: "solid" }
     ]
     readonly property var alignOptions: [
-        { label: "Left", value: "left" }, { label: "Center", value: "center" }
+        { label: "Left", value: "left" }, { label: "Center", value: "center" }, { label: "Right", value: "right" }
     ]
 
     rows: [

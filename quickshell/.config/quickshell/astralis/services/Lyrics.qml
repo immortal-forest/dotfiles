@@ -73,6 +73,64 @@ Singleton {
         c[k] = v;
         root.cache = c;
     }
+    function patch(k, o) {
+        if (!root.cache[k])
+            return;
+        root.store(k, Object.assign({}, root.cache[k], o));
+    }
+
+    // ── romanization (on demand, scripts/romanize.sh) ─────────────────────
+    /** Per-line romanized text for the current track ([] until ready). */
+    readonly property var roman: entry && entry.roman ? entry.roman : []
+    /** `lines` re-timed on their romanized text (the widget's "replace" mode). */
+    readonly property var romanLines: entry && entry.rlines ? entry.rlines : []
+    /** "" | "busy" | "ready" | "none" (nothing to romanize) | "nokakasi" | "error" */
+    readonly property string romanStatus: entry && entry.romanStatus ? entry.romanStatus : ""
+    readonly property bool wantRoman: Widgets.lyrics.roman !== "off"
+    readonly property string romanScript: String(Qt.resolvedUrl("../scripts/romanize.sh")).replace(/^file:\/\//, "")
+    // Toggling the option retries a failed run (e.g. kakasi installed since).
+    onWantRomanChanged: romanize(true)
+    onEntryChanged: romanize()
+
+    function romanize(retry) {
+        var k = TrackInfo.key, e = root.entry;
+        if (!root.wantRoman || !e || e.status !== "synced")
+            return;
+        if (e.romanStatus && !(retry && (e.romanStatus === "nokakasi" || e.romanStatus === "error")))
+            return;
+        var texts = e.lines.map(l => l.text);
+        if (!texts.some(t => root.cjk.test(t))) {
+            root.patch(k, { romanStatus: "none" });
+            return;
+        }
+        root.patch(k, { romanStatus: "busy" });
+        var p = Qt.createQmlObject('import Quickshell.Io; Process { stdout: StdioCollector {} }', root, "Lyrics.roman");
+        p.command = [root.romanScript, texts.join("\n")];
+        p.exited.connect(function (code) {
+            var out = String(p.stdout.text).replace(/\n$/, "").split("\n");
+            p.destroy();
+            // No kakasi → fall back to romaji the lyrics source shipped, if any.
+            if (code === 3 && e.sourceRoman && e.sourceRoman.some(x => x.length > 0))
+                out = e.sourceRoman;
+            else if (code === 3)
+                return root.patch(k, { romanStatus: "nokakasi" });
+            else if (code !== 0)
+                return root.patch(k, { romanStatus: "error" });
+            if (out.length !== texts.length)
+                return root.patch(k, { romanStatus: "error" });
+            var clean = out.map(x => x.replace(/\s+/g, " ").trim());
+            var lines = root.cache[k] ? root.cache[k].lines : e.lines;
+            var rl = lines.map(function (l, i) {
+                if (l.gap || clean[i].length === 0)
+                    return l;
+                var n = root.timeLine(l.t, l.end, clean[i]);
+                n.span = l.span;    // keep the original line's sung span
+                return n;
+            });
+            root.patch(k, { romanStatus: "ready", roman: clean, rlines: rl });
+        });
+        p.running = true;
+    }
 
     function request(url, cb) {
         var xhr = new XMLHttpRequest();
@@ -152,7 +210,146 @@ Singleton {
                             "https://lrclib.net/api/search?q=" + encodeURIComponent(artist + " " + title), false);
                 return;
             }
-            root.store(k, { status: exact && exact.plainLyrics ? "plain" : "none" });
+            root.fallback(k, title, artist, dur, 0, exact && exact.plainLyrics ? "plain" : "none");
+        });
+    }
+
+    // ── fallback sources (keyless): NetEase → Kugou ───────────────────────
+    // Tried in order when LRCLIB has no synced lyrics. A hit must match the
+    // title (normalised) and, when the duration is known, be within 5s.
+    readonly property var providers: ["netease", "kugou"]
+    /** Where the current lyrics came from: "lrclib" | "netease" | "kugou". */
+    readonly property string source: entry && entry.source ? entry.source : ""
+
+    function fallback(k, title, artist, dur, i, miss) {
+        if (TrackInfo.key !== k && root.cache[k] === undefined)
+            return;
+        if (i >= root.providers.length) {
+            root.store(k, { status: miss });
+            return;
+        }
+        var next = function () { root.fallback(k, title, artist, dur, i + 1, miss); };
+        var got = function (lrc, roma) {
+            var lines = lrc ? root.parse(lrc, dur, true) : [];
+            if (lines.filter(l => !l.gap).length < 3)
+                return next();
+            var e = { status: "synced", lines: lines, source: root.providers[i] };
+            if (roma)
+                e.sourceRoman = root.alignRoman(lines, roma);
+            root.store(k, e);
+        };
+        if (root.providers[i] === "netease")
+            root.netease(title, artist, dur, got, next);
+        else
+            root.kugou(title, artist, dur, got, next);
+    }
+
+    function norm(s) {
+        return String(s || "").toLowerCase()
+            .replace(/[(\[（【].*?[)\]）】]/g, "")
+            .replace(/\s*[-–—]\s*(feat|ft|with)\.?\s.*$/, "")
+            .replace(/[\s'’"“”!！?？.,，、。・~〜:：\-–—_/\\]+/g, "");
+    }
+    function titleMatch(a, b) {
+        var x = root.norm(a), y = root.norm(b);
+        return x.length > 0 && y.length > 0 && (x === y || x.indexOf(y) >= 0 || y.indexOf(x) >= 0);
+    }
+
+    function getJson(url, cb) {
+        var xhr = new XMLHttpRequest();
+        xhr.timeout = 10000;
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return;
+            var d = null;
+            try { d = JSON.parse(xhr.responseText); } catch (e) {}
+            cb(xhr.status, d);
+        };
+        xhr.open("GET", url);
+        xhr.send();
+    }
+
+    function netease(title, artist, dur, got, next) {
+        var q = encodeURIComponent(artist + " " + title);
+        root.getJson("https://music.163.com/api/search/get?s=" + q + "&type=1&limit=12", function (code, d) {
+            var songs = d && d.result && d.result.songs ? d.result.songs : [];
+            var best = null, bestScore = -1;
+            for (var j = 0; j < songs.length; j++) {
+                var s = songs[j];
+                if (!root.titleMatch(s.name, title))
+                    continue;
+                var dd = dur > 0 && s.duration ? Math.abs(s.duration / 1000 - dur) : 0;
+                if (dd > 5)
+                    continue;
+                var arts = (s.artists || []).map(a => a.name).join(" ");
+                var score = (root.titleMatch(arts, artist) ? 2 : 0) + (root.norm(s.name) === root.norm(title) ? 1 : 0) - dd / 10;
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = s;
+                }
+            }
+            if (!best)
+                return next();
+            root.getJson("https://music.163.com/api/song/lyric?id=" + best.id + "&lv=1&tv=-1&rv=-1", function (c2, l) {
+                var lrc = l && l.lrc && l.lrc.lyric ? l.lrc.lyric : "";
+                var roma = l && l.romalrc && l.romalrc.lyric ? l.romalrc.lyric : "";
+                if (!/\[\d+:\d+/.test(lrc))
+                    return next();
+                got(lrc, roma);
+            });
+        });
+    }
+
+    function kugou(title, artist, dur, got, next) {
+        var q = encodeURIComponent(artist + " " + title);
+        root.getJson("https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=" + q
+                     + (dur > 0 ? "&duration=" + Math.round(dur * 1000) : ""), function (code, d) {
+            var cands = d && d.candidates ? d.candidates : [];
+            var best = null;
+            for (var j = 0; j < cands.length; j++) {
+                var c = cands[j];
+                var dd = dur > 0 && c.duration ? Math.abs(c.duration / 1000 - dur) : 0;
+                if (dd <= 5 && root.titleMatch(c.song, title)) {
+                    best = c;
+                    break;
+                }
+            }
+            if (!best)
+                return next();
+            root.getJson("https://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=" + best.id
+                         + "&accesskey=" + best.accesskey, function (c2, l) {
+                var lrc = l && l.content ? root.utf8(Qt.atob(l.content)) : "";
+                if (!/\[\d+:\d+/.test(lrc))
+                    return next();
+                got(lrc, "");
+            });
+        });
+    }
+
+    /** Decode a binary (byte-per-char) string as UTF-8. */
+    function utf8(b) {
+        var out = "", i = 0;
+        while (i < b.length) {
+            var c = b.charCodeAt(i++) & 0xff, cp;
+            if (c < 0x80) cp = c;
+            else if (c < 0xe0) cp = ((c & 0x1f) << 6) | (b.charCodeAt(i++) & 0x3f);
+            else if (c < 0xf0) cp = ((c & 0x0f) << 12) | ((b.charCodeAt(i++) & 0x3f) << 6) | (b.charCodeAt(i++) & 0x3f);
+            else cp = ((c & 0x07) << 18) | ((b.charCodeAt(i++) & 0x3f) << 12) | ((b.charCodeAt(i++) & 0x3f) << 6) | (b.charCodeAt(i++) & 0x3f);
+            out += String.fromCodePoint(cp);
+        }
+        return out.replace(/^﻿/, "");
+    }
+
+    /** Source-provided romaji (an LRC) → one string per line, matched by timestamp. */
+    function alignRoman(lines, roma) {
+        var rl = root.parse(roma, 0, true);
+        return lines.map(function (l) {
+            if (l.gap)
+                return "";
+            for (var j = 0; j < rl.length; j++)
+                if (!rl[j].gap && Math.abs(rl[j].t - l.t) < 0.08)
+                    return rl[j].text;
+            return "";
         });
     }
 
@@ -179,13 +376,14 @@ Singleton {
             root.store(k, { status: "instrumental" });
             return;
         }
-        root.store(k, { status: "synced", lines: parse(d.syncedLyrics, d.duration || 0) });
+        root.store(k, { status: "synced", lines: parse(d.syncedLyrics, d.duration || 0), source: "lrclib" });
     }
 
     // ── parse ─────────────────────────────────────────────────────────────
     readonly property var cjk: /[぀-ヿ㐀-鿿가-힯ｦ-ﾟ]/
 
-    function parse(lrc, total) {
+    /** stripCredits: drop NetEase/Kugou preamble lines ("作词 : …", "Artist - Title"). */
+    function parse(lrc, total, stripCredits) {
         var raw = [];
         var offset = 0;
         var rows = String(lrc).split(/\r?\n/);
@@ -205,6 +403,9 @@ Singleton {
             if (stamps.length === 0)
                 continue;
             var text = row.slice(last).trim();
+            if (stripCredits && stamps[0] < 45 && (/^[^\s:：]{1,14}\s*[:：]\s*\S/.test(text)
+                    || (raw.filter(x => x.text.length > 0).length === 0 && stamps[0] < 15 && /\s-\s/.test(text))))
+                continue;
             for (var s = 0; s < stamps.length; s++)
                 raw.push({ t: Math.max(0, stamps[s] - offset), text: text });
         }
