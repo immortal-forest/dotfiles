@@ -33,6 +33,16 @@ Singleton {
     /** Placer open (not persisted). */
     property bool editing: false
 
+    /** Settings page the settings window should land on next time it opens. */
+    property string pendingPage: ""
+    /** Asks the shell to open the settings window (NowPlaying relays it). */
+    signal settingsRequested()
+    function openSettings() {
+        root.editing = false;
+        root.pendingPage = "widgets";
+        root.settingsRequested();
+    }
+
     function set(widget, keyOrObj, value) {
         var d = JSON.parse(JSON.stringify(root.data));
         if (widget === "grid")

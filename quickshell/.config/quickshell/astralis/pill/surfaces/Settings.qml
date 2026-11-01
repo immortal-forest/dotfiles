@@ -52,8 +52,25 @@ PillSurface {
     onOpenChanged: {
         if (!open)
             root.page = "appearance";
-        else
+        else {
+            root.takePending();
             Qt.callLater(() => kbNav.forceActiveFocus());
+        }
+    }
+    Component.onCompleted: if (open) takePending()
+
+    // Widgets editor's cog lands here on the Widgets page; starting the
+    // editor from that page gets this window out of its way.
+    function takePending() {
+        if (Widgets.pendingPage.length > 0) {
+            root.openPage(Widgets.pendingPage);
+            Widgets.pendingPage = "";
+        }
+    }
+    Connections {
+        target: Widgets
+        function onEditingChanged() { if (Widgets.editing && root.open) root.requestClose(); }
+        function onPendingPageChanged() { if (root.open) root.takePending(); }
     }
 
     // Returning from the font picker (which owns focus for its search field)

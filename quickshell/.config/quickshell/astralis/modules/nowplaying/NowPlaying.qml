@@ -22,12 +22,20 @@ import "../../services"
 Scope {
     id: root
 
+    /** Wire in shell.qml: `NowPlaying { onRequestSettings: root.settingsOpen = true }` */
+    signal requestSettings()
+    Connections {
+        target: Widgets
+        function onSettingsRequested() { root.requestSettings(); }
+    }
+
     /** WlrLayer.Bottom = on the desktop under windows (the default). */
     property int layer: WlrLayer.Bottom
 
     IpcHandler {
         target: "desktop"
         function edit(): void { Widgets.editing = !Widgets.editing; }
+        function settings(): void { Widgets.openSettings(); }
         function cover(): void { Widgets.set("cover", "on", !Widgets.cover.on); }
         function lyrics(): void { Widgets.set("lyrics", "on", !Widgets.lyrics.on); }
         function nextArt(): void { TrackInfo.next(); }
