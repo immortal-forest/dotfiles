@@ -110,12 +110,18 @@ Singleton {
         root.bad = b;
     }
 
-    /** Every cover for this song: hi-res editions first (the playing album leading), player art last. */
+    /** Every cover for this song: the player's own art first — it is what shows,
+     *  and it never changes by itself — then the other editions (the playing
+     *  album leading), reached only by clicking / scrolling the cover. */
     readonly property var covers: {
         var out = [];
         var seen = {};
-        // Hold the player's own art until every source has answered, so the
-        // cover changes once (to the hi-res pick) instead of flickering.
+        var pa = Players.artUrl;
+        if (pa.length > 0)
+            out.push({ url: pa, album: root.album, kind: "",
+                       source: Players.serviceLabel || "Player", year: "", genre: "" });
+        // Alternates join once every source has answered, so the list (and the
+        // n/total count) settles in one step.
         var lst = entry && entry.pending <= 0 ? entry.list.filter(c => !root.bad[c.url]) : [];
         var own = norm(root.album);
         var sorted = lst.slice().sort((a, b) => (norm(b.album) === own ? 1 : 0) - (norm(a.album) === own ? 1 : 0));
@@ -127,10 +133,6 @@ Singleton {
             seen[k] = true;
             out.push(c);
         }
-        var pa = Players.artUrl;
-        if (pa.length > 0 && !(own.length > 0 && seen[own]))
-            out.push({ url: pa, album: root.album, kind: "",
-                       source: Players.serviceLabel || "Player", year: "", genre: "" });
         return out;
     }
     readonly property int count: covers.length
