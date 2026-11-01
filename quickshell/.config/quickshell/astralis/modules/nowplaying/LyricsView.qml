@@ -270,7 +270,11 @@ PanelWindow {
                         // past lines leave faster than upcoming ones arrive
                         return dist < 0 ? [0, 0.34, 0.13, 0.04, 0][d] : [0, 0.52, 0.28, 0.13, 0.04][d];
                     }
-                    visible: opacity > 0.001 || act > 0.001
+                    // No `visible` toggle here: Column drops invisible children
+                    // from the layout, so a past line fading out past ±4 used to
+                    // collapse its slot and yank every line up a row mid-scroll
+                    // (springs then chased it back down). Opacity 0 already
+                    // skips rendering, and layers only run for `near` lines.
                     Behavior on opacity { NumberAnimation { duration: Motion.normalDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
 
                     // One effect per line: distance blur + a shadow that is a
