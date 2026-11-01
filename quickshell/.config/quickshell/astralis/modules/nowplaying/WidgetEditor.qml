@@ -9,11 +9,12 @@ import "../../services"
 import "../../pill"
 
 /**
- * astralis — desktop-widget placer. A full-screen overlay (one per screen)
+ * astralis — desktop-widget placer (cover, lyrics, depth clock). A full-screen overlay (one per screen)
  * opened from Settings › Widgets: a light scrim with a snap grid and one
  * bracketed frame per desktop widget. Drag a frame to move it, drag its
  * corner to resize (the cover stays square); the real widget follows live
- * underneath.
+ * underneath. With "No overlap" on (Widgets.avoid), a dragged frame slides
+ * around the other visible widgets and a resize stops at their edge.
  *
  * The controls are one small dock (drag it anywhere; the chevron folds it to
  * a single 景 bead). H hides every bit of editor chrome to preview the real
@@ -40,7 +41,7 @@ PanelWindow {
     function mix(a, b, f) {
         return Qt.rgba(a.r + (b.r - a.r) * f, a.g + (b.g - a.g) * f, a.b + (b.b - a.b) * f, a.a + (b.a - a.a) * f);
     }
-    property bool anyBusy: coverFrame.busy || lyricsFrame.busy
+    property bool anyBusy: coverFrame.busy || lyricsFrame.busy || depthFrame.busy
 
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Overlay
@@ -51,6 +52,58 @@ PanelWindow {
 
     function snap(v) {
         return win.cell > 0 ? Math.round(v / win.cell) * win.cell : v;
+    }
+    // ── anti-collision (Widgets.avoid) ────────────────────────────────────
+    readonly property var keys: ["cover", "lyrics", "depth"]
+    readonly property real gap: 10 * win.s
+    /** A widget's on-screen box in px (the cover is square). */
+    function rectOf(k) {
+        var c = Widgets[k];
+        return { x: c.x * win.sw, y: c.y * win.sh, w: c.w * win.sw, h: k === "cover" ? c.w * win.sw : c.h * win.sh };
+    }
+    function hits(a, r) {
+        return a.x < r.x + r.w + win.gap && a.x + a.w + win.gap > r.x
+            && a.y < r.y + r.h + win.gap && a.y + a.h + win.gap > r.y;
+    }
+    function collides(key, x, y, w, h) {
+        if (!Widgets.avoid)
+            return false;
+        for (var i = 0; i < win.keys.length; i++) {
+            var k = win.keys[i];
+            if (k !== key && Widgets[k].on && win.hits({ x: x, y: y, w: w, h: h }, win.rectOf(k)))
+                return true;
+        }
+        return false;
+    }
+    /** Slide a moved box out of every visible neighbour, the shortest way that stays on screen. */
+    function resolveMove(key, x, y, w, h) {
+        if (!Widgets.avoid)
+            return { x: x, y: y };
+        for (var it = 0; it < 4; it++) {
+            var moved = false;
+            for (var i = 0; i < win.keys.length; i++) {
+                var k = win.keys[i];
+                if (k === key || !Widgets[k].on)
+                    continue;
+                var r = win.rectOf(k);
+                if (!win.hits({ x: x, y: y, w: w, h: h }, r))
+                    continue;
+                var cx = x, cy = y;
+                var cands = [
+                    { x: r.x - w - win.gap, y: cy }, { x: r.x + r.w + win.gap, y: cy },
+                    { x: cx, y: r.y - h - win.gap }, { x: cx, y: r.y + r.h + win.gap }
+                ].filter(c => c.x >= 0 && c.y >= 0 && c.x + w <= win.sw && c.y + h <= win.sh);
+                if (cands.length === 0)
+                    continue;
+                cands.sort((a, b) => (Math.abs(a.x - cx) + Math.abs(a.y - cy)) - (Math.abs(b.x - cx) + Math.abs(b.y - cy)));
+                x = cands[0].x;
+                y = cands[0].y;
+                moved = true;
+            }
+            if (!moved)
+                break;
+        }
+        return { x: x, y: y };
     }
     function cycleGrid() {
         var i = win.grids.indexOf(Widgets.grid);
@@ -159,13 +212,18 @@ PanelWindow {
                 // Geometry is snapped live while dragging, so what you see is
                 // what you get on release (no bounce).
                 function commit() {
+                    var sx = win.snap(fr.lx), sy = win.snap(fr.ly), sw2 = win.snap(fr.lw), sh2 = fr.square ? sw2 : win.snap(fr.lh);
+                    // Snapping can push a box back into a neighbour — keep the exact spot then.
+                    if (win.collides(fr.key, sx, sy, sw2, sh2)) {
+                        sx = fr.lx; sy = fr.ly; sw2 = fr.lw; sh2 = fr.lh;
+                    }
                     var o = {
-                        x: Math.max(0, Math.min(1, fr.lx / win.sw)),
-                        y: Math.max(0, Math.min(1, fr.ly / win.sh)),
-                        w: Math.max(fr.minW / win.sw, fr.lw / win.sw)
+                        x: Math.max(0, Math.min(1, sx / win.sw)),
+                        y: Math.max(0, Math.min(1, sy / win.sh)),
+                        w: Math.max(fr.minW / win.sw, sw2 / win.sw)
                     };
                     if (!fr.square)
-                        o.h = Math.max(fr.minH / win.sh, fr.lh / win.sh);
+                        o.h = Math.max(fr.minH / win.sh, sh2 / win.sh);
                     Widgets.set(fr.key, o);
                 }
 
@@ -192,10 +250,7 @@ PanelWindow {
                             if (ss >= fr.minW && ss <= lim)
                                 sz = ss;
                         }
-                        fr.lw = sz;
-                        fr.lh = sz;
-                        fr.lx = hx < 0 ? r0 - sz : x0;
-                        fr.ly = hy < 0 ? b0 - sz : y0;
+                        fr.place(hx < 0 ? r0 - sz : x0, hy < 0 ? b0 - sz : y0, sz, sz);
                         return;
                     }
                     if (hx > 0)
@@ -206,10 +261,16 @@ PanelWindow {
                         B = fr.snapEdge(Math.max(T + fr.minH, Math.min(win.sh, b0 + ty)), T, 1, fr.minH);
                     else if (hy < 0)
                         T = fr.snapEdge(Math.min(B - fr.minH, Math.max(0, y0 + ty)), B, -1, fr.minH);
-                    fr.lx = L;
-                    fr.ly = T;
-                    fr.lw = R - L;
-                    fr.lh = B - T;
+                    fr.place(L, T, R - L, B - T);
+                }
+                /** Apply a resize step unless it would run into a neighbour (Widgets.avoid) — the box stops at it. */
+                function place(x, y, w, h) {
+                    if (win.collides(fr.key, x, y, w, h))
+                        return;
+                    fr.lx = x;
+                    fr.ly = y;
+                    fr.lw = w;
+                    fr.lh = h;
                 }
 
                 // Fill + hairline.
@@ -305,8 +366,11 @@ PanelWindow {
                     onTranslationChanged: {
                         if (!active)
                             return;
-                        fr.lx = Math.max(0, Math.min(win.sw - fr.lw, win.snap(x0 + translation.x)));
-                        fr.ly = Math.max(0, Math.min(win.sh - fr.lh, win.snap(y0 + translation.y)));
+                        var p = win.resolveMove(fr.key,
+                            Math.max(0, Math.min(win.sw - fr.lw, win.snap(x0 + translation.x))),
+                            Math.max(0, Math.min(win.sh - fr.lh, win.snap(y0 + translation.y))), fr.lw, fr.lh);
+                        fr.lx = p.x;
+                        fr.ly = p.y;
                     }
                 }
                 TapHandler {
@@ -373,6 +437,12 @@ PanelWindow {
                 key: "lyrics"
                 label: "Lyrics"
                 icon: "type"
+            }
+            Frame {
+                id: depthFrame
+                key: "depth"
+                label: "Depth clock"
+                icon: "clock"
             }
 
             // ── dock ────────────────────────────────────────────────────────
@@ -492,6 +562,11 @@ PanelWindow {
                         tip: "Lyrics"; tipDesc: "Size, lines, colour, romanization"
                         onClicked: win.panel = win.panel === "lyrics" ? "" : "lyrics"
                     }
+                    Btn {
+                        icon: "clock"; on: Widgets.depth.on
+                        tip: Widgets.depth.on ? "Hide depth clock" : "Show depth clock"
+                        onClicked: Widgets.set("depth", "on", !Widgets.depth.on)
+                    }
                     Sep {}
                     Btn {
                         label: Widgets.grid > 0 ? "#" + Widgets.grid : "#"
@@ -499,6 +574,12 @@ PanelWindow {
                         tip: "Snap grid"
                         tipDesc: Widgets.grid > 0 ? Widgets.grid + " columns · G cycles" : "Off · G cycles"
                         onClicked: win.cycleGrid()
+                    }
+                    Btn {
+                        icon: "app-window"; on: Widgets.avoid
+                        tip: "No overlap"
+                        tipDesc: Widgets.avoid ? "On · widgets slide around each other" : "Off · widgets may overlap"
+                        onClicked: Widgets.set("avoid", !Widgets.avoid)
                     }
                     Btn { icon: "undo"; tip: "Reset layout"; onClicked: Widgets.reset() }
                     Btn { icon: "cog"; tip: "Widget settings"; onClicked: Widgets.openSettings() }

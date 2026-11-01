@@ -7,8 +7,8 @@ import "../../services"
 import "../../config"
 
 /**
- * astralis — 景 WIDGETS settings page: the desktop music widgets (cover art,
- * synced lyrics). "Edit layout" opens the full-screen placer
+ * astralis — 景 WIDGETS settings page: the desktop widgets (cover art,
+ * synced lyrics, depth clock). "Edit layout" opens the full-screen placer
  * (modules/nowplaying/WidgetEditor.qml) — drag, resize, snap grid. Everything
  * here backs onto services/Widgets.qml (~/.cache/astralis/widgets.json) and
  * applies live.
@@ -27,6 +27,16 @@ SettingsPage {
     readonly property var alignOptions: [
         { label: "Left", value: "left" }, { label: "Center", value: "center" }, { label: "Right", value: "right" }
     ]
+    readonly property var clockAlignOptions: [
+        { label: "Left", value: "left" }, { label: "Center", value: "center" }, { label: "Right", value: "right" }
+    ]
+    readonly property var colorOptions: [
+        { label: "Accent", value: "primary" }, { label: "Tertiary", value: "tertiary" },
+        { label: "Secondary", value: "secondary" }, { label: "Light", value: "on_surface" }
+    ]
+    readonly property var weightOptions: [
+        { label: "Light", value: 300 }, { label: "Regular", value: 400 }, { label: "Bold", value: 700 }, { label: "Black", value: 900 }
+    ]
 
     rows: [
         { item: editRow, kind: "toggle", get: function () { return Widgets.editing; }, set: function (v) { Widgets.editing = v; } },
@@ -42,7 +52,17 @@ SettingsPage {
         { item: backdropRow, kind: "seg", vals: root.backdropOptions.map(o => o.value), get: function () { return Widgets.lyrics.backdrop; }, set: function (v) { Widgets.set("lyrics", "backdrop", v); } },
         { item: alignRow, kind: "seg", vals: root.alignOptions.map(o => o.value), get: function () { return Widgets.lyrics.align; }, set: function (v) { Widgets.set("lyrics", "align", v); } },
         { item: glowRow, kind: "toggle", get: function () { return Widgets.lyrics.glow; }, set: function (v) { Widgets.set("lyrics", "glow", v); } },
-        { item: blurRow, kind: "toggle", get: function () { return Widgets.lyrics.blur; }, set: function (v) { Widgets.set("lyrics", "blur", v); } }
+        { item: blurRow, kind: "toggle", get: function () { return Widgets.lyrics.blur; }, set: function (v) { Widgets.set("lyrics", "blur", v); } },
+        { item: depthRow, kind: "toggle", get: function () { return Widgets.depth.on; }, set: function (v) { Widgets.set("depth", "on", v); } },
+        { item: depthCutRow, kind: "toggle", get: function () { return Widgets.depth.cut; }, set: function (v) { Widgets.set("depth", "cut", v); } },
+        { item: cutoffRow, kind: "scrub", bump: function (d) { cutoffScrub.bump(d); } },
+        { item: featherRow, kind: "scrub", bump: function (d) { featherScrub.bump(d); } },
+        { item: clockColorRow, kind: "seg", vals: root.colorOptions.map(o => o.value), get: function () { return Widgets.depth.color; }, set: function (v) { Widgets.set("depth", "color", v); } },
+        { item: clockWeightRow, kind: "seg", vals: root.weightOptions.map(o => o.value), get: function () { return Widgets.depth.weight; }, set: function (v) { Widgets.set("depth", "weight", v); } },
+        { item: clockAlignRow, kind: "seg", vals: root.clockAlignOptions.map(o => o.value), get: function () { return Widgets.depth.align; }, set: function (v) { Widgets.set("depth", "align", v); } },
+        { item: clockDateRow, kind: "toggle", get: function () { return Widgets.depth.date; }, set: function (v) { Widgets.set("depth", "date", v); } },
+        { item: clockShadowRow, kind: "toggle", get: function () { return Widgets.depth.shadow; }, set: function (v) { Widgets.set("depth", "shadow", v); } },
+        { item: clockOpacityRow, kind: "scrub", bump: function (d) { clockOpacityScrub.bump(d); } }
     ]
 
     SettingsHeader {
@@ -305,6 +325,173 @@ SettingsPage {
                     s: root.s
                     on: Widgets.lyrics.blur
                     onToggled: Widgets.set("lyrics", "blur", !Widgets.lyrics.blur)
+                }
+            }
+
+            SettingsGroupLabel { s: root.s; text: "Depth clock" }
+
+            SettingsRow {
+                id: depthRow
+                surface: root
+                name: "Show depth clock"
+                sub: "A big clock tucked behind the wallpaper's foreground — place and resize it in Edit layout"
+                captionOnFocus: true
+                icon: "clock"
+
+                LinkToggle {
+                    s: root.s
+                    on: Widgets.depth.on
+                    onToggled: Widgets.set("depth", "on", !Widgets.depth.on)
+                }
+            }
+            SettingsRow {
+                id: depthCutRow
+                surface: root
+                name: "Depth effect"
+                sub: WallpaperDepth.status === "working" ? "Cutting out the scene…"
+                   : WallpaperDepth.status === "setup" ? "Installing the depth model (one time, ~140 MB)…"
+                   : WallpaperDepth.status === "error" ? "Failed: " + WallpaperDepth.error
+                   : "Near objects in the wallpaper pass in front of the clock"
+                captionOnFocus: WallpaperDepth.status === "idle"
+                icon: "eye"
+                visible: Widgets.depth.on
+
+                LinkToggle {
+                    s: root.s
+                    on: Widgets.depth.cut
+                    onToggled: Widgets.set("depth", "cut", !Widgets.depth.cut)
+                }
+            }
+            SettingsRow {
+                id: cutoffRow
+                surface: root
+                name: "Foreground cutoff"
+                sub: "Lower brings more of the scene in front of the clock"
+                captionOnFocus: true
+                icon: "waves"
+                visible: Widgets.depth.on && Widgets.depth.cut
+
+                ScrubValue {
+                    id: cutoffScrub
+                    s: root.s
+                    value: Math.round(Widgets.depth.threshold * 100)
+                    openValue: 30
+                    from: 0
+                    to: 100
+                    step: 1
+                    unit: "%"
+                    onEdited: v => Widgets.set("depth", "threshold", v / 100)
+                }
+            }
+            SettingsRow {
+                id: featherRow
+                surface: root
+                name: "Edge softness"
+                icon: "sparkles"
+                visible: Widgets.depth.on && Widgets.depth.cut
+
+                ScrubValue {
+                    id: featherScrub
+                    s: root.s
+                    value: Math.round(Widgets.depth.feather * 100)
+                    openValue: 8
+                    from: 0
+                    to: 50
+                    step: 1
+                    unit: "%"
+                    onEdited: v => Widgets.set("depth", "feather", v / 100)
+                }
+            }
+            SettingsRow {
+                id: clockColorRow
+                surface: root
+                name: "Colour"
+                icon: "palette"
+                visible: Widgets.depth.on
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.colorOptions
+                    value: Widgets.depth.color
+                    onPicked: (v) => Widgets.set("depth", "color", v)
+                }
+            }
+            SettingsRow {
+                id: clockWeightRow
+                surface: root
+                name: "Weight"
+                icon: "type"
+                visible: Widgets.depth.on
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.weightOptions
+                    value: Widgets.depth.weight
+                    onPicked: (v) => Widgets.set("depth", "weight", v)
+                }
+            }
+            SettingsRow {
+                id: clockAlignRow
+                surface: root
+                name: "Alignment"
+                sub: "Within its box"
+                captionOnFocus: true
+                icon: "app-window"
+                visible: Widgets.depth.on
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.clockAlignOptions
+                    value: Widgets.depth.align
+                    onPicked: (v) => Widgets.set("depth", "align", v)
+                }
+            }
+            SettingsRow {
+                id: clockDateRow
+                surface: root
+                name: "Show date"
+                icon: "clock"
+                visible: Widgets.depth.on
+
+                LinkToggle {
+                    s: root.s
+                    on: Widgets.depth.date
+                    onToggled: Widgets.set("depth", "date", !Widgets.depth.date)
+                }
+            }
+            SettingsRow {
+                id: clockShadowRow
+                surface: root
+                name: "Shadow"
+                sub: "Lifts the numerals off bright wallpapers"
+                captionOnFocus: true
+                icon: "sparkles"
+                visible: Widgets.depth.on
+
+                LinkToggle {
+                    s: root.s
+                    on: Widgets.depth.shadow
+                    onToggled: Widgets.set("depth", "shadow", !Widgets.depth.shadow)
+                }
+            }
+            SettingsRow {
+                id: clockOpacityRow
+                surface: root
+                name: "Opacity"
+                icon: "eye"
+                visible: Widgets.depth.on
+                last: true
+
+                ScrubValue {
+                    id: clockOpacityScrub
+                    s: root.s
+                    value: Math.round(Widgets.depth.opacity * 100)
+                    openValue: 100
+                    from: 20
+                    to: 100
+                    step: 5
+                    unit: "%"
+                    onEdited: v => Widgets.set("depth", "opacity", v / 100)
                 }
             }
 

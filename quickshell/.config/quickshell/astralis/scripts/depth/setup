@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# astralis — one-time setup for wallpaper depth (services/WallpaperDepth.qml).
+# Isolated venv (numpy, onnxruntime, Pillow) + Depth Anything V2 Small ONNX
+# (~99 MB, Apache-2.0) in ~/.local/share/astralis/depth. Never touches system Python.
+set -euo pipefail
+
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/astralis/depth"
+REV=4472b7362082ad9968fee890ca0f1e5aca36b93d
+URL="https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/$REV/onnx/model.onnx?download=true"
+SHA=afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c
+MODEL="$DATA/model.onnx"
+VENV="$DATA/venv"
+
+mkdir -p "$DATA"
+
+if ! "$VENV/bin/python" -c "import numpy, onnxruntime, PIL" 2>/dev/null; then
+    if command -v uv >/dev/null; then
+        uv venv -q --clear "$VENV"
+        uv pip install -q --python "$VENV/bin/python" numpy onnxruntime pillow
+    else
+        python3 -m venv --clear "$VENV"
+        "$VENV/bin/pip" install -q --disable-pip-version-check numpy onnxruntime pillow
+    fi
+fi
+
+if ! echo "$SHA  $MODEL" | sha256sum -c --status 2>/dev/null; then
+    curl -fL --retry 3 -o "$MODEL.part" "$URL"
+    echo "$SHA  $MODEL.part" | sha256sum -c --status || { rm -f "$MODEL.part"; echo "model checksum mismatch" >&2; exit 1; }
+    mv "$MODEL.part" "$MODEL"
+fi
+
+echo '{"ready":true}'

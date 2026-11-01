@@ -5,7 +5,7 @@ import Quickshell
 import Quickshell.Io
 
 /**
- * astralis — desktop-widget layout + options (cover art, lyrics), persisted
+ * astralis — desktop-widget layout + options (cover art, lyrics, depth clock), persisted
  * to ~/.cache/astralis/widgets.json.
  *
  * Geometry is stored as fractions of the screen (x, y, w, h ∈ 0..1) so a
@@ -23,16 +23,26 @@ Singleton {
 
     readonly property var defaults: ({
         grid: 24,
+        avoid: true,
         cover: { on: true, x: 0.045, y: 0.29, w: 0.16, radius: 1, halo: true, caption: true },
         lyrics: { on: true, x: 0.27, y: 0.2, w: 0.45, h: 0.6, size: 38, spacing: 1, anchor: 0.42, lines: 0, align: "left",
-                  ink: "cover", glow: true, blur: true, backdrop: "off", roman: "off", offset: 0, fill: "sweep" }
+                  ink: "cover", glow: true, blur: true, backdrop: "off", roman: "off", offset: 0, fill: "sweep" },
+        // Depth clock: a box like the others (x, y = top-left, w, h as screen fractions; the
+        // numerals auto-fit it). cut = the wallpaper-depth cut-out over it; threshold/feather
+        // drive that cut-out (services/WallpaperDepth.qml). color = a Colors role name.
+        depth: { on: true, x: 0.33, y: 0.17, w: 0.34, h: 0.22, date: true, align: "center",
+                 color: "primary", weight: 700, opacity: 1, shadow: true,
+                 cut: true, threshold: 0.3, feather: 0.08 }
     })
 
     property var data: JSON.parse(JSON.stringify(defaults))
     readonly property var cover: data.cover
     readonly property var lyrics: data.lyrics
+    readonly property var depth: data.depth
     /** Snap-grid columns (rows follow the screen aspect); 0 = free. */
     readonly property int grid: data.grid
+    /** Placer anti-collision: frames slide around / stop at each other instead of overlapping. */
+    readonly property bool avoid: data.avoid
 
     /** Placer open (not persisted). */
     property bool editing: false
@@ -51,6 +61,8 @@ Singleton {
         var d = JSON.parse(JSON.stringify(root.data));
         if (widget === "grid")
             d.grid = keyOrObj;
+        else if (widget === "avoid")
+            d.avoid = keyOrObj;
         else if (typeof keyOrObj === "object")
             Object.assign(d[widget], keyOrObj);
         else
@@ -62,12 +74,13 @@ Singleton {
     function reset() {
         var d = JSON.parse(JSON.stringify(root.defaults));
         // keep on/off + options, reset only geometry
-        ["cover", "lyrics"].forEach(function (w) {
+        ["cover", "lyrics", "depth"].forEach(function (w) {
             var keep = Object.assign({}, root.data[w]);
             ["x", "y", "w", "h"].forEach(k => delete keep[k]);
             Object.assign(d[w], keep);
         });
         d.grid = root.data.grid;
+        d.avoid = root.data.avoid;
         root.data = d;
         saveTimer.restart();
     }
@@ -81,7 +94,9 @@ Singleton {
         if (o && typeof o === "object") {
             if (typeof o.grid === "number")
                 d.grid = o.grid;
-            ["cover", "lyrics"].forEach(function (w) {
+            if (typeof o.avoid === "boolean")
+                d.avoid = o.avoid;
+            ["cover", "lyrics", "depth"].forEach(function (w) {
                 if (o[w] && typeof o[w] === "object")
                     Object.keys(d[w]).forEach(function (k) {
                         if (o[w][k] !== undefined && typeof o[w][k] === typeof d[w][k])
