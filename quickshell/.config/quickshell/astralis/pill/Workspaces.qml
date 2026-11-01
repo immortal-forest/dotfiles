@@ -171,7 +171,7 @@ Item {
                     : (slot.hasWindows ? "Has windows" : "Empty")
                 Accessible.checkable: true
                 Accessible.checked: slot.isActive
-                Accessible.onPressAction: Hyprland.dispatch("workspace " + slot.wsName)
+                Accessible.onPressAction: Hyprland.dispatch("hl.dsp.focus({ workspace = " + JSON.stringify(String(slot.wsName)) + " })")
 
                 Layout.preferredWidth: slot.isActive ? workspaces.stickW : workspaces.dotW
                 Layout.preferredHeight: 22 * workspaces.s
@@ -205,7 +205,7 @@ Item {
                     anchors.bottomMargin: -8 * workspaces.s
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: Hyprland.dispatch("workspace " + slot.wsName)
+                    onClicked: Hyprland.dispatch("hl.dsp.focus({ workspace = " + JSON.stringify(String(slot.wsName)) + " })")
                     onContainsMouseChanged: {
                         if (containsMouse)
                             workspaces.hoverIndex = slot.index;

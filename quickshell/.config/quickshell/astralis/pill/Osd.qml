@@ -69,7 +69,7 @@ Item {
     readonly property bool cameraOn: CameraToggle.enabled
 
     readonly property real desiredW: kind === "workspace" ? Math.max(120 * s, wsIndicator.implicitWidth + 40 * s)
-        : (kind === "track" ? 344 * s : (kind === "record" ? 256 * s : (kind === "mic" ? 196 * s : (kind === "camera" ? 180 * s : 248 * s))))
+        : (kind === "track" ? 344 * s : (kind === "record" ? 270 * s : (kind === "mic" ? 196 * s : (kind === "camera" ? 180 * s : 248 * s))))
     // The workspace hop keeps the rest-pill height (38*s) so switching
     // workspaces never grows the top-anchored pill downward — the dots just
     // cross-fade in place of the clock. Other flashes use the taller 44*s bar.
@@ -212,11 +212,22 @@ Item {
     Connections {
         target: Battery
         enabled: Battery.present
-        function onChargingChanged() {
-            if (Battery.charging)
+        // Any plug-in, including straight to "holding at a limit", which
+        // never passes through Charging.
+        function onDischargingChanged() {
+            if (!Battery.discharging)
                 root.flash("battery");
         }
+        // Falling through 20% and again through 10% on battery flashes the
+        // level once each, so running low is never only a quiet red seal.
+        function onPctChanged() {
+            const p = Battery.pct;
+            if (!Battery.charging && ((root.lastBattPct > 20 && p <= 20) || (root.lastBattPct > 10 && p <= 10)))
+                root.flash("battery");
+            root.lastBattPct = p;
+        }
     }
+    property int lastBattPct: -1
 
     // A take opening or closing flashes the record row, so starting from a
     // keybind (with the surface never opened) still confirms itself, and a
@@ -284,10 +295,23 @@ Item {
                 anchors.bottom: parent.bottom
                 width: parent.width * Math.min(1, root.volume / root.maxVol)
                 radius: parent.radius
-                color: root.muted ? Qt.darker(Colors.primary, 1.6)
-                    : (root.overAmp ? Colors.error : Colors.primary)
+                // same primary_container → tertiary ramp as the battery bar;
+                // muting dims the whole ramp, over-amp burns its head red
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop {
+                        position: 0.0
+                        color: root.muted ? Qt.darker(Colors.primary_container, 1.6) : Colors.primary_container
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    }
+                    GradientStop {
+                        position: 1.0
+                        color: root.muted ? Qt.darker(Colors.tertiary, 1.6)
+                            : (root.overAmp ? Colors.error : Colors.tertiary)
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    }
+                }
                 Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
         }
     }
@@ -358,14 +382,49 @@ Item {
             }
         }
 
-        GlyphIcon {
+        /**
+         * Play state as the media surface's seal: a tonal square carrying
+         * 奏 (playing) / 休 (paused), or the play/pause glyph with kanji off.
+         * Playing fills primary_container; paused drops to a quiet tonal.
+         */
+        Rectangle {
             id: trackCtrl
             anchors.right: parent.right
+            anchors.rightMargin: 2 * root.s
             anchors.verticalCenter: parent.verticalCenter
-            width: 18 * root.s
-            height: 18 * root.s
-            name: root.subjectPlaying ? "play" : "pause"
-            color: root.subjectPlaying ? Colors.primary : Colors.on_surface_variant
+            width: 32 * root.s
+            height: 32 * root.s
+            radius: (root.subjectPlaying ? 9 : 16) * root.s
+            rotation: -1.5
+            color: root.subjectPlaying ? Colors.primary_container : Colors.surface_container_high
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+            Behavior on radius {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
+                }
+            }
+
+            readonly property color ink: root.subjectPlaying ? Colors.on_primary_container : Colors.on_surface_variant
+
+            Text {
+                anchors.centerIn: parent
+                visible: Flags.showGlyphs
+                text: root.subjectPlaying ? "奏" : "休"
+                color: trackCtrl.ink
+                font.family: Appearance.font.jp
+                font.pixelSize: 16 * root.s
+                font.weight: Font.DemiBold
+            }
+            GlyphIcon {
+                anchors.centerIn: parent
+                visible: !Flags.showGlyphs
+                width: 14 * root.s
+                height: 14 * root.s
+                name: root.subjectPlaying ? "play" : "pause"
+                color: trackCtrl.ink
+            }
         }
 
         Column {
@@ -448,7 +507,11 @@ Item {
                 anchors.bottom: parent.bottom
                 width: parent.width * root.brightness
                 radius: parent.radius
-                color: Colors.primary
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: Colors.primary_container }
+                    GradientStop { position: 1.0; color: Colors.tertiary }
+                }
                 Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
         }
@@ -461,15 +524,17 @@ Item {
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
-        GlyphIcon {
+        Text {
             id: battGlyph
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             width: 17 * root.s
-            height: 17 * root.s
-            name: "bolt"
-            color: Colors.tertiary
-            stroke: 1.7
+            horizontalAlignment: Text.AlignHCenter
+            text: !Battery.discharging ? "充" : "電"
+            color: Battery.low ? Colors.error : Colors.tertiary
+            font.family: Appearance.font.jp
+            font.weight: Font.Bold
+            font.pixelSize: 15 * root.s
         }
 
         Text {
@@ -479,7 +544,7 @@ Item {
             width: 40 * root.s
             horizontalAlignment: Text.AlignRight
             text: Battery.pct + "%"
-            color: Colors.on_surface
+            color: Battery.low ? Colors.error : Colors.on_surface
             font.family: Appearance.font.family
             font.pixelSize: 11 * root.s
             font.weight: Font.DemiBold
@@ -511,7 +576,7 @@ Item {
                 }
                 Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
-                // Charging shimmer sweep (Ricelin's warm-white stops, rebuilt
+                // Plugged-in shimmer sweep (Ricelin's warm-white stops, rebuilt
                 // on the tertiary glow family so a matugen retheme carries it).
                 Rectangle {
                     anchors.top: parent.top
@@ -530,7 +595,7 @@ Item {
                         to: battFill.width
                         duration: 1200 * Motion.mult
                         loops: Animation.Infinite
-                        running: root.kind === "battery" && Battery.charging && !Motion.reduceMotion
+                        running: root.kind === "battery" && !Battery.discharging && !Motion.reduceMotion
                     }
                 }
             }
@@ -632,6 +697,12 @@ Item {
         }
     }
 
+    /**
+     * Record row, styled like the recorder surface's running take: an error
+     * dot with a ripple and a REC badge while live; a squared-off stop mark
+     * and the saved file's name once the take closes; the error tone if the
+     * recorder died on its way out.
+     */
     Item {
         id: recordRow
         anchors.fill: parent
@@ -639,35 +710,118 @@ Item {
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
-        Rectangle {
+        readonly property bool failed: !root.recordStarted && ScreenRec.error.length > 0
+        readonly property bool live: root.recordStarted && root.kind === "record"
+
+        Item {
             id: recGlyph
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            width: 13 * root.s
-            height: 13 * root.s
-            radius: width / 2
-            color: root.recordStarted ? Colors.primary : Qt.alpha(Colors.on_surface_variant, 0.8)
+            width: 28 * root.s
+            height: width
 
-            SequentialAnimation on opacity {
-                running: root.recordStarted && root.kind === "record" && !Motion.reduceMotion
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.4; duration: 500 * Motion.mult; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 1; duration: 500 * Motion.mult; easing.type: Easing.InOutSine }
+            Rectangle {
+                anchors.fill: parent
+                radius: width / 2
+                color: root.recordStarted || recordRow.failed ? Qt.alpha(Colors.error, 0.18) : Colors.surface_container_high
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+            }
+
+            Rectangle {
+                id: recHalo
+                anchors.centerIn: parent
+                width: parent.width
+                height: width
+                radius: width / 2
+                color: "transparent"
+                border.width: 1.5 * root.s
+                border.color: Colors.error
+                opacity: 0
+                ParallelAnimation {
+                    running: recordRow.live && root.flashing && !Motion.reduceMotion
+                    loops: Animation.Infinite
+                    NumberAnimation {
+                        target: recHalo; property: "scale"; from: 0.4; to: 1.1
+                        duration: Motion.pulse * 3
+                        easing.type: Motion.easeBezier; easing.bezierCurve: Motion.emphasizedDecel
+                    }
+                    NumberAnimation {
+                        target: recHalo; property: "opacity"; from: 0.7; to: 0
+                        duration: Motion.pulse * 3
+                        easing.type: Motion.easeBezier; easing.bezierCurve: Motion.emphasizedDecel
+                    }
+                }
+            }
+
+            // Live: a round dot. Stopped: it squares off into the stop mark.
+            Rectangle {
+                anchors.centerIn: parent
+                width: (root.recordStarted ? 11 : 9) * root.s
+                height: width
+                radius: root.recordStarted ? width / 2 : 2.5 * root.s
+                color: root.recordStarted || recordRow.failed ? Colors.error : Colors.on_surface_variant
+                Behavior on radius { NumberAnimation { duration: Motion.glide; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveFastSpatial } }
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
         }
 
-        Text {
+        Column {
             anchors.left: recGlyph.right
-            anchors.leftMargin: 13 * root.s
+            anchors.leftMargin: 11 * root.s
+            anchors.right: recBadge.visible ? recBadge.left : parent.right
+            anchors.rightMargin: recBadge.visible ? 10 * root.s : 0
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 1 * root.s
+
+            Text {
+                width: parent.width
+                text: root.recordStarted ? "Recording"
+                    : (recordRow.failed ? "Recording failed" : "Recording saved")
+                color: recordRow.failed ? Colors.error : Colors.on_surface
+                font.family: Appearance.font.family
+                font.pixelSize: 12 * root.s
+                font.weight: Font.Bold
+                elide: Text.ElideRight
+                maximumLineCount: 1
+            }
+            Text {
+                width: parent.width
+                visible: text.length > 0
+                text: root.recordStarted
+                    ? (ScreenRec.source + (ScreenRec.cap.fps ? " · " + Flags.recordFps + " fps" : ""))
+                    : (recordRow.failed ? ScreenRec.error
+                    : (ScreenRec.lastFile.length > 0 ? ScreenRec.baseName(ScreenRec.lastFile) : ""))
+                color: Colors.on_surface_variant
+                font.family: Appearance.font.family
+                font.pixelSize: 9.5 * root.s
+                font.weight: Font.DemiBold
+                font.capitalization: root.recordStarted ? Font.AllUppercase : Font.MixedCase
+                font.letterSpacing: root.recordStarted ? 0.8 * root.s : 0
+                elide: Text.ElideMiddle
+                maximumLineCount: 1
+            }
+        }
+
+        Rectangle {
+            id: recBadge
+            visible: root.recordStarted
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.recordStarted ? "Recording started" : "Recording stopped"
-            color: Colors.on_surface
-            font.family: Appearance.font.family
-            font.pixelSize: 11.5 * root.s
-            font.weight: Font.DemiBold
-            elide: Text.ElideRight
-            maximumLineCount: 1
+            width: recBadgeText.implicitWidth + 16 * root.s
+            height: 20 * root.s
+            radius: height / 2
+            color: Colors.error
+
+            Text {
+                id: recBadgeText
+                anchors.centerIn: parent
+                text: "REC"
+                color: Colors.on_error
+                font.family: Appearance.font.family
+                font.pixelSize: 9 * root.s
+                font.weight: Font.ExtraBold
+                font.letterSpacing: 1 * root.s
+            }
         }
     }
 }

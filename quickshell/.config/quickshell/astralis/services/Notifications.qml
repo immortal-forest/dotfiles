@@ -104,12 +104,20 @@ Singleton {
      * stamp arrival + toast deadline, hook the close snapshot, and (DND and
      * criticals permitting) push onto the toast queue.
      */
+    /** Body as plain text: senders use markup (we advertise it) but rows render PlainText. */
+    function plainBody(b) {
+        if (!b) return "";
+        return b.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "")
+            .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"")
+            .replace(/&apos;|&#39;/g, "'").replace(/&amp;/g, "&");
+    }
+
     function recordArrival(n) {
         var a = Object.assign({}, root.arrivalMs);
         a[n.id] = Date.now();
         root.arrivalMs = a;
         var e = Object.assign({}, root.expireAt);
-        e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? 4000 : 6000);
+        e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? 3000 : 4500);
         root.expireAt = e;
         root.hookClosed(n);
         var critical = n.urgency === NotificationUrgency.Critical;
@@ -153,6 +161,12 @@ Singleton {
      * image://icon/ payloads resolve through the theme, raster image paths
      * pass through, then appIcon/desktopEntry/appName try the icon theme.
      */
+    // Bare paths (hyprshot's `-i /home/…png`) resolve against the QML file's
+    // own qrc: URL inside IconImage/Image, so they need an explicit scheme.
+    function asUrl(p) {
+        return p.indexOf("/") === 0 ? "file://" + p : p;
+    }
+
     function iconFor(n) {
         if (!n) return "";
         var img = n.image || "";
@@ -160,13 +174,13 @@ Singleton {
         if (img.indexOf("image://icon/") === 0) {
             names.push(img.substring(13));
         } else if (img.length && !/\.svg$/i.test(img)) {
-            return img;
+            return root.asUrl(img);
         }
         names.push(n.appIcon, n.desktopEntry, (n.appName || n.app || "").toLowerCase());
         for (var i = 0; i < names.length; i++) {
             var nm = names[i];
             if (!nm || !nm.length) continue;
-            if (nm.indexOf("/") === 0 || nm.indexOf("file://") === 0) return nm;
+            if (nm.indexOf("/") === 0 || nm.indexOf("file://") === 0) return root.asUrl(nm);
             var p = Quickshell.iconPath(nm, true);
             if (p.length) return p;
         }
@@ -196,8 +210,14 @@ Singleton {
      * unread and shows in the center); it only moves to `history` when it is
      * actually closed/dismissed (hookClosed snapshots it there).
      */
+    function dropInterruptedPopups() {
+        root.popups = root.popups.filter(function(p) {
+            return p && p.urgency === NotificationUrgency.Critical;
+        });
+    }
+
     function removePopup(n) {
-        root.popups = root.popups.filter(function(p) { return p !== n; });
+        root.popups = root.popups.filter(function(p) { return p && p !== n; });
     }
 
     /** Focus the source app's Hyprland window by class match. */
@@ -372,6 +392,18 @@ Singleton {
         onTriggered: root.tick++
     }
 
+    /**
+     * Highest notification id ever handled, kept across hot reloads. The
+     * server re-emits everything it still tracks after a reload (not always
+     * with `tracked` set), and ids only ever grow, so anything at or below
+     * this was already seen and must not toast again.
+     */
+    PersistentProperties {
+        id: persist
+        reloadableId: "astralis-notifications"
+        property int lastId: 0
+    }
+
     NotificationServer {
         id: server
         keepOnReload: true
@@ -397,7 +429,21 @@ Singleton {
         }
 
         onNotification: function(n) {
+            // keepOnReload re-emits every still-tracked notification after a
+            // hot reload. Those are already tracked: re-hook and keep their
+            // age, but never toast them again (they'd pop on every reload).
+            if (n.tracked || n.id <= persist.lastId) {
+                n.tracked = true;
+                if (!root.arrivalMs[n.id]) {
+                    var a = Object.assign({}, root.arrivalMs);
+                    a[n.id] = Date.now();
+                    root.arrivalMs = a;
+                }
+                root.hookClosed(n);
+                return;
+            }
             n.tracked = true;
+            persist.lastId = Math.max(persist.lastId, n.id);
             root.recordArrival(n);
         }
     }

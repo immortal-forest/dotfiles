@@ -8,8 +8,9 @@ import "../config"
  * astralis — ping-pong marquee (ported from Ricelin Marquee.qml). Single-line
  * text that scrolls when wider than the available width, so long track and
  * artist names stay readable. Caller sets the width (e.g. via anchors) and
- * `active` to gate the motion. The label snaps to whole pixels so
- * NativeRendering stays crisp while it scrolls.
+ * `active` to gate the motion. The label snaps to whole pixels so it stays
+ * crisp while it scrolls. Default (Qt) rendering, like every other Text in
+ * the shell: NativeRendering hinted it heavier and blockier than its neighbours.
  */
 Item {
     id: root
@@ -56,7 +57,6 @@ Item {
         x: Math.round(root.scrollX)
         text: root.text
         color: root.color
-        renderType: Text.NativeRendering
         font.family: Appearance.font.family
         font.pixelSize: root.pixelSize
         font.weight: root.weight

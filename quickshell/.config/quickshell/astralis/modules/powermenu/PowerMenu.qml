@@ -458,17 +458,52 @@ PanelWindow {
                 }
             }
 
-            Text {
+            // Key hints as keycap chips: the key is a cap, what it does is
+            // plain text beside it — reads at a glance instead of as a sentence.
+            Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                // Key names spelled out, never a Unicode keycap glyph: a "↵"
-                // borrowed from the UI font renders at the FONT's weight and
-                // optical size, never the icon set's, and lands beside "Esc"
-                // as a visibly different object. Words match how Esc already
-                // reads, and stay legible at sizeS where a pictogram would not.
-                text: "Enter activate · hold to confirm · Esc to dismiss"
-                color: Qt.alpha(Colors.on_surface_variant, 0.55)
-                font.family: Appearance.font.family
-                font.pixelSize: Appearance.font.sizeS * root.s
+                spacing: 14 * root.s
+
+                Repeater {
+                    model: [
+                        { key: "Enter", what: "activate" },
+                        { key: "Hold", what: "confirm" },
+                        { key: "Esc", what: "dismiss" }
+                    ]
+
+                    Row {
+                        required property var modelData
+                        spacing: 6 * root.s
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: capText.implicitWidth + 12 * root.s
+                            height: capText.implicitHeight + 6 * root.s
+                            radius: 6 * root.s
+                            color: Qt.alpha(Colors.on_surface, 0.06)
+                            border.width: 1
+                            border.color: Qt.alpha(Colors.on_surface, 0.12)
+
+                            Text {
+                                id: capText
+                                anchors.centerIn: parent
+                                text: modelData.key
+                                color: Colors.on_surface_variant
+                                font.family: Appearance.font.family
+                                font.pixelSize: Appearance.font.sizeS * 0.9 * root.s
+                                font.weight: Font.DemiBold
+                            }
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.what
+                            color: Qt.alpha(Colors.on_surface_variant, 0.6)
+                            font.family: Appearance.font.family
+                            font.pixelSize: Appearance.font.sizeS * root.s
+                        }
+                    }
+                }
             }
         }
     }

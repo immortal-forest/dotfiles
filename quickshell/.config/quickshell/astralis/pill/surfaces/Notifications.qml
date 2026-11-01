@@ -30,6 +30,11 @@ PillSurface {
 
     ameForm: "dock"
     amePoint: Qt.point(width / 2, height - 6 * s)
+    // Hug the backlog: header + rule + list (floored for the 静 empty state),
+    // capped by Pill.qml's fixed 460.
+    desiredH: hairline.y + 1 + 8 * s
+        + Math.max(Services.Notifications.count === 0 ? 96 * s : 40 * s, notifCol.implicitHeight)
+        + 12 * s
 
     // Opening the center counts as reading: after a beat, mark all seen.
     onOpenChanged: open ? seenTimer.restart() : seenTimer.stop()
@@ -208,7 +213,7 @@ PillSurface {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width - nrowTile.width - nrowRight.width - 2 * parent.spacing
-                text: nrow.n.body.length > 0 ? nrow.n.body : nrow.n.summary
+                text: nrow.n.body.length > 0 ? Services.Notifications.plainBody(nrow.n.body) : nrow.n.summary
                 color: nrow.critical ? Colors.on_surface : Colors.on_surface_variant
                 font.family: Appearance.font.family
                 font.pixelSize: 11.5 * root.s
@@ -384,10 +389,10 @@ PillSurface {
     Item {
         id: toolRow
         anchors.top: header.bottom
-        anchors.topMargin: 10 * root.s
+        anchors.topMargin: 12 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 18 * root.s
+        height: 30 * root.s // holds the 26s Clear chip
 
         Row {
             id: unreadRow
@@ -460,31 +465,41 @@ PillSurface {
             Accessible.focusable: true
             Accessible.onPressAction: Services.Notifications.clearAll()
 
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "払"
-                color: clearArea.containsMouse ? Colors.error : Qt.alpha(Colors.error, 0.75)
-                font.family: Appearance.font.jp
-                font.pixelSize: 9 * root.s
-                font.weight: Font.Bold
+            Rectangle {
+                height: 26 * root.s
+                width: chipRowC.implicitWidth + 22 * root.s
+                radius: height / 2
+                color: Qt.alpha(Colors.error, clearArea.pressed ? 0.22 : clearArea.containsMouse ? 0.16 : 0.10)
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
-            }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "CLEAR ALL"
-                color: clearArea.containsMouse ? Colors.error : Qt.alpha(Colors.error, 0.75)
-                font.family: Appearance.font.family
-                font.pixelSize: 9 * root.s
-                font.weight: Font.Bold
-                font.letterSpacing: 1.4 * root.s
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                Row {
+                    id: chipRowC
+                    anchors.centerIn: parent
+                    spacing: 6 * root.s
+
+                    GlyphIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 13 * root.s
+                        height: 13 * root.s
+                        name: "trash"
+                        stroke: 1.8
+                        color: Colors.error
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Clear all"
+                        color: Colors.error
+                        font.family: Appearance.font.family
+                        font.pixelSize: 11 * root.s
+                        font.weight: Font.DemiBold
+                    }
+                }
             }
         }
 
         MouseArea {
             id: clearArea
             anchors.fill: clearRow
-            anchors.margins: -5 * root.s
             // `enabled`, not `visible`: the row underneath is mid-fade and must
             // not keep taking clicks, but hiding the area would also drop the
             // hover tint the fade is still painting.
@@ -655,7 +670,7 @@ PillSurface {
                             anchors.rightMargin: 8 * root.s
                             anchors.verticalCenter: parent.verticalCenter
                             text: group.modelData.preview.body.length > 0
-                                ? group.modelData.preview.body
+                                ? Services.Notifications.plainBody(group.modelData.preview.body)
                                 : group.modelData.preview.summary
                             color: Qt.alpha(Colors.on_surface_variant, 0.8)
                             font.family: Appearance.font.family

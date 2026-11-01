@@ -22,7 +22,7 @@ import "../pill"
  *  - clock centered: a light, tracked numeral pair with a tinted, slowly
  *    breathing colon (a tasteful stand-in for seconds) — presence without bulk.
  *  - now-playing, bottom-left: a real card (rounded ring'd art, 2-line
- *    title/artist, understated 前/奏(休)/次 transport, a thin progress thread
+ *    title/artist, understated 前/奏(休)/次 transport, an ink-brush progress stroke
  *    ONLY for a trustworthy timeline). Hidden cleanly when nothing plays.
  *  - identity (人 <user>) + password capsule, bottom-center. Every screen
  *    carries the capsule so keyboard focus always lands in a live TextInput,
@@ -535,246 +535,282 @@ Item {
             }
 
             // ── the clock ───────────────────────────────────────────────────
-            Row {
-                id: clockRow
+            Item {
+                width: clockRow.width - 2 * clockRow.inkPad
+                height: clockRow.height - 2 * clockRow.inkPad
 
-                layer.enabled: true
-                layer.effect: MultiEffect {
-                    shadowEnabled: true
-                    shadowColor: Qt.rgba(0, 0, 0, 0.42)
-                    shadowBlur: 0.9
-                    shadowVerticalOffset: 2
-                }
+                Row {
+                    id: clockRow
 
-                /**
-                 * An odometer digit: the old value scrolls UP and out while
-                 * the new one arrives from below, inside a clipped slot.
-                 *
-                 * A lock screen is looked at for whole minutes at a time, so
-                 * the one moment it has any motion of its own is the moment a
-                 * digit turns over — and replacing the glyph between two
-                 * frames throws that away entirely. Rolling per DIGIT rather
-                 * than per numeral is what makes it read as a mechanism: at
-                 * 23:05 → 23:06 exactly one digit moves, at 23:09 → 23:10 two
-                 * do and the tens digit carries, and at 23:59 → 00:00 the
-                 * whole row turns over at once. A single block animation
-                 * cannot say any of that.
-                 *
-                 * The slot is a FIXED width measured off "0" with tabular
-                 * figures, so nothing in the row shifts while a digit is
-                 * mid-travel. An empty value collapses the slot to nothing —
-                 * that is the 12-hour clock going from "9" to "10", and the
-                 * width animates so the row grows rather than jumps.
-                 */
-                component ScrollDigit: Item {
-                    id: sd
-                    property string value: ""
-                    property real px: timeBlock.clockSize
-                    property color tint: Colors.on_surface
+                    // The shadow layer renders only the row's own bounds, so
+                    // handwritten ink overshooting the end digits was cut
+                    // there too. Pad the layer by the digits' clip overhang and
+                    // pull it back so the layout box stays the bare numerals.
+                    readonly property real inkPad: 0.2 * timeBlock.clockSize
+                    x: -inkPad
+                    y: -inkPad
+                    padding: inkPad
 
-                    TextMetrics {
-                        id: slotMetrics
-                        text: "0"
-                        font.family: Appearance.font.display
-                        font.weight: Font.Light
-                        font.pixelSize: sd.px
-                        font.letterSpacing: -1 * surface.s
-                        font.features: ({ "tnum": 1 })
+                    layer.enabled: true
+                    layer.effect: MultiEffect {
+                        shadowEnabled: true
+                        shadowColor: Qt.rgba(0, 0, 0, 0.42)
+                        shadowBlur: 0.9
+                        shadowVerticalOffset: 2
                     }
 
                     /**
-                     * Same probe, but every digit at once, purely for its
-                     * `tightBoundingRect.height` below (see the `height`
-                     * doc). A multi-glyph run's bounding box is one box, the
-                     * union of every glyph's ink, which is exactly what a
-                     * shared vertical extent needs — but it is NOT usable
-                     * for width the same way: a ten-glyph run's ink span is
-                     * the whole row, nothing close to one digit's width.
-                     */
-                    TextMetrics {
-                        id: boundsMetrics
-                        text: "0123456789"
-                        font: slotMetrics.font
-                    }
-
-                    /**
-                     * Width, per digit, not per run: Kalam is handwritten,
-                     * and its digits do not share one advance box the way a
-                     * tabular-figure face's do — `tnum` keeps them landing on
-                     * the same rhythm, but a cursive stroke's actual ink can
-                     * still overshoot ITS OWN box regardless of how wide the
-                     * box is. "0" alone was too narrow a probe for that: it
-                     * clipped whichever other digit happened to overshoot
-                     * more than "0" does. Ten separate probes, one per glyph,
-                     * and the widest ink span wins — static, computed once
-                     * for the font, not re-measured per roll.
-                     */
-                    TextMetrics { id: dw0; text: "0"; font: slotMetrics.font }
-                    TextMetrics { id: dw1; text: "1"; font: slotMetrics.font }
-                    TextMetrics { id: dw2; text: "2"; font: slotMetrics.font }
-                    TextMetrics { id: dw3; text: "3"; font: slotMetrics.font }
-                    TextMetrics { id: dw4; text: "4"; font: slotMetrics.font }
-                    TextMetrics { id: dw5; text: "5"; font: slotMetrics.font }
-                    TextMetrics { id: dw6; text: "6"; font: slotMetrics.font }
-                    TextMetrics { id: dw7; text: "7"; font: slotMetrics.font }
-                    TextMetrics { id: dw8; text: "8"; font: slotMetrics.font }
-                    TextMetrics { id: dw9; text: "9"; font: slotMetrics.font }
-                    readonly property real widestDigit: Math.max(
-                        dw0.tightBoundingRect.width, dw1.tightBoundingRect.width,
-                        dw2.tightBoundingRect.width, dw3.tightBoundingRect.width,
-                        dw4.tightBoundingRect.width, dw5.tightBoundingRect.width,
-                        dw6.tightBoundingRect.width, dw7.tightBoundingRect.width,
-                        dw8.tightBoundingRect.width, dw9.tightBoundingRect.width)
-
-                    width: sd.value.length > 0
-                        ? Math.max(slotMetrics.advanceWidth, sd.widestDigit) : 0
-
-                    /**
-                     * Tall enough for the INK, not just for the line box.
+                     * An odometer digit: the old value scrolls UP and out while
+                     * the new one arrives from below, inside a clipped slot.
                      *
-                     * The slot clips — that is what makes the roll a roll —
-                     * and it was sized to `slotMetrics.height`, the font's
-                     * line height. That is fine for a face whose digits sit
-                     * inside their em box and wrong for one whose don't:
-                     * Kalam is handwritten, and its 4 and 8 swing below the
-                     * baseline, so the clip sheared the bottom off them.
-                     * `tightBoundingRect` is the actual painted extent, so
-                     * taking the larger of the two (plus a little air) means
-                     * the window fits whatever face is configured rather than
-                     * whatever face it was measured against.
+                     * A lock screen is looked at for whole minutes at a time, so
+                     * the one moment it has any motion of its own is the moment a
+                     * digit turns over — and replacing the glyph between two
+                     * frames throws that away entirely. Rolling per DIGIT rather
+                     * than per numeral is what makes it read as a mechanism: at
+                     * 23:05 → 23:06 exactly one digit moves, at 23:09 → 23:10 two
+                     * do and the tens digit carries, and at 23:59 → 00:00 the
+                     * whole row turns over at once. A single block animation
+                     * cannot say any of that.
+                     *
+                     * The slot is a FIXED width measured off "0" with tabular
+                     * figures, so nothing in the row shifts while a digit is
+                     * mid-travel. An empty value collapses the slot to nothing —
+                     * that is the 12-hour clock going from "9" to "10", and the
+                     * width animates so the row grows rather than jumps.
                      */
-                    height: Math.max(slotMetrics.height,
-                        boundsMetrics.tightBoundingRect.height + 0.16 * sd.px)
-                    Behavior on width {
+                    component ScrollDigit: Item {
+                        id: sd
+                        property string value: ""
+                        property real px: timeBlock.clockSize
+                        property color tint: Colors.on_surface
+
+                        TextMetrics {
+                            id: slotMetrics
+                            text: "0"
+                            font.family: Appearance.font.display
+                            font.weight: Font.Light
+                            font.pixelSize: sd.px
+                            font.letterSpacing: -1 * surface.s
+                            font.features: ({ "tnum": 1 })
+                        }
+
+                        /**
+                         * Same probe, but every digit at once, purely for its
+                         * `tightBoundingRect.height` below (see the `height`
+                         * doc). A multi-glyph run's bounding box is one box, the
+                         * union of every glyph's ink, which is exactly what a
+                         * shared vertical extent needs — but it is NOT usable
+                         * for width the same way: a ten-glyph run's ink span is
+                         * the whole row, nothing close to one digit's width.
+                         */
+                        TextMetrics {
+                            id: boundsMetrics
+                            text: "0123456789"
+                            font: slotMetrics.font
+                        }
+
+                        /**
+                         * Width, per digit, not per run: Kalam is handwritten,
+                         * and its digits do not share one advance box the way a
+                         * tabular-figure face's do — `tnum` keeps them landing on
+                         * the same rhythm, but a cursive stroke's actual ink can
+                         * still overshoot ITS OWN box regardless of how wide the
+                         * box is. "0" alone was too narrow a probe for that: it
+                         * clipped whichever other digit happened to overshoot
+                         * more than "0" does. Ten separate probes, one per glyph,
+                         * and the widest ink span wins — static, computed once
+                         * for the font, not re-measured per roll.
+                         */
+                        TextMetrics { id: dw0; text: "0"; font: slotMetrics.font }
+                        TextMetrics { id: dw1; text: "1"; font: slotMetrics.font }
+                        TextMetrics { id: dw2; text: "2"; font: slotMetrics.font }
+                        TextMetrics { id: dw3; text: "3"; font: slotMetrics.font }
+                        TextMetrics { id: dw4; text: "4"; font: slotMetrics.font }
+                        TextMetrics { id: dw5; text: "5"; font: slotMetrics.font }
+                        TextMetrics { id: dw6; text: "6"; font: slotMetrics.font }
+                        TextMetrics { id: dw7; text: "7"; font: slotMetrics.font }
+                        TextMetrics { id: dw8; text: "8"; font: slotMetrics.font }
+                        TextMetrics { id: dw9; text: "9"; font: slotMetrics.font }
+                        readonly property real widestDigit: Math.max(
+                            dw0.tightBoundingRect.width, dw1.tightBoundingRect.width,
+                            dw2.tightBoundingRect.width, dw3.tightBoundingRect.width,
+                            dw4.tightBoundingRect.width, dw5.tightBoundingRect.width,
+                            dw6.tightBoundingRect.width, dw7.tightBoundingRect.width,
+                            dw8.tightBoundingRect.width, dw9.tightBoundingRect.width)
+
+                        width: sd.value.length > 0
+                            ? Math.max(slotMetrics.advanceWidth, sd.widestDigit) : 0
+
+                        /**
+                         * Tall enough for the INK, not just for the line box.
+                         *
+                         * The slot clips — that is what makes the roll a roll —
+                         * and it was sized to `slotMetrics.height`, the font's
+                         * line height. That is fine for a face whose digits sit
+                         * inside their em box and wrong for one whose don't:
+                         * Kalam is handwritten, and its 4 and 8 swing below the
+                         * baseline, so the clip sheared the bottom off them.
+                         * `tightBoundingRect` is the actual painted extent, so
+                         * taking the larger of the two (plus a little air) means
+                         * the window fits whatever face is configured rather than
+                         * whatever face it was measured against.
+                         */
+                        height: Math.max(slotMetrics.height,
+                            boundsMetrics.tightBoundingRect.height + 0.16 * sd.px)
+                        Behavior on width {
+                            NumberAnimation {
+                                duration: Motion.expressiveDefaultSpatialDur
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.expressiveDefaultSpatial
+                            }
+                        }
+
+                        /**
+                         * The roll clips through `win`, a window PADDED past the
+                         * slot rather than the slot itself. Kalam's ink overshoots
+                         * its metrics box on both axes (italic swing right, tails
+                         * below), and however the slot is measured, a clip at its
+                         * edge shaved the odd stroke off some digit. The slot
+                         * keeps its measured size for layout; only the clip grows,
+                         * and the roll travels the full window so the outgoing
+                         * digit still leaves cleanly.
+                         */
+                        readonly property real hPad: 0.2 * sd.px
+                        readonly property real vPad: 0.14 * sd.px
+
+                        // `curr` is what is on screen; `incoming` is what is
+                        // arriving. They are equal except during a roll.
+                        property string curr: ""
+                        property string incoming: ""
+                        property real shift: 0
+
+                        Component.onCompleted: {
+                            sd.curr = sd.value;
+                            sd.incoming = sd.value;
+                        }
+                        onValueChanged: {
+                            if (sd.value === sd.curr)
+                                return;
+                            // No roll on the first paint, before the surface has
+                            // entered, or under reduce-motion — the digit is
+                            // simply already correct.
+                            if (!surface.animate || !surface.ready) {
+                                rollAnim.stop();
+                                sd.curr = sd.value;
+                                sd.incoming = sd.value;
+                                sd.shift = 0;
+                                return;
+                            }
+                            sd.incoming = sd.value;
+                            rollAnim.restart();
+                        }
+
+                        // The two glyphs are spelled out rather than sharing a
+                        // local component: QML does not allow an inline component
+                        // to be declared inside another one.
+                        Item {
+                            id: win
+                            x: -sd.hPad
+                            y: -sd.vPad
+                            width: sd.width + 2 * sd.hPad
+                            height: sd.height + 2 * sd.vPad
+                            clip: true
+                            Text {
+                                text: sd.curr
+                                height: sd.height
+                                verticalAlignment: Text.AlignVCenter
+                                x: sd.hPad
+                                y: sd.vPad - sd.shift * win.height
+                                width: sd.width
+                                horizontalAlignment: Text.AlignHCenter
+                                color: sd.tint
+                                font.family: Appearance.font.display
+                                font.weight: Font.Light
+                                font.pixelSize: sd.px
+                                font.letterSpacing: -1 * surface.s
+                                font.features: ({ "tnum": 1 })
+                            }
+                            Text {
+                                text: sd.incoming
+                                height: sd.height
+                                verticalAlignment: Text.AlignVCenter
+                                // Arrives from BELOW, so the count reads as going up.
+                                x: sd.hPad
+                                y: sd.vPad + (1 - sd.shift) * win.height
+                                // Nothing to see until a roll is running; without this
+                                // the incoming glyph sits one slot-height down inside
+                                // the clip and shows through on tall line boxes.
+                                visible: sd.shift > 0
+                                width: sd.width
+                                horizontalAlignment: Text.AlignHCenter
+                                color: sd.tint
+                                font.family: Appearance.font.display
+                                font.weight: Font.Light
+                                font.pixelSize: sd.px
+                                font.letterSpacing: -1 * surface.s
+                                font.features: ({ "tnum": 1 })
+                            }
+                        }
+
                         NumberAnimation {
+                            id: rollAnim
+                            target: sd
+                            property: "shift"
+                            from: 0
+                            to: 1
                             duration: Motion.expressiveDefaultSpatialDur
                             easing.type: Motion.easeBezier
                             easing.bezierCurve: Motion.expressiveDefaultSpatial
+                            onFinished: {
+                                sd.curr = sd.incoming;
+                                sd.shift = 0;
+                            }
                         }
                     }
-                    clip: true
 
-                    // `curr` is what is on screen; `incoming` is what is
-                    // arriving. They are equal except during a roll.
-                    property string curr: ""
-                    property string incoming: ""
-                    property real shift: 0
+                    // Two slots per side, fed one character each. The leading hour
+                    // slot is empty on a 12-hour clock before ten o'clock, which
+                    // is what collapses it.
+                    ScrollDigit { value: surface.hourStr.length > 1 ? surface.hourStr.charAt(0) : "" }
+                    ScrollDigit { id: hourText; value: surface.hourStr.charAt(surface.hourStr.length - 1) }
 
-                    Component.onCompleted: {
-                        sd.curr = sd.value;
-                        sd.incoming = sd.value;
-                    }
-                    onValueChanged: {
-                        if (sd.value === sd.curr)
-                            return;
-                        // No roll on the first paint, before the surface has
-                        // entered, or under reduce-motion — the digit is
-                        // simply already correct.
-                        if (!surface.animate || !surface.ready) {
-                            rollAnim.stop();
-                            sd.curr = sd.value;
-                            sd.incoming = sd.value;
-                            sd.shift = 0;
-                            return;
-                        }
-                        sd.incoming = sd.value;
-                        rollAnim.restart();
-                    }
-
-                    // The two glyphs are spelled out rather than sharing a
-                    // local component: QML does not allow an inline component
-                    // to be declared inside another one.
-                    Text {
-                        text: sd.curr
-                        height: sd.height
-                        verticalAlignment: Text.AlignVCenter
-                        y: -sd.shift * sd.height
-                        width: sd.width
-                        horizontalAlignment: Text.AlignHCenter
-                        color: sd.tint
-                        font.family: Appearance.font.display
-                        font.weight: Font.Light
-                        font.pixelSize: sd.px
-                        font.letterSpacing: -1 * surface.s
-                        font.features: ({ "tnum": 1 })
-                    }
-                    Text {
-                        text: sd.incoming
-                        height: sd.height
-                        verticalAlignment: Text.AlignVCenter
-                        // Arrives from BELOW, so the count reads as going up.
-                        y: (1 - sd.shift) * sd.height
-                        // Nothing to see until a roll is running; without this
-                        // the incoming glyph sits one slot-height down inside
-                        // the clip and shows through on tall line boxes.
-                        visible: sd.shift > 0
-                        width: sd.width
-                        horizontalAlignment: Text.AlignHCenter
-                        color: sd.tint
-                        font.family: Appearance.font.display
-                        font.weight: Font.Light
-                        font.pixelSize: sd.px
-                        font.letterSpacing: -1 * surface.s
-                        font.features: ({ "tnum": 1 })
-                    }
-
-                    NumberAnimation {
-                        id: rollAnim
-                        target: sd
-                        property: "shift"
-                        from: 0
-                        to: 1
-                        duration: Motion.expressiveDefaultSpatialDur
-                        easing.type: Motion.easeBezier
-                        easing.bezierCurve: Motion.expressiveDefaultSpatial
-                        onFinished: {
-                            sd.curr = sd.incoming;
-                            sd.shift = 0;
+                    // Hand-drawn accent colon — two evenly-gapped dots, optically
+                    // centred against the numerals, breathing slowly as a tasteful
+                    // stand-in for ticking seconds.
+                    Item {
+                        id: colon
+                        width: 50 * surface.s
+                        height: hourText.height
+                        Column {
+                            anchors.centerIn: parent
+                            anchors.verticalCenterOffset: -12 * surface.s
+                            spacing: 28 * surface.s
+                            opacity: 1
+                            SequentialAnimation on opacity {
+                                running: surface.animate
+                                loops: Animation.Infinite
+                                NumberAnimation { to: 0.4; duration: Math.round(1400 * Motion.mult); easing.type: Easing.InOutSine }
+                                PauseAnimation { duration: Math.round(140 * Motion.mult) }
+                                NumberAnimation { to: 1.0; duration: Math.round(1400 * Motion.mult); easing.type: Easing.InOutSine }
+                                PauseAnimation { duration: Math.round(320 * Motion.mult) }
+                            }
+                            Rectangle {
+                                width: 17 * surface.s; height: 17 * surface.s; radius: width / 2
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                color: Colors.primary
+                            }
+                            Rectangle {
+                                width: 17 * surface.s; height: 17 * surface.s; radius: width / 2
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                color: Colors.primary
+                            }
                         }
                     }
+
+                    ScrollDigit { value: surface.minStr.charAt(0); tint: Qt.alpha(Colors.on_surface, 0.7) }
+                    ScrollDigit { value: surface.minStr.charAt(1); tint: Qt.alpha(Colors.on_surface, 0.7) }
                 }
-
-                // Two slots per side, fed one character each. The leading hour
-                // slot is empty on a 12-hour clock before ten o'clock, which
-                // is what collapses it.
-                ScrollDigit { value: surface.hourStr.length > 1 ? surface.hourStr.charAt(0) : "" }
-                ScrollDigit { id: hourText; value: surface.hourStr.charAt(surface.hourStr.length - 1) }
-
-                // Hand-drawn accent colon — two evenly-gapped dots, optically
-                // centred against the numerals, breathing slowly as a tasteful
-                // stand-in for ticking seconds.
-                Item {
-                    id: colon
-                    width: 50 * surface.s
-                    height: hourText.height
-                    Column {
-                        anchors.centerIn: parent
-                        anchors.verticalCenterOffset: -12 * surface.s
-                        spacing: 28 * surface.s
-                        opacity: 1
-                        SequentialAnimation on opacity {
-                            running: surface.animate
-                            loops: Animation.Infinite
-                            NumberAnimation { to: 0.4; duration: Math.round(1400 * Motion.mult); easing.type: Easing.InOutSine }
-                            PauseAnimation { duration: Math.round(140 * Motion.mult) }
-                            NumberAnimation { to: 1.0; duration: Math.round(1400 * Motion.mult); easing.type: Easing.InOutSine }
-                            PauseAnimation { duration: Math.round(320 * Motion.mult) }
-                        }
-                        Rectangle {
-                            width: 17 * surface.s; height: 17 * surface.s; radius: width / 2
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            color: Colors.primary
-                        }
-                        Rectangle {
-                            width: 17 * surface.s; height: 17 * surface.s; radius: width / 2
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            color: Colors.primary
-                        }
-                    }
-                }
-
-                ScrollDigit { value: surface.minStr.charAt(0); tint: Qt.alpha(Colors.on_surface, 0.7) }
-                ScrollDigit { value: surface.minStr.charAt(1); tint: Qt.alpha(Colors.on_surface, 0.7) }
             }
 
             /**
@@ -1062,10 +1098,9 @@ Item {
                         }
                     }
 
-                    // progress — the Media surface's waveform: a static damped-
-                    // sine outline (outline_variant) with the played span filled
-                    // by a tapered primary head that the Ame seam bead rides.
-                    // Display-only here (no seek while locked). Real timeline only.
+                    // progress — the Media surface's 筆 ink stroke, which the
+                    // Ame seam bead rides. Display-only here (no seek while
+                    // locked). Real timeline only.
                     Item {
                         id: waveRow
                         width: parent.width
@@ -1093,104 +1128,21 @@ Item {
                             font.features: ({ "tnum": 1 })
                         }
 
-                        // static waveform outline — repainted only on resize /
-                        // theme change, never per playhead frame.
-                        Canvas {
-                            id: baseWave
+                        // 筆 ink-brush stroke (shared with the Media surface);
+                        // drives the Ame seam bead via headX/headY.
+                        InkStroke {
+                            id: wave
                             anchors.left: elapsed.right
                             anchors.right: total.left
                             anchors.leftMargin: 12 * surface.s
                             anchors.rightMargin: 12 * surface.s
                             anchors.verticalCenter: parent.verticalCenter
                             height: 16 * surface.s
-
-                            readonly property color tint: Colors.outline_variant
-                            onTintChanged: requestPaint()
-                            onWidthChanged: requestPaint()
-                            onHeightChanged: requestPaint()
-                            onVisibleChanged: if (visible) requestPaint()
-
-                            onPaint: {
-                                const ctx = getContext("2d");
-                                ctx.reset();
-                                if (width <= 0 || height <= 0)
-                                    return;
-                                const n = 48;
-                                const inset = wave.inset;
-                                const usable = wave.usable;
-                                ctx.strokeStyle = Qt.alpha(baseWave.tint, 0.6);
-                                ctx.lineWidth = 2.5 * surface.s;
-                                ctx.lineCap = "round";
-                                ctx.lineJoin = "round";
-                                ctx.beginPath();
-                                ctx.moveTo(inset, wave.waveY(0));
-                                for (let i = 1; i <= n; i++)
-                                    ctx.lineTo(inset + (i / n) * usable, wave.waveY(i / n));
-                                ctx.stroke();
-                            }
-                        }
-
-                        // moving primary head — the only canvas repainted per
-                        // frame; drives the Ame seam bead via headX/headY.
-                        Canvas {
-                            id: wave
-                            anchors.fill: baseWave
-
-                            readonly property real inset: 3 * surface.s
-                            readonly property real usable: Math.max(1, width - 2 * inset)
-                            property real targetF: surface.playFrac
-                            property real lastFrac: 0
-                            property real drawF: targetF
-                            readonly property real headX: inset + drawF * usable
-                            readonly property real headY: waveY(drawF)
-
-                            // Linear on purpose — one of the two places in the
-                            // shell that may keep it. `drawF` is a PLAYBACK
-                            // POSITION, not a UI reveal: it interpolates
-                            // between position samples so the head glides
-                            // instead of ticking. Any easing would make the
-                            // head run ahead of, then lag behind, where the
-                            // track actually is between samples. Do not
-                            // "fix" this to Motion.easeStandard.
-                            Behavior on drawF {
-                                enabled: Math.abs(surface.playFrac - wave.lastFrac) < 0.02 && !Flags.reduceMotion
-                                NumberAnimation { duration: Math.round(500 * Motion.mult); easing.type: Easing.Linear }
-                            }
-                            onTargetFChanged: Qt.callLater(() => { wave.lastFrac = surface.playFrac; })
-                            onDrawFChanged: requestPaint()
-                            onWidthChanged: requestPaint()
-                            onVisibleChanged: if (visible) requestPaint()
-
-                            function waveY(u) {
-                                return height / 2 - 2.6 * Math.sin(3 * Math.PI * u) * Math.exp(-2.5 * u) * surface.s;
-                            }
-
-                            onPaint: {
-                                const ctx = getContext("2d");
-                                ctx.reset();
-                                if (width <= 0 || height <= 0)
-                                    return;
-                                if (drawF <= 0.002)
-                                    return;
-                                const n = 48;
-                                const hTail = 2.5 * surface.s;
-                                const hHead = 1.75 * surface.s;
-                                const m = Math.max(2, Math.ceil(n * drawF));
-                                ctx.fillStyle = Colors.primary;
-                                ctx.beginPath();
-                                ctx.arc(inset, waveY(0), hTail, Math.PI / 2, 3 * Math.PI / 2);
-                                for (let i = 0; i <= m; i++) {
-                                    const u = (i / m) * drawF;
-                                    ctx.lineTo(inset + u * usable, waveY(u) - (hTail + (hHead - hTail) * (i / m)));
-                                }
-                                ctx.arc(headX, headY, hHead, -Math.PI / 2, Math.PI / 2);
-                                for (let i = m; i >= 0; i--) {
-                                    const u = (i / m) * drawF;
-                                    ctx.lineTo(inset + u * usable, waveY(u) + (hTail + (hHead - hTail) * (i / m)));
-                                }
-                                ctx.closePath();
-                                ctx.fill();
-                            }
+                            s: surface.s
+                            frac: surface.playFrac
+                            paper: Colors.surface_container
+                            wet: np.playing ? 1 : 0
+                            glide: !Flags.reduceMotion
                         }
                     }
 
@@ -1553,10 +1505,8 @@ Item {
                 anchors.rightMargin: 16 * surface.s
                 width: 28 * surface.s
                 height: 26 * surface.s
-                radius: Motion.rSmall * surface.s
-                color: Qt.alpha(Colors.on_surface, 0.09)
-                border.width: 1
-                border.color: Qt.alpha(Colors.outline_variant, 0.7)
+                // Bare glyph: no cap fill or border, the kanji stands alone.
+                color: "transparent"
 
                 opacity: (input.text.length > 0 && !surface.busy) ? 1 : 0
                 visible: opacity > 0.01
@@ -1581,7 +1531,7 @@ Item {
                     text: "開"
                     color: Colors.on_surface_variant
                     font.family: Appearance.font.jp
-                    font.pixelSize: 13 * surface.s
+                    font.pixelSize: 15 * surface.s
                     font.weight: Font.DemiBold
                 }
             }

@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
 import "../colors"
 import "../services"
 import "../config"
@@ -40,7 +39,8 @@ Item {
 
     readonly property real rowH: 26 * pick.s
     readonly property real gap: 4 * pick.s
-    readonly property real listH: pick.open ? Math.min(options.length * 24 * pick.s + 4 * pick.s, 150 * pick.s) : 0
+    /** True while the menu is open or still animating closed — hosts key their z-raise on this. */
+    readonly property bool showing: menu.showing
 
     width: parent ? parent.width : 0
     // Height is always one row: the open panel overlays the rows below (it is
@@ -125,98 +125,17 @@ Item {
         }
     }
 
-    /**
-     * Shadow caster kept separate from the panel. A layer that holds the
-     * option text would rasterise the glyphs to an offscreen texture and
-     * soften them, so the shadow lives on this textless backing rect and the
-     * panel above stays unlayered with crisp digits. Its own face hides behind
-     * the opaque panel, only the shadow halo bleeds out.
-     */
-    Rectangle {
-        anchors.fill: panel
-        visible: pick.open
-        radius: panel.radius
-        color: Colors.surface_container
-        layer.enabled: true
-        layer.effect: MultiEffect {
-            shadowEnabled: true
-            shadowColor: Colors.shadow
-            shadowBlur: 0.6
-            shadowVerticalOffset: 4 * pick.s
-        }
-    }
-
-    Rectangle {
-        id: panel
+    DropMenu {
+        id: menu
         anchors.top: head.bottom
-        anchors.topMargin: pick.open ? pick.gap : 0
+        anchors.topMargin: pick.gap
         anchors.left: parent.left
         anchors.leftMargin: 72 * pick.s
         anchors.right: parent.right
-        height: pick.listH
-        visible: pick.open
-        clip: true
-        radius: 9 * pick.s
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: Colors.surface_container_high }
-            GradientStop { position: 1.0; color: Colors.surface_container }
-        }
-        border.width: 1
-        border.color: Qt.alpha(Colors.on_surface, 0.09)
-
-        ListView {
-            anchors.fill: parent
-            anchors.margins: 2 * pick.s
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            model: pick.options
-
-            delegate: Rectangle {
-                id: optRow
-                required property var modelData
-                readonly property bool current: pick.value === modelData.value
-
-                width: ListView.view.width
-                height: 24 * pick.s
-                radius: 7 * pick.s
-                color: optHover.hovered ? Colors.surface_container_highest
-                    : (optRow.current ? Qt.alpha(Colors.primary, 0.16) : "transparent")
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                scale: optArea.pressed ? 0.96 : 1
-                Behavior on scale {
-                    NumberAnimation {
-                        duration: Motion.glide
-                        easing.type: Motion.easeBezier
-                        easing.bezierCurve: Motion.expressiveFastSpatial
-                    }
-                }
-
-                Accessible.role: Accessible.ListItem
-                Accessible.name: optRow.modelData.label
-                Accessible.checkable: true
-                Accessible.checked: optRow.current
-                Accessible.onPressAction: optArea.clicked(null)
-
-                HoverHandler { id: optHover }
-
-                DisplayLabel {
-                    anchors.left: parent.left
-                    anchors.leftMargin: 9 * pick.s
-                    anchors.verticalCenter: parent.verticalCenter
-                    s: pick.s
-                    text: optRow.modelData.label
-                    color: optRow.current ? Colors.on_surface : Colors.on_surface_variant
-                    weight: optRow.current ? Font.Bold : Font.Medium
-                }
-
-                MouseArea {
-                    id: optArea
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: pick.picked(optRow.modelData.value)
-                }
-            }
-        }
+        s: pick.s
+        open: pick.open
+        options: pick.options
+        isCurrent: (o) => o.value === pick.value
+        onPicked: (o) => pick.picked(o.value)
     }
 }

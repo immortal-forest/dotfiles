@@ -93,6 +93,7 @@ Item {
      * that moves focus sets it.
      */
     property bool focusFromKeyboard: false
+    property bool pointerFocusing: false
 
     activeFocusOnTab: enabled
     Accessible.role: layer.accessibleRole
@@ -175,7 +176,12 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onPressed: layer.focusFromKeyboard = false
         onClicked: {
+            // By release `pressed` is already false, so without this guard
+            // onActiveFocusChanged below took the click's own focus grab for
+            // keyboard focus and drew the ring around every clicked switch.
+            layer.pointerFocusing = true;
             layer.forceActiveFocus();
+            layer.pointerFocusing = false;
             layer.clicked();
         }
         onPressAndHold: layer.pressAndHold()
@@ -192,5 +198,5 @@ Item {
         }
     }
     // Anything that MOVED focus here came from the keyboard, so the ring shows.
-    onActiveFocusChanged: if (activeFocus && !area.pressed) layer.focusFromKeyboard = true
+    onActiveFocusChanged: if (activeFocus && !area.pressed && !layer.pointerFocusing) layer.focusFromKeyboard = true
 }

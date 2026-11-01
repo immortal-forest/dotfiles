@@ -20,3 +20,6 @@ Toast 1.0 Toast.qml
 Tooltip 1.0 Tooltip.qml
 Tray 1.0 Tray.qml
 Workspaces 1.0 Workspaces.qml
+WifiSignal 1.0 WifiSignal.qml
+InkStroke 1.0 InkStroke.qml
+DropMenu 1.0 DropMenu.qml

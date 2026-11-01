@@ -71,7 +71,7 @@ Item {
 
     Accessible.role: Accessible.StaticText
     Accessible.name: root.notif ? root.notif.summary : ""
-    Accessible.description: root.notif ? root.notif.body : ""
+    Accessible.description: root.notif ? Notifications.plainBody(root.notif.body) : ""
 
     Rectangle {
         id: iconTile
@@ -215,7 +215,7 @@ Item {
         Text {
             width: parent.width
             visible: root.notif ? root.notif.body.length > 0 : false
-            text: root.notif ? root.notif.body : ""
+            text: root.notif ? Notifications.plainBody(root.notif.body) : ""
             color: Colors.on_surface_variant
             font.family: Appearance.font.family
             font.pixelSize: 10.5 * root.s

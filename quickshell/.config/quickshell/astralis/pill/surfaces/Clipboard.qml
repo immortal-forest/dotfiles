@@ -10,7 +10,7 @@ import "../../config"
 
 /**
  * astralis — clipboard history surface (Ricelin Clipboard.qml layout). The 控
- * search field (with the hold-to-wipe 掃 glyph on its right) over a hairline
+ * search field (with the hold-to-wipe trash glyph on its right) over a hairline
  * divider and the cliphist list. Image entries render their cached thumbnail
  * beside a type/size label; text entries render as text. Enter/click copies
  * the entry back to the clipboard via cliphist decode | wl-copy and closes;
@@ -260,12 +260,11 @@ PillSurface {
             Accessible.description: "Hold to confirm — this will delete all clipboard history"
             Accessible.focusable: true
 
-            Text {
-                anchors.centerIn: parent
-                text: "掃"
+            GlyphIcon {
+                anchors.fill: parent
+                name: "trash"
+                stroke: 1.7
                 color: wipeBtn.tone
-                font.family: Appearance.font.jp
-                font.pixelSize: 12 * root.s
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
 
@@ -296,7 +295,7 @@ PillSurface {
         height: 1
         color: Qt.alpha(Colors.on_surface, 0.06)
 
-        // wipe heat sweeps along the divider while 掃 is held
+        // wipe heat sweeps along the divider while the wipe glyph is held
         Rectangle {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
@@ -445,7 +444,6 @@ PillSurface {
                     anchors.rightMargin: sizeTag.text.length > 0 ? 8 * root.s : 0
                     anchors.verticalCenter: parent.verticalCenter
                     text: row.entry !== undefined && row.entry.isImage ? row.entry.sizeLabel : ""
-                    width: text.length ? implicitWidth : 0
                     color: Qt.alpha(Colors.on_surface_variant, 0.65)
                     font.family: Appearance.font.family
                     font.pixelSize: 10.5 * root.s
@@ -456,8 +454,10 @@ PillSurface {
                     id: tail
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(ret.implicitWidth, dismiss.implicitWidth)
-                    height: Math.max(ret.implicitHeight, dismiss.implicitHeight)
+                    // Fixed: GlyphIcon has no implicit size, so sizing off it
+                    // collapsed the tail to 0 and the glyphs drew over sizeTag.
+                    width: 14 * root.s
+                    height: 14 * root.s
 
                     // GlyphIcon, not the "↵" and "✕" characters these used to
                     // be. A Unicode symbol borrowed from the UI font renders at

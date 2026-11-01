@@ -50,4 +50,28 @@ Singleton {
             return h + "h " + m + "m";
         return m + "m";
     }
+
+    /**
+     * Charge history for the dashboard curve: one {pct, chg} sample a minute,
+     * the last 3 h. Recorded from shell start, so it begins empty after a
+     * relaunch.
+     */
+    readonly property int histLen: 180
+    property var hist: []
+    function sample() {
+        if (!present)
+            return;
+        var h = hist.slice();
+        h.push({ pct: pct, chg: charging });
+        if (h.length > histLen)
+            h.shift();
+        hist = h;
+    }
+    onPresentChanged: if (present && hist.length === 0) sample()
+    Timer {
+        interval: 60000
+        running: root.present
+        repeat: true
+        onTriggered: root.sample()
+    }
 }
