@@ -8,6 +8,7 @@ import Quickshell.Hyprland
 import Quickshell.Services.Pipewire
 import "services"
 import "modules/nowplaying"
+import "modules/depth"
 import "config"
 import "pill"
 import "modules/visualizer"
@@ -399,6 +400,10 @@ ShellRoot {
     NowPlaying {
         onRequestSettings: root.settingsOpen = true
     }
+
+    // ── depth clock: desktop clock tucked behind the wallpaper's foreground ──
+    // (services/WallpaperDepth.qml cuts the scene out; `ipc call depth ...`)
+    Depth {}
 
     // ── lockscreen: real WlSessionLock + PAM (lock/Lock.qml) ───────────────
     // Driven by logind: `loginctl lock-session` (powermenu Lock tile, idle

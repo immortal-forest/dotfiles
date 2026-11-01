@@ -9,11 +9,12 @@ import "../../services"
 import "../../pill"
 
 /**
- * astralis — desktop-widget placer. A full-screen overlay (one per screen)
+ * astralis — desktop-widget placer (cover, lyrics, depth clock). A full-screen overlay (one per screen)
  * opened from Settings › Widgets: a light scrim with a snap grid and one
  * bracketed frame per desktop widget. Drag a frame to move it, drag its
  * corner to resize (the cover stays square); the real widget follows live
- * underneath.
+ * underneath. With "No overlap" on (Widgets.avoid), a dragged frame slides
+ * around the other visible widgets and a resize stops at their edge.
  *
  * The controls are one small dock (drag it anywhere; the chevron folds it to
  * a single 景 bead). H hides every bit of editor chrome to preview the real
@@ -33,7 +34,7 @@ PanelWindow {
     property bool chrome: true
     /** Dock folded to a bead. */
     property bool folded: false
-    property bool anyBusy: coverFrame.busy || lyricsFrame.busy
+    property bool anyBusy: coverFrame.busy || lyricsFrame.busy || depthFrame.busy
 
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Overlay
@@ -45,6 +46,84 @@ PanelWindow {
     function snap(v) {
         return win.cell > 0 ? Math.round(v / win.cell) * win.cell : v;
     }
+    // ── anti-collision (Widgets.avoid) ────────────────────────────────────
+    readonly property var keys: ["cover", "lyrics", "depth"]
+    readonly property real gap: 10 * win.s
+    /** A widget's on-screen box in px (the cover is square). */
+    function rectOf(k) {
+        var c = Widgets[k];
+        return { x: c.x * win.sw, y: c.y * win.sh, w: c.w * win.sw, h: k === "cover" ? c.w * win.sw : c.h * win.sh };
+    }
+    function hits(a, r) {
+        return a.x < r.x + r.w + win.gap && a.x + a.w + win.gap > r.x
+            && a.y < r.y + r.h + win.gap && a.y + a.h + win.gap > r.y;
+    }
+    function collides(key, x, y, w, h) {
+        if (!Widgets.avoid)
+            return false;
+        for (var i = 0; i < win.keys.length; i++) {
+            var k = win.keys[i];
+            if (k !== key && Widgets[k].on && win.hits({ x: x, y: y, w: w, h: h }, win.rectOf(k)))
+                return true;
+        }
+        return false;
+    }
+    /** Slide a moved box out of every visible neighbour, the shortest way that stays on screen. */
+    function resolveMove(key, x, y, w, h) {
+        if (!Widgets.avoid)
+            return { x: x, y: y };
+        for (var it = 0; it < 4; it++) {
+            var moved = false;
+            for (var i = 0; i < win.keys.length; i++) {
+                var k = win.keys[i];
+                if (k === key || !Widgets[k].on)
+                    continue;
+                var r = win.rectOf(k);
+                if (!win.hits({ x: x, y: y, w: w, h: h }, r))
+                    continue;
+                var cx = x, cy = y;
+                var cands = [
+                    { x: r.x - w - win.gap, y: cy }, { x: r.x + r.w + win.gap, y: cy },
+                    { x: cx, y: r.y - h - win.gap }, { x: cx, y: r.y + r.h + win.gap }
+                ].filter(c => c.x >= 0 && c.y >= 0 && c.x + w <= win.sw && c.y + h <= win.sh);
+                if (cands.length === 0)
+                    continue;
+                cands.sort((a, b) => (Math.abs(a.x - cx) + Math.abs(a.y - cy)) - (Math.abs(b.x - cx) + Math.abs(b.y - cy)));
+                x = cands[0].x;
+                y = cands[0].y;
+                moved = true;
+            }
+            if (!moved)
+                break;
+        }
+        return { x: x, y: y };
+    }
+    /** Stop a growing box at the neighbour edge to its right / below. */
+    function resolveSize(key, x, y, w, h, square) {
+        if (!Widgets.avoid)
+            return { w: w, h: h };
+        for (var i = 0; i < win.keys.length; i++) {
+            var k = win.keys[i];
+            if (k === key || !Widgets[k].on)
+                continue;
+            var r = win.rectOf(k);
+            if (!win.hits({ x: x, y: y, w: w, h: h }, r))
+                continue;
+            var cw = r.x - win.gap - x;   // shrink width to clear it
+            var ch = r.y - win.gap - y;   // or height
+            var okW = cw > 0, okH = ch > 0;
+            if (square) {
+                var m = Math.max(okW ? cw : 0, okH ? ch : 0);
+                if (m > 0) { w = m; h = m; }
+            } else if (okW && (!okH || cw * h >= w * ch)) {
+                w = cw;
+            } else if (okH) {
+                h = ch;
+            }
+        }
+        return { w: w, h: h };
+    }
+
     function cycleGrid() {
         var i = win.grids.indexOf(Widgets.grid);
         Widgets.set("grid", win.grids[(i + 1) % win.grids.length]);
@@ -146,13 +225,18 @@ PanelWindow {
                 Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
                 function commit() {
+                    var sx = win.snap(fr.lx), sy = win.snap(fr.ly), sw2 = win.snap(fr.lw), sh2 = fr.square ? sw2 : win.snap(fr.lh);
+                    // Snapping can push a box back into a neighbour — keep the exact spot then.
+                    if (win.collides(fr.key, sx, sy, sw2, sh2)) {
+                        sx = fr.lx; sy = fr.ly; sw2 = fr.lw; sh2 = fr.lh;
+                    }
                     var o = {
-                        x: Math.max(0, Math.min(1, win.snap(fr.lx) / win.sw)),
-                        y: Math.max(0, Math.min(1, win.snap(fr.ly) / win.sh)),
-                        w: Math.max(0.04, win.snap(fr.lw) / win.sw)
+                        x: Math.max(0, Math.min(1, sx / win.sw)),
+                        y: Math.max(0, Math.min(1, sy / win.sh)),
+                        w: Math.max(0.04, sw2 / win.sw)
                     };
                     if (!fr.square)
-                        o.h = Math.max(0.06, win.snap(fr.lh) / win.sh);
+                        o.h = Math.max(0.06, sh2 / win.sh);
                     Widgets.set(fr.key, o);
                 }
 
@@ -249,8 +333,11 @@ PanelWindow {
                     onTranslationChanged: {
                         if (!active)
                             return;
-                        fr.lx = Math.max(0, Math.min(win.sw - fr.lw, x0 + translation.x));
-                        fr.ly = Math.max(0, Math.min(win.sh - fr.lh, y0 + translation.y));
+                        var p = win.resolveMove(fr.key,
+                            Math.max(0, Math.min(win.sw - fr.lw, x0 + translation.x)),
+                            Math.max(0, Math.min(win.sh - fr.lh, y0 + translation.y)), fr.lw, fr.lh);
+                        fr.lx = p.x;
+                        fr.ly = p.y;
                     }
                 }
                 TapHandler {
@@ -286,14 +373,12 @@ PanelWindow {
                                 return;
                             var minW = 120 * win.s, minH = 90 * win.s;
                             var w = Math.max(minW, Math.min(win.sw - fr.x, w0 + translation.x));
-                            if (fr.square) {
-                                w = Math.min(w, win.sh - fr.y);
-                                fr.lw = w;
-                                fr.lh = w;
-                            } else {
-                                fr.lw = w;
-                                fr.lh = Math.max(minH, Math.min(win.sh - fr.y, h0 + translation.y));
-                            }
+                            var h = fr.square ? Math.min(w, win.sh - fr.y) : Math.max(minH, Math.min(win.sh - fr.y, h0 + translation.y));
+                            if (fr.square)
+                                w = h;
+                            var z = win.resolveSize(fr.key, fr.lx, fr.ly, w, h, fr.square);
+                            fr.lw = Math.max(minW, z.w);
+                            fr.lh = fr.square ? fr.lw : Math.max(minH, z.h);
                         }
                     }
                 }
@@ -311,6 +396,12 @@ PanelWindow {
                 key: "lyrics"
                 label: "Lyrics"
                 icon: "type"
+            }
+            Frame {
+                id: depthFrame
+                key: "depth"
+                label: "Depth clock"
+                icon: "clock"
             }
 
             // ── dock ────────────────────────────────────────────────────────
@@ -420,6 +511,11 @@ PanelWindow {
                         tip: Widgets.lyrics.on ? "Hide lyrics" : "Show lyrics"
                         onClicked: Widgets.set("lyrics", "on", !Widgets.lyrics.on)
                     }
+                    Btn {
+                        icon: "clock"; on: Widgets.depth.on
+                        tip: Widgets.depth.on ? "Hide depth clock" : "Show depth clock"
+                        onClicked: Widgets.set("depth", "on", !Widgets.depth.on)
+                    }
                     Sep {}
                     Btn {
                         label: Widgets.grid > 0 ? "#" + Widgets.grid : "#"
@@ -427,6 +523,12 @@ PanelWindow {
                         tip: "Snap grid"
                         tipDesc: Widgets.grid > 0 ? Widgets.grid + " columns · G cycles" : "Off · G cycles"
                         onClicked: win.cycleGrid()
+                    }
+                    Btn {
+                        icon: "app-window"; on: Widgets.avoid
+                        tip: "No overlap"
+                        tipDesc: Widgets.avoid ? "On · widgets slide around each other" : "Off · widgets may overlap"
+                        onClicked: Widgets.set("avoid", !Widgets.avoid)
                     }
                     Btn { icon: "undo"; tip: "Reset layout"; onClicked: Widgets.reset() }
                     Btn { icon: "cog"; tip: "Widget settings"; onClicked: Widgets.openSettings() }

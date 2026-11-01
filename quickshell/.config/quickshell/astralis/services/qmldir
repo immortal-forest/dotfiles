@@ -14,6 +14,7 @@ singleton ScreenRec ScreenRec.qml
 singleton Settings Settings.qml
 singleton Sysmon Sysmon.qml
 singleton Wallpaper Wallpaper.qml
+singleton WallpaperDepth WallpaperDepth.qml
 singleton Weather Weather.qml
 singleton Workspacerules Workspacerules.qml
 singleton Udev Udev.qml
