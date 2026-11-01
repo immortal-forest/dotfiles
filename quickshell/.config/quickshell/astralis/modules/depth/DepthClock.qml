@@ -1,5 +1,8 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import "../../colors"
@@ -14,10 +17,14 @@ import "../../services"
  * of the numerals.
  *
  * Geometry is a box like the other desktop widgets (Widgets.depth x/y/w/h as
- * screen fractions) — placed and resized in the widget placer; the numerals
- * auto-fit the box. The window is exactly the box and the screen-sized cut-out
- * is drawn at the window's negative offset and clipped, so it never paints over
- * the other Bottom-layer widgets. Fully click-through.
+ * screen fractions) — placed and resized in the widget placer; the clock
+ * auto-fits the box. Style (Settings › Widgets › Depth clock): layout
+ * classic / stacked / date-below, own font, solid / outline / gradient fill,
+ * colours, weight, letter spacing, date format + size, 12/24 h.
+ *
+ * The window is exactly the box and the screen-sized cut-out is drawn at the
+ * window's negative offset and clipped, so it never paints over the other
+ * Bottom-layer widgets. Fully click-through.
  */
 PanelWindow {
     id: win
@@ -56,29 +63,167 @@ PanelWindow {
         precision: SystemClock.Minutes
     }
 
+    // ── style ───────────────────────────────────────────────────────────────
+    readonly property string family: cfg.font.length > 0 ? cfg.font : Appearance.font.family
+    readonly property bool stacked: cfg.layout === "stacked"
+    readonly property bool h12: cfg.hour === "12" || (cfg.hour === "auto" && Flags.time12h)
+    readonly property var lines: {
+        var d = clock.date;
+        if (stacked)
+            return [Qt.formatTime(d, h12 ? "hh" : "HH"), Qt.formatTime(d, "mm")];
+        return [Qt.formatTime(d, h12 ? "h:mm" : "HH:mm")];
+    }
+    readonly property bool dateOn: cfg.dateFormat !== "off"
+    readonly property string dateText: Qt.formatDate(clock.date, cfg.dateFormat === "short" ? "ddd d MMM" : "dddd, d MMMM")
+    readonly property real track: cfg.tracking / 100
+    readonly property real dateRatio: cfg.dateSize / 100
+    /** Stacked lines overlap their empty ascent/descent space by this much (× size). */
+    readonly property real stackGap: 0.38
+    readonly property real dateGap: -0.08
+    readonly property color ink: Colors[cfg.color] ?? Colors.primary
+    readonly property color ink2: Colors[cfg.color2] ?? Colors.tertiary
+    readonly property color dateInk: Colors[cfg.dateColor] ?? Colors.on_surface
+
     // ── fit: the largest time size whose block fits the box ─────────────────
     // Measured at 100 px on a fixed widest sample, so the size does not jump
     // when the hour gains a digit.
     TextMetrics {
         id: tmTime
-        font.family: Appearance.font.family
+        font.family: win.family
         font.weight: win.cfg.weight
         font.pixelSize: 100
-        text: "00:00"
+        text: win.stacked ? "00" : "00:00"
     }
     FontMetrics {
         id: fm
-        font.family: Appearance.font.family
+        font.family: win.family
         font.weight: win.cfg.weight
         font.pixelSize: 100
     }
-    readonly property real trackRatio: -0.03
-    readonly property real dateRatio: 0.16
-    readonly property real wPer: tmTime.advanceWidth / 100 + 5 * trackRatio
-    readonly property real hPer: fm.height / 100 * (1 + (cfg.date ? dateRatio : 0)) + (cfg.date ? -0.06 : 0)
+    TextMetrics {
+        id: tmDate
+        font.family: Appearance.font.family
+        font.weight: Font.DemiBold
+        font.pixelSize: 100
+        text: win.dateText
+    }
+    readonly property real nChars: stacked ? 2 : 5
+    readonly property real wPer: Math.max(tmTime.advanceWidth / 100 + nChars * track,
+                                          dateOn ? tmDate.advanceWidth / 100 * dateRatio : 0)
+    readonly property real lineH: fm.height / 100
+    readonly property real hPer: (stacked ? 2 * lineH - stackGap : lineH)
+                               + (dateOn ? tmDate.height / 100 * dateRatio + dateGap : 0)
     readonly property int px: Math.max(16, Math.floor(Math.min(boxW * 0.96 / Math.max(0.1, wPer), boxH / Math.max(0.1, hPer))))
 
-    readonly property color ink: Colors[cfg.color] ?? Colors.primary
+    // One line of the time, in any fill.
+    component TimeLine: Item {
+        id: tl
+        property string text: ""
+        readonly property font face: Qt.font({
+            family: win.family, pixelSize: win.px, weight: win.cfg.weight,
+            letterSpacing: win.px * win.track, features: { "tnum": 1 }
+        })
+        implicitWidth: solid.implicitWidth
+        implicitHeight: solid.implicitHeight
+
+        Text {
+            id: solid
+            text: tl.text
+            font: tl.face
+            color: win.ink
+            visible: win.cfg.fill === "solid"
+        }
+
+        // Glyph mask for gradient + outline: the white glyphs on a canvas padded
+        // by `pad` on every side (an outer stroke reaches past the text box).
+        readonly property real pad: Math.ceil(win.px * 0.05)
+        readonly property real stroke: Math.max(1.5, win.px * 0.024)
+        Item {
+            id: glyphMask
+            anchors.fill: solid
+            anchors.margins: -tl.pad
+            visible: false
+            layer.enabled: win.cfg.fill !== "solid"
+            Text {
+                x: tl.pad
+                y: tl.pad
+                text: tl.text
+                font: tl.face
+                color: "white"
+            }
+        }
+
+        // Gradient: the glyphs mask a vertical ink → ink2 ramp.
+        Rectangle {
+            anchors.fill: glyphMask
+            visible: win.cfg.fill === "gradient"
+            gradient: Gradient {
+                GradientStop { position: 0.2; color: win.ink }
+                GradientStop { position: 0.85; color: win.ink2 }
+            }
+            layer.enabled: visible
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskSource: glyphMask
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1
+            }
+        }
+
+        // Outline: the glyph path stroked at 2x width, then the solid glyphs
+        // masked OUT. Leaves a clean outer ring and hides the inner overlap
+        // contours variable fonts carry (they would show as stray strokes).
+        // PathText puts its x/y at the glyphs' tight top-left, so offset it by
+        // the tight bounds to line up with the Text (baseline = ascent).
+        TextMetrics {
+            id: tight
+            font: tl.face
+            text: tl.text
+        }
+        FontMetrics {
+            id: lineFm
+            font: tl.face
+        }
+        Shape {
+            anchors.fill: glyphMask
+            visible: win.cfg.fill === "outline"
+            preferredRendererType: Shape.CurveRenderer
+            layer.enabled: visible
+            layer.effect: MultiEffect {
+                maskEnabled: true
+                maskInverted: true
+                maskSource: glyphMask
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1
+            }
+            ShapePath {
+                strokeColor: win.ink
+                strokeWidth: tl.stroke * 2
+                fillColor: "transparent"
+                joinStyle: ShapePath.RoundJoin
+                PathText {
+                    x: tl.pad + tight.tightBoundingRect.x
+                    y: tl.pad + lineFm.ascent + tight.tightBoundingRect.y
+                    text: tl.text
+                    font: tl.face
+                }
+            }
+        }
+    }
+
+    component DateLine: Text {
+        anchors.left: win.cfg.align === "left" ? parent?.left : undefined
+        anchors.right: win.cfg.align === "right" ? parent?.right : undefined
+        anchors.horizontalCenter: win.cfg.align === "center" ? parent?.horizontalCenter : undefined
+        anchors.leftMargin: win.px * 0.04
+        anchors.rightMargin: win.px * 0.04
+        text: win.dateText
+        color: win.dateInk
+        font.family: Appearance.font.family
+        font.pixelSize: Math.max(8, Math.round(win.px * win.dateRatio))
+        font.weight: Font.DemiBold
+        font.letterSpacing: Math.max(8, Math.round(win.px * win.dateRatio)) * 0.04
+    }
 
     Item {
         anchors.fill: parent
@@ -86,43 +231,36 @@ PanelWindow {
 
         Column {
             id: face
-            readonly property real gap: win.cfg.align === "left" || win.cfg.align === "right" ? win.px * 0.02 : 0
+            readonly property real gap: win.cfg.align === "center" ? 0 : win.px * 0.02
             x: win.cfg.align === "left" ? gap
              : win.cfg.align === "right" ? parent.width - width - gap
              : Math.round((parent.width - width) / 2)
             y: Math.round((parent.height - height) / 2)
-            spacing: Math.round(-0.06 * win.px)
+            spacing: Math.round(win.px * win.dateGap)
             opacity: win.cfg.opacity
 
-            Text {
-                id: date
-                visible: win.cfg.date
+            DateLine { visible: win.dateOn && win.cfg.layout !== "below" }
+
+            Column {
+                id: timeCol
                 anchors.left: win.cfg.align === "left" ? parent.left : undefined
                 anchors.right: win.cfg.align === "right" ? parent.right : undefined
                 anchors.horizontalCenter: win.cfg.align === "center" ? parent.horizontalCenter : undefined
-                anchors.leftMargin: win.px * 0.04
-                anchors.rightMargin: win.px * 0.04
-                text: Qt.formatDate(clock.date, "dddd, d MMMM")
-                color: Colors.on_surface
-                font.family: Appearance.font.family
-                font.pixelSize: Math.round(win.px * win.dateRatio)
-                font.weight: Font.DemiBold
-                font.letterSpacing: Math.round(win.px * win.dateRatio) * 0.04
+                spacing: -Math.round(win.px * win.stackGap)
+
+                Repeater {
+                    model: win.lines
+                    TimeLine {
+                        required property string modelData
+                        text: modelData
+                        anchors.left: win.cfg.align === "left" ? parent?.left : undefined
+                        anchors.right: win.cfg.align === "right" ? parent?.right : undefined
+                        anchors.horizontalCenter: win.cfg.align === "center" ? parent?.horizontalCenter : undefined
+                    }
+                }
             }
 
-            Text {
-                id: time
-                anchors.left: win.cfg.align === "left" ? parent.left : undefined
-                anchors.right: win.cfg.align === "right" ? parent.right : undefined
-                anchors.horizontalCenter: win.cfg.align === "center" ? parent.horizontalCenter : undefined
-                text: Qt.formatTime(clock.date, Flags.time12h ? "h:mm" : "HH:mm")
-                color: win.ink
-                font.family: Appearance.font.family
-                font.pixelSize: win.px
-                font.weight: win.cfg.weight
-                font.letterSpacing: win.px * win.trackRatio
-                font.features: { "tnum": 1 }
-            }
+            DateLine { visible: win.dateOn && win.cfg.layout === "below" }
 
             layer.enabled: win.cfg.shadow
             layer.effect: MultiEffect {

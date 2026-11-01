@@ -41,6 +41,14 @@ SettingsPage {
 
     /** Deduped, sorted, curated family names; filled once per session. */
     property var families: []
+    /**
+     * "ui" picks Flags.uiFont; "clock" picks the depth clock's face
+     * (Widgets.depth.font). Both offer the same curated uiSafeFamilies.
+     */
+    property string mode: "ui"
+    readonly property bool clockMode: mode === "clock"
+    /** The live pick for this mode ("" = the fallback/reset entry). */
+    readonly property string current: clockMode ? Widgets.depth.font : Flags.uiFont
     property string query: ""
     property int focusIndex: 0
 
@@ -51,7 +59,9 @@ SettingsPage {
      */
     property point lastPointer: Qt.point(-1, -1)
 
-    readonly property string resetLabel: "System default (" + Appearance.font.familyDefault + ")"
+    readonly property string resetLabel: clockMode
+        ? "Shell font (" + Appearance.font.family + ")"
+        : "System default (" + Appearance.font.familyDefault + ")"
 
     /**
      * The only families the picker will ever offer as `Flags.uiFont`. Every
@@ -92,11 +102,16 @@ SettingsPage {
             if (e && !e.reset && e.family.length > 0)
                 return e.family;
         }
-        return Flags.uiFont.length > 0 ? Flags.uiFont : Appearance.font.familyDefault;
+        if (root.current.length > 0)
+            return root.current;
+        return root.clockMode ? Appearance.font.family : Appearance.font.familyDefault;
     }
 
     function pick(family) {
-        Flags.uiFont = family;
+        if (root.clockMode)
+            Widgets.set("depth", "font", family);
+        else
+            Flags.uiFont = family;
     }
 
     /** Slide the keyboard highlight by dir (+1 down, -1 up), clamped and kept in view. */
@@ -158,7 +173,7 @@ SettingsPage {
         anchors.top: parent.top
         s: root.s
         glyph: "字"
-        title: "FONT"
+        title: root.clockMode ? "CLOCK FONT" : "FONT"
         showBack: true
         onBack: root.back()
     }
@@ -203,7 +218,7 @@ SettingsPage {
             anchors.right: parent.right
             anchors.rightMargin: 12 * root.s
             anchors.verticalCenter: parent.verticalCenter
-            text: "Aa Bb Cc 0123 — the quick brown fox"
+            text: root.clockMode ? "12:34  09:58 — Monday, 2 November" : "Aa Bb Cc 0123 — the quick brown fox"
             color: Colors.on_surface_variant
             font.family: root.previewFamily
             font.pixelSize: 13 * root.s
@@ -238,8 +253,8 @@ SettingsPage {
 
             readonly property bool isReset: frow.modelData.reset === true
             readonly property bool selected: frow.isReset
-                ? Flags.uiFont.length === 0
-                : Flags.uiFont === frow.modelData.family
+                ? root.current.length === 0
+                : root.current === frow.modelData.family
             readonly property bool focused: root.focusIndex === frow.index
 
             width: ListView.view.width

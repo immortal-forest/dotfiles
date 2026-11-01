@@ -34,6 +34,18 @@ SettingsPage {
         { label: "Accent", value: "primary" }, { label: "Tertiary", value: "tertiary" },
         { label: "Secondary", value: "secondary" }, { label: "Light", value: "on_surface" }
     ]
+    readonly property var layoutOptions: [
+        { label: "Classic", value: "classic" }, { label: "Stacked", value: "stacked" }, { label: "Date below", value: "below" }
+    ]
+    readonly property var fillOptions: [
+        { label: "Solid", value: "solid" }, { label: "Outline", value: "outline" }, { label: "Gradient", value: "gradient" }
+    ]
+    readonly property var dateFormatOptions: [
+        { label: "Long", value: "long" }, { label: "Short", value: "short" }, { label: "Off", value: "off" }
+    ]
+    readonly property var hourOptions: [
+        { label: "Auto", value: "auto" }, { label: "24 h", value: "24" }, { label: "12 h", value: "12" }
+    ]
     readonly property var weightOptions: [
         { label: "Light", value: 300 }, { label: "Regular", value: 400 }, { label: "Bold", value: 700 }, { label: "Black", value: 900 }
     ]
@@ -57,10 +69,18 @@ SettingsPage {
         { item: depthCutRow, kind: "toggle", get: function () { return Widgets.depth.cut; }, set: function (v) { Widgets.set("depth", "cut", v); } },
         { item: cutoffRow, kind: "scrub", bump: function (d) { cutoffScrub.bump(d); } },
         { item: featherRow, kind: "scrub", bump: function (d) { featherScrub.bump(d); } },
+        { item: clockLayoutRow, kind: "seg", vals: root.layoutOptions.map(o => o.value), get: function () { return Widgets.depth.layout; }, set: function (v) { Widgets.set("depth", "layout", v); } },
+        { item: clockFontRow, kind: "nav", surface: "clockfont" },
+        { item: clockFillRow, kind: "seg", vals: root.fillOptions.map(o => o.value), get: function () { return Widgets.depth.fill; }, set: function (v) { Widgets.set("depth", "fill", v); } },
         { item: clockColorRow, kind: "seg", vals: root.colorOptions.map(o => o.value), get: function () { return Widgets.depth.color; }, set: function (v) { Widgets.set("depth", "color", v); } },
         { item: clockWeightRow, kind: "seg", vals: root.weightOptions.map(o => o.value), get: function () { return Widgets.depth.weight; }, set: function (v) { Widgets.set("depth", "weight", v); } },
+        { item: clockColor2Row, kind: "seg", vals: root.colorOptions.map(o => o.value), get: function () { return Widgets.depth.color2; }, set: function (v) { Widgets.set("depth", "color2", v); } },
+        { item: clockTrackRow, kind: "scrub", bump: function (d) { clockTrackScrub.bump(d); } },
         { item: clockAlignRow, kind: "seg", vals: root.clockAlignOptions.map(o => o.value), get: function () { return Widgets.depth.align; }, set: function (v) { Widgets.set("depth", "align", v); } },
-        { item: clockDateRow, kind: "toggle", get: function () { return Widgets.depth.date; }, set: function (v) { Widgets.set("depth", "date", v); } },
+        { item: clockDateRow, kind: "seg", vals: root.dateFormatOptions.map(o => o.value), get: function () { return Widgets.depth.dateFormat; }, set: function (v) { Widgets.set("depth", "dateFormat", v); } },
+        { item: clockDateColorRow, kind: "seg", vals: root.colorOptions.map(o => o.value), get: function () { return Widgets.depth.dateColor; }, set: function (v) { Widgets.set("depth", "dateColor", v); } },
+        { item: clockDateSizeRow, kind: "scrub", bump: function (d) { clockDateSizeScrub.bump(d); } },
+        { item: clockHourRow, kind: "seg", vals: root.hourOptions.map(o => o.value), get: function () { return Widgets.depth.hour; }, set: function (v) { Widgets.set("depth", "hour", v); } },
         { item: clockShadowRow, kind: "toggle", get: function () { return Widgets.depth.shadow; }, set: function (v) { Widgets.set("depth", "shadow", v); } },
         { item: clockOpacityRow, kind: "scrub", bump: function (d) { clockOpacityScrub.bump(d); } }
     ]
@@ -403,6 +423,53 @@ SettingsPage {
                 }
             }
             SettingsRow {
+                id: clockLayoutRow
+                surface: root
+                name: "Layout"
+                sub: "Stacked puts hours over minutes"
+                captionOnFocus: true
+                icon: "app-window"
+                visible: Widgets.depth.on
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.layoutOptions
+                    value: Widgets.depth.layout
+                    onPicked: (v) => Widgets.set("depth", "layout", v)
+                }
+            }
+            SettingsRow {
+                id: clockFontRow
+                surface: root
+                name: "Font"
+                icon: "type"
+                sub: Widgets.depth.font.length > 0 ? Widgets.depth.font : "Shell font (" + Appearance.font.family + ")"
+                visible: Widgets.depth.on
+
+                GlyphIcon {
+                    width: 16 * root.s
+                    height: 16 * root.s
+                    name: "chevron-right"
+                    color: root.focusRowItem === clockFontRow ? Colors.on_surface : Colors.on_surface_variant
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    stroke: 2.2
+                }
+            }
+            SettingsRow {
+                id: clockFillRow
+                surface: root
+                name: "Fill"
+                icon: "sparkles"
+                visible: Widgets.depth.on
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.fillOptions
+                    value: Widgets.depth.fill
+                    onPicked: (v) => Widgets.set("depth", "fill", v)
+                }
+            }
+            SettingsRow {
                 id: clockColorRow
                 surface: root
                 name: "Colour"
@@ -431,6 +498,41 @@ SettingsPage {
                 }
             }
             SettingsRow {
+                id: clockColor2Row
+                surface: root
+                name: "Gradient end"
+                icon: "palette"
+                visible: Widgets.depth.on && Widgets.depth.fill === "gradient"
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.colorOptions
+                    value: Widgets.depth.color2
+                    onPicked: (v) => Widgets.set("depth", "color2", v)
+                }
+            }
+            SettingsRow {
+                id: clockTrackRow
+                surface: root
+                name: "Letter spacing"
+                sub: "Negative pulls the numerals together"
+                captionOnFocus: true
+                icon: "type"
+                visible: Widgets.depth.on
+
+                ScrubValue {
+                    id: clockTrackScrub
+                    s: root.s
+                    value: Widgets.depth.tracking
+                    openValue: -3
+                    from: -15
+                    to: 15
+                    step: 1
+                    unit: "%"
+                    onEdited: v => Widgets.set("depth", "tracking", v)
+                }
+            }
+            SettingsRow {
                 id: clockAlignRow
                 surface: root
                 name: "Alignment"
@@ -449,14 +551,66 @@ SettingsPage {
             SettingsRow {
                 id: clockDateRow
                 surface: root
-                name: "Show date"
+                name: "Date"
                 icon: "clock"
                 visible: Widgets.depth.on
 
-                LinkToggle {
+                SettingsSeg {
                     s: root.s
-                    on: Widgets.depth.date
-                    onToggled: Widgets.set("depth", "date", !Widgets.depth.date)
+                    options: root.dateFormatOptions
+                    value: Widgets.depth.dateFormat
+                    onPicked: (v) => Widgets.set("depth", "dateFormat", v)
+                }
+            }
+            SettingsRow {
+                id: clockDateColorRow
+                surface: root
+                name: "Date colour"
+                icon: "palette"
+                visible: Widgets.depth.on && Widgets.depth.dateFormat !== "off"
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.colorOptions
+                    value: Widgets.depth.dateColor
+                    onPicked: (v) => Widgets.set("depth", "dateColor", v)
+                }
+            }
+            SettingsRow {
+                id: clockDateSizeRow
+                surface: root
+                name: "Date size"
+                sub: "Relative to the time"
+                captionOnFocus: true
+                icon: "type"
+                visible: Widgets.depth.on && Widgets.depth.dateFormat !== "off"
+
+                ScrubValue {
+                    id: clockDateSizeScrub
+                    s: root.s
+                    value: Widgets.depth.dateSize
+                    openValue: 16
+                    from: 8
+                    to: 40
+                    step: 1
+                    unit: "%"
+                    onEdited: v => Widgets.set("depth", "dateSize", v)
+                }
+            }
+            SettingsRow {
+                id: clockHourRow
+                surface: root
+                name: "Hours"
+                sub: "Auto follows the shell's 12/24 h setting"
+                captionOnFocus: true
+                icon: "clock"
+                visible: Widgets.depth.on
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.hourOptions
+                    value: Widgets.depth.hour
+                    onPicked: (v) => Widgets.set("depth", "hour", v)
                 }
             }
             SettingsRow {
