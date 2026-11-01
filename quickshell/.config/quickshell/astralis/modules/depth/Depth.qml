@@ -23,7 +23,19 @@ Scope {
         function resize(w: real, h: real): void { Widgets.set("depth", { w: w, h: h }); }
         function threshold(v: real): void { Widgets.set("depth", "threshold", v); }
         function feather(v: real): void { Widgets.set("depth", "feather", v); }
-        function date(): void { Widgets.set("depth", "date", !Widgets.depth.date); }
+        /** Cycle the date format long → short → off. */
+        function date(): void {
+            var f = ["long", "short", "off"];
+            Widgets.set("depth", "dateFormat", f[(f.indexOf(Widgets.depth.dateFormat) + 1) % f.length]);
+        }
+        /** Set any style key, e.g. `style fill outline`, `style font "Bebas Neue"`, `style weight 900`. */
+        function style(key: string, value: string): void {
+            if (Widgets.depth[key] === undefined || ["x", "y", "w", "h", "on"].indexOf(key) >= 0)
+                return;
+            var cur = Widgets.depth[key];
+            Widgets.set("depth", key, typeof cur === "number" ? Number(value)
+                                    : typeof cur === "boolean" ? value === "true" : value);
+        }
         function regenerate(): void { WallpaperDepth.regenerate(); }
         function status(): string {
             return "status: " + WallpaperDepth.status + (WallpaperDepth.error ? " (" + WallpaperDepth.error + ")" : "")

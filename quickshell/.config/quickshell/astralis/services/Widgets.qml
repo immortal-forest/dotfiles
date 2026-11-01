@@ -30,8 +30,13 @@ Singleton {
         // Depth clock: a box like the others (x, y = top-left, w, h as screen fractions; the
         // numerals auto-fit it). cut = the wallpaper-depth cut-out over it; threshold/feather
         // drive that cut-out (services/WallpaperDepth.qml). color = a Colors role name.
-        depth: { on: true, x: 0.33, y: 0.17, w: 0.34, h: 0.22, date: true, align: "center",
-                 color: "primary", weight: 700, opacity: 1, shadow: true,
+        // Style: layout classic|stacked|below; font "" = shell font; fill solid|outline|gradient
+        // (gradient color → color2); dateFormat long|short|off; dateSize = % of the time size;
+        // hour auto|24|12 (auto follows Flags.time12h); tracking = letter spacing in % of size.
+        depth: { on: true, x: 0.33, y: 0.17, w: 0.34, h: 0.22, align: "center",
+                 layout: "classic", font: "", fill: "solid", color: "primary", color2: "tertiary",
+                 dateColor: "on_surface", dateFormat: "long", dateSize: 16, hour: "auto",
+                 weight: 700, tracking: -3, opacity: 1, shadow: true,
                  cut: true, threshold: 0.3, feather: 0.08 }
     })
 

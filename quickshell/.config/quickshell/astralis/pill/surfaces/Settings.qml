@@ -75,7 +75,7 @@ PillSurface {
 
     // Returning from the font picker (which owns focus for its search field)
     // to any keyboard-navigable page re-claims the focus sink.
-    onPageChanged: if (root.open && root.page !== "fontpicker") Qt.callLater(() => kbNav.forceActiveFocus());
+    onPageChanged: if (root.open && root.page !== "fontpicker" && root.page !== "clockfont") Qt.callLater(() => kbNav.forceActiveFocus());
 
     // ── soul-bead seam: track the focused row on either side ────────────────
     readonly property var seamPage: sidebar.rowFocused ? sidebar
@@ -191,6 +191,7 @@ PillSurface {
         case "updates":    return pgUpdates;
         case "widgets":    return pgWidgets;
         case "fontpicker": return pgFontPicker;
+        case "clockfont":  return pgClockFont;
         default:           return pgAppearance;
         }
     }
@@ -605,6 +606,22 @@ PillSurface {
                 active: root.page === "fontpicker" && root.open
                 onRequestPage: (name) => root.openPage(name)
                 onBack: root.openPage("appearance")
+            }
+        }
+
+        // Same picker in "clock" mode: the depth clock's face, every installed
+        // family. A drill-in of Widgets; back returns there.
+        PageSlot {
+            current: root.page === "clockfont"
+
+            FontPickerPage {
+                id: pgClockFont
+                anchors.fill: parent
+                s: root.s
+                mode: "clock"
+                active: root.page === "clockfont" && root.open
+                onRequestPage: (name) => root.openPage(name)
+                onBack: root.openPage("widgets")
             }
         }
     }
