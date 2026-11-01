@@ -699,6 +699,18 @@ PanelWindow {
                         Stepper { value: panelCard.ly.size; step: 2; from: 14; to: 96; suffix: "px"; onEdited: (v) => Widgets.set("lyrics", "size", v) }
                     }
                     PRow {
+                        name: "Sync offset"
+                        Stepper { value: panelCard.ly.offset; step: 0.05; from: -2; to: 2; decimals: 2; suffix: "s"; onEdited: (v) => Widgets.set("lyrics", "offset", v) }
+                    }
+                    PRow {
+                        name: "Fill"
+                        Seg {
+                            opts: [{ label: "Sweep", value: "sweep" }, { label: "Whole line", value: "line" }]
+                            value: panelCard.ly.fill
+                            onPicked: (v) => Widgets.set("lyrics", "fill", v)
+                        }
+                    }
+                    PRow {
                         name: "Lines around"
                         Seg {
                             opts: [{ label: "Auto", value: 0 }, { label: "1", value: 1 }, { label: "2", value: 2 }, { label: "3", value: 3 }, { label: "4", value: 4 }, { label: "6", value: 6 }]

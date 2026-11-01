@@ -13,7 +13,7 @@ import Quickshell.Io
  * side = w × screen width. Lyrics options: size (px), lines (shown each side
  * of the current one; 0 = as many as fit), spacing (line-gap
  * multiplier), anchor (current line's height fraction), align left|center|right,
- * ink cover|theme|mono (lit-text gradient), roman off|below|replace. `editing` opens the full-screen placer
+ * ink cover|theme|mono (lit-text gradient), roman off|below|replace, offset (s, + = lyrics earlier), fill sweep|line. `editing` opens the full-screen placer
  * (modules/nowplaying/WidgetEditor.qml) on every screen.
  *
  * Same write guard as Flags: never overwrite a file we could not parse.
@@ -25,7 +25,7 @@ Singleton {
         grid: 24,
         cover: { on: true, x: 0.045, y: 0.29, w: 0.16, radius: 1, halo: true, caption: true },
         lyrics: { on: true, x: 0.27, y: 0.2, w: 0.45, h: 0.6, size: 38, spacing: 1, anchor: 0.42, lines: 0, align: "left",
-                  ink: "cover", glow: true, blur: true, backdrop: "off", roman: "off" }
+                  ink: "cover", glow: true, blur: true, backdrop: "off", roman: "off", offset: 0, fill: "sweep" }
     })
 
     property var data: JSON.parse(JSON.stringify(defaults))

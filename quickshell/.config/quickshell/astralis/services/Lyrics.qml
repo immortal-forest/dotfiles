@@ -427,6 +427,29 @@ Singleton {
         return out;
     }
 
+    /** Sung length of a CJK token in morae: kana ≈ 1 (small kana / ー add
+     *  ~0.5), kanji ≈ 1.7 (most readings are 1–3 morae), hangul ≈ 1. */
+    function moraWeight(s) {
+        var w = 0;
+        for (var i = 0; i < s.length; i++) {
+            var c = s[i];
+            if (/[ゃゅょャュョぁぃぅぇぉァィゥェォ]/.test(c)) w += 0.25;
+            else if (/[っッー]/.test(c)) w += 0.6;
+            else if (/[぀-ヿｦ-ﾟ]/.test(c)) w += 1;
+            else if (/[㐀-鿿]/.test(c)) w += 1.7;
+            else if (/[가-힯]/.test(c)) w += 1;
+        }
+        return Math.max(0.3, w);
+    }
+    /** Syllables in a Latin word ≈ vowel groups (silent trailing e dropped). */
+    function syllables(word) {
+        var w = word.toLowerCase().replace(/[^a-zà-ÿ']/g, "");
+        if (w.length === 0)
+            return 0.3;
+        var n = (w.replace(/e$/, "").match(/[aeiouyà-ÿ]+/g) || []).length;
+        return Math.max(1, n);
+    }
+
     /** Splits a line into words (CJK per character) and estimates when each is sung. */
     function timeLine(t, end, text) {
         var tokens = [];
@@ -434,18 +457,25 @@ Singleton {
         var m;
         while ((m = re.exec(text)) !== null) {
             if (m[1])
-                tokens.push({ text: m[1], space: false, w: m[1].replace(/[、。！？!?,.」』）)]/g, "").length * 2.2 });
+                tokens.push({ text: m[1], space: false, w: root.moraWeight(m[1]) });
             else if (m[2])
-                tokens.push({ text: m[2], space: (m[3] || "").length > 0, w: m[2].length * 0.65 + 0.6 });
+                tokens.push({ text: m[2], space: (m[3] || "").length > 0, w: root.syllables(m[2]) });
             else if (m[4] && tokens.length > 0)
                 tokens[tokens.length - 1].space = true;
         }
         var total = 0;
         for (var i = 0; i < tokens.length; i++)
             total += tokens[i].w;
-        var est = total * 0.1 + 0.35;
+        total = Math.max(total, 0.0001);
+        // How long the line is sung. Singers carry a line across most of the
+        // time until the next one (minus a breath), so the gap is the best
+        // guide; only when the gap is far longer than the line could take
+        // (a pause / instrumental follows) fall back to a syllable estimate
+        // (~0.24s per syllable / mora).
+        var est = total * 0.24 + 0.3;
         var gap = Math.max(0.3, end - t);
-        var span = Math.min(gap * 0.94, Math.max(0.6, est));
+        var breath = Math.min(0.45, gap * 0.08);
+        var span = gap - breath <= est * 1.9 ? gap - breath : Math.max(0.6, est * 1.35);
         var acc = 0;
         for (var k = 0; k < tokens.length; k++) {
             tokens[k].a = acc / total;

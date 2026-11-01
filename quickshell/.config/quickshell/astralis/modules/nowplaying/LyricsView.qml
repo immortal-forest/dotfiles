@@ -83,6 +83,9 @@ PanelWindow {
 
     // ── clock ──────────────────────────────────────────────────────────────
     property real pos: 0
+    /** Lyrics lead the player by this much: MPRIS lag + the user sync offset. */
+    readonly property real shift: Lyrics.lead + (cfg.offset || 0)
+    onShiftChanged: if (!Players.playing) resync()
     property real basePos: 0
     property real baseAt: 0
     readonly property int cur: Lyrics.has ? Lyrics.lineAt(pos) : -1
@@ -95,7 +98,7 @@ PanelWindow {
         if (!Players.active)
             return;
         Players.active.positionChanged();
-        var p = Players.position + Lyrics.lead;
+        var p = Players.position;
         var t = now();
         var predicted = win.basePos + (Players.playing ? t - win.baseAt : 0);
         // Only jump on real drift (seek, track change) so the per-frame clock
@@ -104,7 +107,7 @@ PanelWindow {
             win.basePos = p;
             win.baseAt = t;
         }
-        win.pos = Players.playing ? win.basePos + (t - win.baseAt) : win.basePos;
+        win.pos = (Players.playing ? win.basePos + (t - win.baseAt) : win.basePos) + win.shift;
     }
 
     Timer {
@@ -155,7 +158,7 @@ PanelWindow {
         var dt = Math.min(0.1, Math.max(0, t - win.lastFrame));   // AMLL MAX_FRAME_DELTA
         win.lastFrame = t;
         if (Players.playing)
-            win.pos = win.basePos + (t - win.baseAt);
+            win.pos = win.basePos + (t - win.baseAt) + win.shift;
         if (!win.settling)
             return;
         var target = win.offTarget;
@@ -418,7 +421,7 @@ PanelWindow {
                                 y: line.place[index] ? line.place[index].y : 0
                                 onWidthChanged: relayoutTimer.restart()
                                 onHeightChanged: relayoutTimer.restart()
-                                readonly property real fill: line.dist < 0 ? 1 : line.current
+                                readonly property real fill: line.dist < 0 ? 1 : line.current && win.cfg.fill === "line" ? 1 : line.current
                                     ? Math.max(0, Math.min(1, (line.prog - modelData.a) / Math.max(0.0001, modelData.b - modelData.a)))
                                     : 0
                                 readonly property real lift: fill * fill * (3 - 2 * fill) * 3 * win.s * line.act
