@@ -86,54 +86,58 @@ PanelWindow {
         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
         Behavior on scale { NumberAnimation { duration: Motion.expressiveDefaultSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveDefaultSpatial } }
 
-        // ── ambient halo: the cover's colours glowing out behind it ──────
-        // Three radial gradients (deep accent centred, the two cover hues
-        // offset to opposite corners), each fading to fully transparent
-        // inside the window pad — a true radial falloff that can never be
-        // clipped into a square, and no blur pass. Colours only change when
-        // a new cover has actually swapped in (win.haloA/B/C, set in flip()).
+        // ── ambient halo: the cover's colours glowing out around its edges ──
+        // A rounded rect with the cover's own corner radius (so it follows the
+        // Square/Soft/Round/Circle setting), a little larger than the cover,
+        // filled with a diagonal sweep of the cover hues, then blurred. The
+        // blur radius is tied to the window pad, so the glow always fades out
+        // before the window edge and never clips square. Colours only change
+        // when a new cover has actually swapped in (win.haloA/B/C, set in flip()).
         Item {
             id: halo
             visible: win.cfg.halo && slots.ready
             anchors.centerIn: frame
             width: win.coverSize + win.haloReach * 2
             height: width
-            opacity: Players.playing ? 1 : 0.45
+            opacity: Players.playing ? 0.9 : 0.4
             Behavior on opacity { NumberAnimation { duration: Motion.largeDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecel } }
 
-            component Blob: Shape {
-                id: blob
-                property color tint
-                property real cx: 0.5
-                property real cy: 0.5
-                property real strength: 0.7
-                anchors.fill: parent
+            readonly property real spread: Math.round(win.haloReach * 0.16)
+            readonly property real blurPx: win.haloReach * 0.5
+
+            Shape {
+                id: glowSrc
+                anchors.centerIn: parent
+                width: win.coverSize + halo.spread * 2
+                height: width
+                visible: false
+                layer.enabled: true
                 preferredRendererType: Shape.CurveRenderer
                 ShapePath {
                     strokeWidth: 0
                     strokeColor: "transparent"
-                    fillGradient: RadialGradient {
-                        centerX: blob.width * blob.cx
-                        centerY: blob.height * blob.cy
-                        focalX: centerX
-                        focalY: centerY
-                        centerRadius: blob.width / 2 * (1 - Math.max(Math.abs(blob.cx - 0.5), Math.abs(blob.cy - 0.5)) * 2)
-                        focalRadius: 0
-                        GradientStop { position: 0; color: Qt.alpha(blob.tint, blob.strength) }
-                        GradientStop { position: 0.5; color: Qt.alpha(blob.tint, blob.strength * 0.8) }
-                        GradientStop { position: 0.75; color: Qt.alpha(blob.tint, blob.strength * 0.28) }
-                        GradientStop { position: 1; color: Qt.alpha(blob.tint, 0) }
+                    fillGradient: LinearGradient {
+                        x1: 0; y1: 0
+                        x2: glowSrc.width; y2: glowSrc.height
+                        GradientStop { position: 0; color: win.haloA }
+                        GradientStop { position: 0.5; color: win.haloC }
+                        GradientStop { position: 1; color: win.haloB }
                     }
-                    startX: 0; startY: 0
-                    PathLine { x: blob.width; y: 0 }
-                    PathLine { x: blob.width; y: blob.height }
-                    PathLine { x: 0; y: blob.height }
-                    PathLine { x: 0; y: 0 }
+                    PathRectangle {
+                        x: 0; y: 0
+                        width: glowSrc.width; height: glowSrc.height
+                        radius: Math.min(glowSrc.width / 2, frame.radius + halo.spread)
+                    }
                 }
             }
-            Blob { tint: win.haloC; strength: 0.75 }
-            Blob { tint: win.haloA; cx: 0.44; cy: 0.44; strength: 0.5 }
-            Blob { tint: win.haloB; cx: 0.56; cy: 0.56; strength: 0.45 }
+            MultiEffect {
+                source: glowSrc
+                anchors.fill: glowSrc
+                autoPaddingEnabled: true
+                blurEnabled: true
+                blurMax: 64
+                blur: Math.min(1, halo.blurPx / 64)
+            }
         }
 
         // ── the cover ────────────────────────────────────────────────────

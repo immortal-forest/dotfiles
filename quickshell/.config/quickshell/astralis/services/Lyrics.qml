@@ -2,6 +2,7 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import Quickshell.Services.Pipewire
 import "../services"
 
 /**
@@ -29,8 +30,16 @@ Singleton {
     property var cache: ({})
     readonly property var entry: TrackInfo.key.length > 0 && cache[TrackInfo.key] ? cache[TrackInfo.key] : null
 
-    /** Seconds the lyrics lead the reported position (MPRIS lags a little). */
-    property real lead: 0.12
+    /** Seconds the lyrics lead the reported position: MPRIS lags a little
+     *  (measured ~0.1 s vs the sink's audio), but Bluetooth output plays
+     *  ~0.25 s after the sink (aptX/AAC/SBC; PipeWire reports 0 for it), so
+     *  on a bluez sink the lyrics wait instead. The editor's Sync offset
+     *  fine-tunes on top. */
+    readonly property bool bluetooth: {
+        var s = Pipewire.defaultAudioSink;
+        return !!s && String(s.name).indexOf("bluez") === 0;
+    }
+    readonly property real lead: bluetooth ? -0.13 : 0.12
 
     function lineAt(pos) {
         var l = root.lines;

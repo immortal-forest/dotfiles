@@ -265,8 +265,27 @@ PanelWindow {
                 }
                 /** Apply a resize step unless it would run into a neighbour (Widgets.avoid) — the box stops at it. */
                 function place(x, y, w, h) {
-                    if (win.collides(fr.key, x, y, w, h))
-                        return;
+                    if (win.collides(fr.key, x, y, w, h)) {
+                        // Go as far toward the asked-for box as fits: binary-search the
+                        // step from the current box, so a resize stops right at the neighbour.
+                        var lo = 0, hi = 1;
+                        for (var it = 0; it < 12; it++) {
+                            var m = (lo + hi) / 2;
+                            if (win.collides(fr.key, fr.lx + (x - fr.lx) * m, fr.ly + (y - fr.ly) * m,
+                                             fr.lw + (w - fr.lw) * m, fr.lh + (h - fr.lh) * m))
+                                hi = m;
+                            else
+                                lo = m;
+                        }
+                        if (lo <= 0)
+                            return;
+                        x = fr.lx + (x - fr.lx) * lo;
+                        y = fr.ly + (y - fr.ly) * lo;
+                        w = fr.lw + (w - fr.lw) * lo;
+                        h = fr.lh + (h - fr.lh) * lo;
+                        if (fr.square)
+                            h = w = Math.min(w, h);
+                    }
                     fr.lx = x;
                     fr.ly = y;
                     fr.lw = w;
@@ -352,6 +371,8 @@ PanelWindow {
                 DragHandler {
                     id: drag
                     target: null
+                    // A press on a resize grip belongs to the grip, never to the move.
+                    enabled: active || (fr.gripsHovered === 0 && fr.resizing === 0)
                     property real x0: 0
                     property real y0: 0
                     onActiveChanged: {
@@ -405,6 +426,7 @@ PanelWindow {
                         }
                         DragHandler {
                             target: null
+                            grabPermissions: PointerHandler.CanTakeOverFromAnything
                             property real x0: 0
                             property real y0: 0
                             property real w0: 0
@@ -419,7 +441,11 @@ PanelWindow {
                                     fr.commit();
                                 }
                             }
-                            onTranslationChanged: if (active) fr.resizeBy(grip.hx, grip.hy, x0, y0, w0, h0, translation.x, translation.y)
+                            // Delta in scene coordinates: the grip moves with the edge it
+                            // drags, so its local translation would cancel itself out.
+                            onCentroidChanged: if (active) fr.resizeBy(grip.hx, grip.hy, x0, y0, w0, h0,
+                                centroid.scenePosition.x - centroid.scenePressPosition.x,
+                                centroid.scenePosition.y - centroid.scenePressPosition.y)
                         }
                     }
                 }
