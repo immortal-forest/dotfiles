@@ -40,7 +40,7 @@ Singleton {
                  infoSide: "auto", infoGap: 10, infoLabel: false, infoShadow: true,
                  edgeFlow: "split", edgeSide: "outside", edgeDir: "cw", edgeAngle: 0, edgeSpin: 0, edgeCorner: "auto", edgeAt: "side" },
         lyrics: { on: true, x: 0.27, y: 0.2, w: 0.45, h: 0.6, size: 38, spacing: 1, anchor: 0.42, lines: 0, align: "left",
-                  ink: "cover", glow: true, blur: true, backdrop: "off", roman: "off", offset: 0, fill: "sweep" },
+                  ink: "cover", glow: true, blur: true, backdrop: "off", roman: "off", offset: 0, fill: "sweep", provider: "auto" },
         // Depth clock: a box like the others (x, y = top-left, w, h as screen fractions; the
         // numerals auto-fit it). cut = the wallpaper-depth cut-out over it; threshold/feather
         // drive that cut-out (services/WallpaperDepth.qml). color = a Colors role name.

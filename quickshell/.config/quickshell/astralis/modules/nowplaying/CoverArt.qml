@@ -208,8 +208,15 @@ PanelWindow {
                         // shows half-loaded or empty.
                         opacity: front ? 1 : 0
                         onStatusChanged: {
-                            if (status === Image.Error)
-                                TrackInfo.markBad(source);
+                            if (status === Image.Error) {
+                                // No local copy yet → load it from the web.
+                                var remote = index === 0 ? slots.ra : slots.rb;
+                                if (String(source) !== remote) {
+                                    if (index === 0) slots.a = remote; else slots.b = remote;
+                                } else {
+                                    TrackInfo.markBad(remote);
+                                }
+                            }
                             else if (status === Image.Ready && index === slots.pending)
                                 win.flip();
                         }
@@ -246,6 +253,9 @@ PanelWindow {
                 id: slots
                 property string a: ""
                 property string b: ""
+                /** The covers' web urls (a / b show the local copy when there is one). */
+                property string ra: ""
+                property string rb: ""
                 property int front: 0
                 /** Slot preloading the next cover, -1 = none. */
                 property int pending: -1
@@ -386,7 +396,7 @@ PanelWindow {
     // stays up until the new one has decoded; then flip() swaps them.
     function swap() {
         var url = TrackInfo.art;
-        var cur = slots.front === 0 ? slots.a : slots.b;
+        var cur = slots.front === 0 ? slots.ra : slots.rb;
         if (url.length === 0) {
             slots.pending = -1;
             return;
@@ -401,14 +411,20 @@ PanelWindow {
         slots.sameSong = TrackInfo.key === win.shownKey && cur.length > 0;
         win.shownKey = TrackInfo.key;
         slots.pending = back;
-        if (back === 0)
-            slots.a = url;
-        else
-            slots.b = url;
+        // The local copy TrackInfo keeps of every shown cover, when there is
+        // one (no network, instant); the Image falls back to the url on error.
+        var src = TrackInfo.localFor(url);
+        if (back === 0) {
+            slots.ra = url;
+            slots.a = src;
+        } else {
+            slots.rb = url;
+            slots.b = src;
+        }
         // Already decoded in that slot (e.g. flipping back) → no status change
         // will fire, so flip now.
         var img = rep.itemAt(back);
-        if (img && img.status === Image.Ready && String(img.source) === url)
+        if (img && img.status === Image.Ready && (String(img.source) === src || String(img.source) === url))
             win.flip();
     }
 

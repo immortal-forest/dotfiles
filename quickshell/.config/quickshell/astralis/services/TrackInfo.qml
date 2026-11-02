@@ -218,6 +218,9 @@ Singleton {
         var e = f[k] || { pending: 0, list: [] };
         f[k] = { pending: e.pending - (done ? 1 : 0), list: e.list.concat(items) };
         root.found = f;
+        // Every source answered → keep the result on disk (see lookup()).
+        if (done && f[k].pending === 0)
+            DiskCache.write("covers", k, { v: 1, saved: Date.now(), list: f[k].list });
     }
 
     function get(url, cb) {
@@ -238,6 +241,25 @@ Singleton {
     function lookup() {
         var k = root.key;
         if (k.length === 0 || root.found[k] || root.artist.length === 0)
+            return;
+        // Disk first: a saved search is reused for 30 days (an empty one —
+        // maybe just offline — for a day).
+        DiskCache.read("covers", k, function (d) {
+            if (root.found[k])
+                return;
+            var age = d && d.v === 1 ? Date.now() - d.saved : 1e15;
+            if (age < (d && d.list && d.list.length > 0 ? 30 : 1) * 86400000) {
+                var f = Object.assign({}, root.found);
+                f[k] = { pending: 0, list: d.list };
+                root.found = f;
+            } else if (k === root.key) {
+                root.search(k);
+            }
+        });
+    }
+
+    function search(k) {
+        if (root.found[k])
             return;
         var f = Object.assign({}, root.found);
         f[k] = { pending: 4, list: [] };
@@ -350,6 +372,11 @@ Singleton {
     property string paletteFile: ""
     property var paletteMap: ({})
     onArtChanged: fetchPalette()
+    /** Where a web cover's local copy lives (downloaded once, below); other urls as-is. */
+    function localFor(u) {
+        u = String(u);
+        return /^https?:/.test(u) ? "file://" + root.cacheDir + "/artcache/pick-" + Qt.md5(u) + ".jpg" : u;
+    }
     function fetchPalette() {
         var u = root.art;
         if (u.indexOf("file:") === 0) {
@@ -362,7 +389,7 @@ Singleton {
             root.paletteFile = root.paletteMap[u];
             return;
         }
-        var out = root.cacheDir + "/artcache/pick-" + Qt.md5(u) + ".jpg";
+        var out = root.localFor(u).replace(/^file:\/\//, "");
         var p = Qt.createQmlObject('import Quickshell.Io; Process {}', root, "TrackInfo.fetch");
         p.command = ["sh", "-c", 'mkdir -p "${1%/*}" && { [ -s "$1" ] || { curl -fsL --max-time 10 -o "$1.part" "$0" && mv "$1.part" "$1"; }; }', u, out];
         p.exited.connect(function(code) {

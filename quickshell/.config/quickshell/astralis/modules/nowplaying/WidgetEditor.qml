@@ -671,7 +671,7 @@ PanelWindow {
                     Btn {
                         id: lyricsBtn
                         icon: "type"; on: win.panel === "lyrics"; dim: !Widgets.lyrics.on
-                        tip: "Lyrics"; tipDesc: "Size, lines, colour, romanization"
+                        tip: "Lyrics"; tipDesc: "Size, lines, colour, source, romanization"
                         onClicked: win.togglePanel("lyrics", lyricsBtn)
                     }
                     Btn {
@@ -1224,6 +1224,34 @@ PanelWindow {
                             opts: [{ label: "Off", value: "off" }, { label: "Soft", value: "soft" }, { label: "Solid", value: "solid" }]
                             value: panelCard.ly.backdrop
                             onPicked: (v) => Widgets.set("lyrics", "backdrop", v)
+                        }
+                    }
+                    PRow {
+                        name: "Source"
+                        Seg {
+                            opts: [{ label: "Auto", value: "auto" }, { label: "NetEase", value: "netease" },
+                                   { label: "LRCLIB", value: "lrclib" }, { label: "Kugou", value: "kugou" }]
+                            value: panelCard.ly.provider || "auto"
+                            onPicked: (v) => Widgets.set("lyrics", "provider", v)
+                        }
+                    }
+                    Lbl {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        visible: text.length > 0
+                        color: Colors.on_surface_variant
+                        font.weight: Font.Medium
+                        text: {
+                            var src = Lyrics.source, pref = panelCard.ly.provider || "auto";
+                            var others = Lyrics.available.filter(s => s !== src).map(s => Lyrics.sourceNames[s]);
+                            var t = src.length === 0 ? (Lyrics.searching ? "Searching…" : Players.has ? "No synced lyrics for this song." : "")
+                                : "Showing " + Lyrics.sourceNames[src] + (Lyrics.wordTimed ? " (word-timed)" : "")
+                                  + (pref !== "auto" && pref !== src && !Lyrics.searching ? " — " + Lyrics.sourceNames[pref] + " has none for this song" : "");
+                            if (others.length > 0)
+                                t += " · also: " + others.join(", ");
+                            else if (src.length > 0 && Lyrics.searching)
+                                t += " · still asking others…";
+                            return t;
                         }
                     }
                     PRow {

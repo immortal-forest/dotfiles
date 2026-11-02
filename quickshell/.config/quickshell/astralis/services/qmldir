@@ -21,3 +21,4 @@ singleton Udev Udev.qml
 singleton TrackInfo TrackInfo.qml
 singleton Lyrics Lyrics.qml
 singleton Widgets Widgets.qml
+singleton DiskCache DiskCache.qml

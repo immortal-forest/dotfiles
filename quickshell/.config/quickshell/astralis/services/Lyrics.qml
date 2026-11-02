@@ -27,8 +27,58 @@ Singleton {
     readonly property var lines: entry && entry.lines ? entry.lines : []
     readonly property bool has: status === "synced" && lines.length > 0
 
+    /** key → { run, pending, cands: { <source>: { lines, sourceRoman, timed, cjk } | null },
+     *  instrumental, plain, transient }. Every source is asked at once; a
+     *  missing cand = still answering, null = no lyrics there. */
     property var cache: ({})
-    readonly property var entry: TrackInfo.key.length > 0 && cache[TrackInfo.key] ? cache[TrackInfo.key] : null
+    /** "key|source" → { romanStatus, roman, rlines } */
+    property var romans: ({})
+    readonly property var sources: ["netease", "lrclib", "kugou"]
+    readonly property var sourceNames: ({ netease: "NetEase", lrclib: "LRCLIB", kugou: "Kugou" })
+    /** Widgets.lyrics.provider: "auto" (best available) or one source, which
+     *  falls back to the best available when it has nothing for the track. */
+    readonly property string prefer: Widgets.lyrics.provider || "auto"
+    readonly property var raw: TrackInfo.key.length > 0 && cache[TrackInfo.key] ? cache[TrackInfo.key] : null
+    /** Sources that have synced lyrics for this track, best first. */
+    readonly property var available: raw ? ranked(raw) : []
+    /** Sources still answering for this track. */
+    readonly property bool searching: raw !== null && raw.pending > 0
+    /** Where the shown lyrics come from: "" | "netease" | "lrclib" | "kugou". */
+    readonly property string source: entry && entry.source ? entry.source : ""
+    readonly property bool wordTimed: entry && entry.timed ? true : false
+    readonly property var entry: {
+        var c = root.raw;
+        if (!c)
+            return null;
+        var src = root.choose(c);
+        if (src) {
+            var cand = c.cands[src];
+            return Object.assign({ status: "synced", source: src, lines: cand.lines, timed: cand.timed,
+                                   sourceRoman: cand.sourceRoman },
+                                 root.romans[TrackInfo.key + "|" + src] || {});
+        }
+        if (c.pending > 0)
+            return { status: "loading" };
+        return { status: c.instrumental ? "instrumental" : c.plain ? "plain" : "none" };
+    }
+
+    /** Word-timed (NetEase yrc) beats everything — held notes hold. Then
+     *  line-synced: NetEase for CJK lyrics (it ships romaji too), LRCLIB for
+     *  the rest, Kugou last. */
+    function score(src, cand) {
+        var base = src === "kugou" ? 1 : src === "netease" ? (cand.cjk ? 3 : 2) : (cand.cjk ? 2 : 3);
+        return (cand.timed ? 10 : 0) + base;
+    }
+    function ranked(c) {
+        return root.sources.filter(s => !!c.cands[s])
+            .sort((a, b) => root.score(b, c.cands[b]) - root.score(a, c.cands[a]));
+    }
+    function choose(c) {
+        if (root.prefer !== "auto" && c.cands[root.prefer])
+            return root.prefer;
+        var r = root.ranked(c);
+        return r.length > 0 ? r[0] : "";
+    }
 
     /** Seconds the lyrics lead the reported position: MPRIS lags a little
      *  (measured ~0.1 s vs the sink's audio), but Bluetooth output plays
@@ -57,44 +107,55 @@ Singleton {
     }
 
     // ── fetch ─────────────────────────────────────────────────────────────
+    // Disk cache first (instant, even while skipping); the network only on a
+    // miss, after a short debounce — 1.5s while skipping (a change within 3s
+    // of the last), 250ms otherwise.
     Connections {
         target: TrackInfo
-        // Abandon the previous track's lookup: its unfinished "loading" entry
-        // would otherwise stay cached forever (blocking a refetch when it
-        // comes back), and its retry chain would clobber this track's retry.
         function onKeyChanged() {
-            retry.stop();
-            var c = {}, cur = TrackInfo.key;
-            for (var key in root.cache)
-                if (key === cur || root.cache[key].status !== "loading")
-                    c[key] = root.cache[key];
-            root.cache = c;
-            // Debounce only while skipping: a track that follows another
-            // within 3s waits 1.5s; a normal track change looks up at once.
             var now = Date.now();
             fetchTimer.interval = now - root.lastKeyChange < 3000 ? 1500 : 250;
             root.lastKeyChange = now;
-            fetchTimer.restart();
+            root.lookup();
         }
     }
     property real lastKeyChange: 0
     // The singleton is created lazily, often after the key is already set.
-    Component.onCompleted: fetchTimer.restart()
-    // Watchdog: if the track has no entry yet (metadata arrived piecemeal and
-    // the first attempt bailed), try again.
+    Component.onCompleted: lookup()
+    // Watchdog: no entry yet (metadata arrived piecemeal and the first
+    // attempt bailed, or a network failure was forgotten) → try again.
     Timer {
         interval: 4000
         repeat: true
-        running: TrackInfo.key.length > 0 && !root.entry
-        onTriggered: fetchTimer.restart()
+        running: TrackInfo.key.length > 0 && !root.raw
+        onTriggered: root.lookup()
     }
-    // Restarted on every track change (interval set there), so skipping
-    // through tracks only looks up the one that stays (cached ones show at
-    // once — `entry`).
     Timer {
         id: fetchTimer
         interval: 250
-        onTriggered: root.fetch(TrackInfo.key, TrackInfo.title, TrackInfo.artist, TrackInfo.album, TrackInfo.duration, 0)
+        onTriggered: root.fetch(TrackInfo.key, TrackInfo.title, TrackInfo.artist, TrackInfo.album, TrackInfo.duration)
+    }
+
+    function lookup() {
+        var k = TrackInfo.key;
+        fetchTimer.stop();
+        if (k.length === 0 || root.cache[k])
+            return;
+        DiskCache.read("lyrics", k, function (d) {
+            if (root.cache[k])
+                return;
+            if (root.fresh(d))
+                root.store(k, { run: {}, pending: 0, cands: d.cands || {}, instrumental: !!d.instrumental, plain: !!d.plain });
+            else if (k === TrackInfo.key)
+                fetchTimer.restart();
+        });
+    }
+    /** A saved miss is asked again after a week (lyrics get added). */
+    function fresh(d) {
+        if (!d || d.v !== 1)
+            return false;
+        return root.sources.some(s => d.cands && d.cands[s]) || d.instrumental
+            || Date.now() - d.saved < 7 * 86400000;
     }
 
     function store(k, v) {
@@ -102,10 +163,16 @@ Singleton {
         c[k] = v;
         root.cache = c;
     }
-    function patch(k, o) {
-        if (!root.cache[k])
-            return;
-        root.store(k, Object.assign({}, root.cache[k], o));
+    function setRoman(rk, o) {
+        var r = Object.assign({}, root.romans);
+        r[rk] = Object.assign({}, r[rk], o);
+        root.romans = r;
+    }
+    function later(ms, fn) {
+        var t = Qt.createQmlObject('import QtQuick; Timer {}', root, "Lyrics.later");
+        t.interval = ms;
+        t.triggered.connect(function () { t.destroy(); fn(); });
+        t.start();
     }
 
     // ── romanization (on demand, scripts/romanize.sh) ─────────────────────
@@ -119,22 +186,23 @@ Singleton {
     readonly property string romanScript: String(Qt.resolvedUrl("../scripts/romanize.sh")).replace(/^file:\/\//, "")
     // Toggling the option retries a failed run (e.g. kakasi installed since).
     onWantRomanChanged: romanize(true)
-    // Deferred: patching the cache from inside entry's change notification
+    // Deferred: writing `romans` from inside entry's change notification
     // is a binding loop on `entry` (QML drops the re-evaluation).
     onEntryChanged: Qt.callLater(romanize)
 
     function romanize(retry) {
-        var k = TrackInfo.key, e = root.entry;
+        var e = root.entry;
         if (!root.wantRoman || !e || e.status !== "synced")
             return;
-        if (e.romanStatus && !(retry && (e.romanStatus === "nokakasi" || e.romanStatus === "error")))
+        if (e.romanStatus && !(retry === true && (e.romanStatus === "nokakasi" || e.romanStatus === "error")))
             return;
+        var rk = TrackInfo.key + "|" + e.source;
         var texts = e.lines.map(l => l.text);
         if (!texts.some(t => root.cjk.test(t))) {
-            root.patch(k, { romanStatus: "none" });
+            root.setRoman(rk, { romanStatus: "none" });
             return;
         }
-        root.patch(k, { romanStatus: "busy" });
+        root.setRoman(rk, { romanStatus: "busy" });
         var p = Qt.createQmlObject('import Quickshell.Io; Process { stdout: StdioCollector {} }', root, "Lyrics.roman");
         p.command = [root.romanScript, texts.join("\n")];
         p.exited.connect(function (code) {
@@ -144,25 +212,23 @@ Singleton {
             if (code === 3 && e.sourceRoman && e.sourceRoman.some(x => x.length > 0))
                 out = e.sourceRoman;
             else if (code === 3)
-                return root.patch(k, { romanStatus: "nokakasi" });
+                return root.setRoman(rk, { romanStatus: "nokakasi" });
             else if (code !== 0)
-                return root.patch(k, { romanStatus: "error" });
+                return root.setRoman(rk, { romanStatus: "error" });
             if (out.length !== texts.length)
-                return root.patch(k, { romanStatus: "error" });
+                return root.setRoman(rk, { romanStatus: "error" });
             var clean = out.map(x => x.replace(/\s+/g, " ").trim());
-            var lines = root.cache[k] ? root.cache[k].lines : e.lines;
-            var rl = lines.map(function (l, i) {
+            var rl = e.lines.map(function (l, i) {
                 if (l.gap || clean[i].length === 0)
                     return l;
                 var n = root.timeLine(l.t, l.end, clean[i]);
                 n.span = l.span;    // keep the original line's sung span
                 return n;
             });
-            root.patch(k, { romanStatus: "ready", roman: clean, rlines: rl });
+            root.setRoman(rk, { romanStatus: "ready", roman: clean, rlines: rl });
         });
         p.running = true;
     }
-
     function request(url, cb) {
         var xhr = new XMLHttpRequest();
         xhr.timeout = 10000;
@@ -178,66 +244,97 @@ Singleton {
         xhr.send();
     }
 
-    function fetch(k, title, artist, album, dur, attempt) {
-        if (k.length === 0 || artist.length === 0 || (root.cache[k] && attempt === 0))
+    /** Asks NetEase, Kugou and LRCLIB at once; each answer lands in
+     *  cands[source] as it comes, so the first usable one shows right away
+     *  and a better one replaces it. Saved to disk once all have answered. */
+    function fetch(k, title, artist, album, dur) {
+        if (k.length === 0 || artist.length === 0 || root.cache[k])
             return;
-        if (attempt !== 0 && k !== TrackInfo.key)
-            return;     // track moved on: this chain is abandoned
-        root.store(k, { status: "loading" });
-        // NetEase first: it carries word-timed lyrics (yrc), so held notes
-        // hold. LRCLIB (line-timed) only when NetEase has no match.
-        if (attempt === 0) {
-            var lrclib = function () { root.fetch(k, title, artist, album, dur, -1); };
-            root.netease(title, artist, dur, function (lrc, roma, yrc) {
-                if (!root.useSource(k, "netease", lrc, roma, yrc, dur))
-                    lrclib();
-            }, function () {
-                // Spotify reports localized titles ("Dawn and Fireflies" for
-                // Ado's 夜明けと蛍) that NetEase/Kugou don't know: retry them
-                // under the original title before LRCLIB.
-                root.altTitle(title, artist, dur, function (alt) {
-                    if (!alt || k !== TrackInfo.key)
-                        return lrclib();
-                    root.netease(alt, artist, dur, function (lrc, roma, yrc) {
-                        if (!root.useSource(k, "netease", lrc, roma, yrc, dur))
-                            lrclib();
-                    }, function () {
-                        root.kugou(alt, artist, dur, function (lrc) {
-                            if (!root.useSource(k, "kugou", lrc, "", "", dur))
-                                lrclib();
-                        }, lrclib);
-                    });
+        var run = {};
+        root.store(k, { run: run, pending: root.sources.length, cands: {}, instrumental: false, plain: false, transient: false });
+        var done = function (src, cand, flags) {
+            var cur = root.cache[k];
+            if (!cur || cur.run !== run)
+                return;
+            var c = Object.assign({}, cur);
+            c.cands = Object.assign({}, c.cands);
+            c.cands[src] = cand;
+            for (var f in flags || {})
+                c[f] = c[f] || flags[f];
+            c.pending--;
+            root.store(k, c);
+            if (c.pending === 0)
+                root.finish(k, c);
+        };
+        // Spotify reports localized titles ("Dawn and Fireflies" for Ado's
+        // 夜明けと蛍) that NetEase/Kugou don't know: a miss retries under the
+        // original title from iTunes Japan (looked up once, shared).
+        var alt = null, altWait = [];
+        var withAlt = function (cb) {
+            if (alt !== null)
+                return cb(alt);
+            altWait.push(cb);
+            if (altWait.length === 1)
+                root.altTitle(title, artist, dur, function (a) {
+                    alt = a || "";
+                    altWait.forEach(f => f(alt));
                 });
+        };
+        var keyed = function (src, fn) {
+            var tryTitle = function (t, onMiss) {
+                fn(t, artist, dur, function (lrc, roma, yrc) {
+                    var c = root.candidate(lrc, roma, yrc, dur);
+                    if (c)
+                        done(src, c);
+                    else
+                        onMiss();
+                }, onMiss);
+            };
+            tryTitle(title, function () {
+                withAlt(a => a ? tryTitle(a, () => done(src, null)) : done(src, null));
+            });
+        };
+        keyed("netease", root.netease);
+        keyed("kugou", root.kugou);
+        root.lrclib(k, title, artist, album, dur, 0, run, done);
+    }
+
+    function finish(k, c) {
+        if (!root.sources.some(s => c.cands[s]) && c.transient) {
+            // Network trouble, not a real miss: forget it after a while so
+            // the watchdog asks again.
+            root.later(20000, function () {
+                if (root.cache[k] && root.cache[k].run === c.run) {
+                    var cc = Object.assign({}, root.cache);
+                    delete cc[k];
+                    root.cache = cc;
+                }
             });
             return;
         }
-        if (attempt < 0)
-            attempt = 0;
-        var q = "track_name=" + encodeURIComponent(title) + "&artist_name=" + encodeURIComponent(artist);
-        var exact = "https://lrclib.net/api/get?" + q
-            + (album ? "&album_name=" + encodeURIComponent(album) : "")
-            + (dur > 0 ? "&duration=" + Math.round(dur) : "");
-        request(exact, function(code, d) {
-            // LRCLIB down/overloaded (it 503s for long stretches): don't make
-            // the track wait on it — ask the fallback sources right away, and
-            // only go back to retrying LRCLIB if they have nothing either.
-            if (root.transient(code) && attempt === 0) {
-                root.fallback(k, title, artist, dur, 0, "none", function () {
-                    retry.schedule(k, title, artist, album, dur, 1);
-                });
-                return;
-            }
-            if (root.transient(code) && attempt < 4) {
-                retry.schedule(k, title, artist, album, dur, attempt + 1);
-                return;
-            }
-            if (code === 200 && d && (d.syncedLyrics || d.instrumental)) {
-                root.accept(k, d);
-                return;
-            }
-            // No exact hit: search and take the synced result closest in length.
-            root.search(k, title, artist, album, dur, attempt, d, "https://lrclib.net/api/search?" + q, true);
-        });
+        DiskCache.write("lyrics", k, { v: 1, saved: Date.now(), cands: c.cands, instrumental: c.instrumental, plain: c.plain });
+    }
+
+    /** Parsed LRC (+ romaji, + word timing) → a cand, or null when it is too
+     *  thin to use (< 3 sung lines). */
+    function candidate(lrc, roma, yrc, dur) {
+        var lines = lrc ? root.parse(lrc, dur, true) : [];
+        var sung = lines.filter(l => !l.gap).length;
+        if (sung < 3)
+            return null;
+        if (yrc)
+            lines = root.applyWordTiming(lines, root.parseYrc(yrc));
+        var c = { lines: lines, timed: lines.filter(l => l.timed).length >= sung / 2,
+                  cjk: lines.some(l => root.cjk.test(l.text)) };
+        if (roma)
+            c.sourceRoman = root.alignRoman(lines, roma);
+        return c;
+    }
+    function lrclibCand(d, dur) {
+        var lines = root.parse(d.syncedLyrics, d.duration || 0);
+        if (lines.filter(l => !l.gap).length === 0)
+            return null;
+        return { lines: lines, timed: false, cjk: lines.some(l => root.cjk.test(l.text)) };
     }
 
     /** 503 (LRCLIB overloaded), timeouts (0), 429, 5xx — retried, never cached as "none". */
@@ -260,84 +357,42 @@ Singleton {
         return best && bestD <= 4 ? best : null;
     }
 
-    function search(k, title, artist, album, dur, attempt, exact, url, first) {
-        request(url, function(code, list) {
-            if (root.transient(code)) {
-                // Same as the exact lookup: an overloaded LRCLIB search must
-                // not block the fallback sources.
-                if (attempt === 0) {
-                    root.fallback(k, title, artist, dur, 0, "none", function () {
-                        retry.schedule(k, title, artist, album, dur, 1);
-                    });
-                    return;
-                }
-                if (attempt < 4)
-                    retry.schedule(k, title, artist, album, dur, attempt + 1);
-                else
-                    root.drop(k);   // stay uncached → the watchdog tries again later
-                return;
-            }
-            var best = root.pickClosest(list, dur);
-            if (best) {
-                root.accept(k, best);
-                return;
-            }
-            // Field search found nothing synced (title spelt differently —
-            // ’ vs ', romaji vs kana): one free-text pass.
-            if (first) {
-                root.search(k, title, artist, album, dur, attempt, exact,
-                            "https://lrclib.net/api/search?q=" + encodeURIComponent(artist + " " + title), false);
-                return;
-            }
-            root.fallback(k, title, artist, dur, 0, exact && exact.plainLyrics ? "plain" : "none");
+    /** Exact lookup → field search → free-text search (titles spelt
+     *  differently: ’ vs ', romaji vs kana). LRCLIB 503s for long stretches:
+     *  retried twice (3s, 6s) while the track plays, then given up. */
+    function lrclib(k, title, artist, album, dur, attempt, run, done) {
+        var q = "track_name=" + encodeURIComponent(title) + "&artist_name=" + encodeURIComponent(artist);
+        var exact = "https://lrclib.net/api/get?" + q
+            + (album ? "&album_name=" + encodeURIComponent(album) : "")
+            + (dur > 0 ? "&duration=" + Math.round(dur) : "");
+        var down = function () {
+            if (attempt < 2 && k === TrackInfo.key)
+                root.later(3000 * (attempt + 1), () => root.lrclib(k, title, artist, album, dur, attempt + 1, run, done));
+            else
+                done("lrclib", null, { transient: true });
+        };
+        root.request(exact, function (code, d) {
+            if (root.transient(code))
+                return down();
+            if (code === 200 && d && d.instrumental)
+                return done("lrclib", null, { instrumental: true });
+            var hit = code === 200 && d && d.syncedLyrics ? root.lrclibCand(d, dur) : null;
+            if (hit)
+                return done("lrclib", hit);
+            var plain = !!(d && d.plainLyrics);
+            root.request("https://lrclib.net/api/search?" + q, function (c2, list) {
+                if (root.transient(c2))
+                    return down();
+                var best = root.pickClosest(list, dur);
+                if (best)
+                    return done("lrclib", root.lrclibCand(best, dur));
+                root.request("https://lrclib.net/api/search?q=" + encodeURIComponent(artist + " " + title), function (c3, l3) {
+                    var b3 = root.transient(c3) ? null : root.pickClosest(l3, dur);
+                    done("lrclib", b3 ? root.lrclibCand(b3, dur) : null, { plain: plain, transient: root.transient(c3) });
+                });
+            });
         });
     }
-
-    // ── fallback sources (keyless): NetEase → Kugou ───────────────────────
-    // After NetEase (tried first, in fetch) and LRCLIB both miss. A hit must match the
-    // title (normalised) and, when the duration is known, be within 5s.
-    readonly property var providers: ["kugou"]
-    /** Where the current lyrics came from: "lrclib" | "netease" | "kugou". */
-    readonly property string source: entry && entry.source ? entry.source : ""
-
-    /** Store a keyless source's LRC (+ romaji, + word timing) as the track's
-     *  lyrics; false when it is too thin to use (< 3 sung lines). */
-    function useSource(k, source, lrc, roma, yrc, dur) {
-        if (TrackInfo.key !== k && root.cache[k] === undefined)
-            return true;    // track moved on; nothing to do, and don't chain on
-        var lines = lrc ? root.parse(lrc, dur, true) : [];
-        if (lines.filter(l => !l.gap).length < 3)
-            return false;
-        if (yrc)
-            lines = root.applyWordTiming(lines, root.parseYrc(yrc));
-        var e = { status: "synced", lines: lines, source: source };        if (roma)
-            e.sourceRoman = root.alignRoman(lines, roma);
-        root.store(k, e);
-        return true;
-    }
-
-    /** onMiss (optional): called instead of caching `miss` when no source has it. */
-    function fallback(k, title, artist, dur, i, miss, onMiss) {
-        if (TrackInfo.key !== k && root.cache[k] === undefined)
-            return;
-        if (i >= root.providers.length) {
-            if (onMiss)
-                onMiss();
-            else
-                root.store(k, { status: miss });
-            return;
-        }
-        var next = function () { root.fallback(k, title, artist, dur, i + 1, miss, onMiss); };
-        var got = function (lrc, roma, yrc) {
-            if (!root.useSource(k, root.providers[i], lrc, roma, yrc, dur))
-                next();
-        };
-        if (root.providers[i] === "netease")
-            root.netease(title, artist, dur, got, next);
-        else
-            root.kugou(title, artist, dur, got, next);
-    }
-
     function norm(s) {
         return String(s || "").toLowerCase()
             .replace(/[(\[（【].*?[)\]）】]/g, "")
@@ -522,34 +577,6 @@ Singleton {
             }
             cb("");
         });
-    }
-
-    function drop(k) {
-        var c = Object.assign({}, root.cache);
-        delete c[k];
-        root.cache = c;
-    }
-
-    Timer {
-        id: retry
-        property var args: []
-        interval: 3000
-        function schedule(k, t, a, al, d, n) {
-            if (k !== TrackInfo.key)
-                return;     // an abandoned track's chain must not take the timer
-            args = [k, t, a, al, d, n];
-            interval = 3000 * n;
-            restart();
-        }
-        onTriggered: root.fetch(args[0], args[1], args[2], args[3], args[4], args[5])
-    }
-
-    function accept(k, d) {
-        if (d.instrumental) {
-            root.store(k, { status: "instrumental" });
-            return;
-        }
-        root.store(k, { status: "synced", lines: parse(d.syncedLyrics, d.duration || 0), source: "lrclib" });
     }
 
     // ── parse ─────────────────────────────────────────────────────────────

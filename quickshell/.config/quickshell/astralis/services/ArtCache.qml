@@ -100,7 +100,7 @@ Singleton {
         var p = Qt.createQmlObject(
             'import Quickshell.Io; Process {}', root, "ArtCache.fetch");
         p.command = ["sh", "-c",
-            'curl -fsL --max-time 8 -o "$1.part" "$0" && mv "$1.part" "$1"',
+            '[ -s "$1" ] && touch -a "$1" || { curl -fsL --max-time 8 -o "$1.part" "$0" && mv "$1.part" "$1"; }',
             url, out];
         p.exited.connect(function (code) {
             if (code === 0) {
