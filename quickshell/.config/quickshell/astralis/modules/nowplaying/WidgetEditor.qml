@@ -969,13 +969,14 @@ PanelWindow {
                         width: parent.width
                         spacing: 6 * win.s
                         readonly property bool edge: panelCard.cv.info === "edge"
-                        readonly property bool turns: edge && panelCard.cv.edgeFlow !== "split"
+                        readonly property bool sideFlow: edge && panelCard.cv.edgeFlow === "side"
+                        readonly property bool turns: edge && panelCard.cv.edgeFlow !== "split" && !sideFlow
 
                         PRow {
                             visible: parent.edge
                             name: "Flow"
                             Seg {
-                                opts: [{ label: "Around", value: "around" }, { label: "Split", value: "split" }, { label: "Loop", value: "loop" }]
+                                opts: [{ label: "Around", value: "around" }, { label: "Split", value: "split" }, { label: "Side", value: "side" }, { label: "Loop", value: "loop" }]
                                 value: panelCard.cv.edgeFlow
                                 onPicked: (v) => Widgets.set("cover", "edgeFlow", v)
                             }
@@ -988,6 +989,7 @@ PanelWindow {
                             opacity: 0.7
                             text: panelCard.cv.edgeFlow === "split" ? "Title along the top, artist along the bottom — both upright."
                                 : panelCard.cv.edgeFlow === "loop" ? "Repeats all the way round the cover."
+                                : panelCard.cv.edgeFlow === "side" ? "Runs along one side; a long title turns the corner."
                                 : "One line following the edge from the start point."
                         }
                         PRow {
@@ -1000,7 +1002,7 @@ PanelWindow {
                             }
                         }
                         PRow {
-                            visible: parent.edge
+                            visible: parent.edge && !parent.sideFlow
                             name: "Start"
                             Stepper { value: panelCard.cv.edgeAngle; step: 15; from: -180; to: 180; suffix: "°"; onEdited: (v) => Widgets.set("cover", "edgeAngle", v) }
                         }
@@ -1023,12 +1025,21 @@ PanelWindow {
                             }
                         }
                         PRow {
-                            visible: panelCard.cv.info === "side"
+                            visible: panelCard.cv.info === "side" || parent.sideFlow
                             name: "Side"
                             Seg {
                                 opts: [{ label: "Left", value: "left" }, { label: "Right", value: "right" }]
                                 value: panelCard.cv.infoSide
                                 onPicked: (v) => Widgets.set("cover", "infoSide", v)
+                            }
+                        }
+                        PRow {
+                            visible: parent.sideFlow
+                            name: "Turns onto"
+                            Seg {
+                                opts: [{ label: "Top", value: "top" }, { label: "Bottom", value: "bottom" }]
+                                value: panelCard.cv.edgeCorner ?? "top"
+                                onPicked: (v) => Widgets.set("cover", "edgeCorner", v)
                             }
                         }
                         PRow {

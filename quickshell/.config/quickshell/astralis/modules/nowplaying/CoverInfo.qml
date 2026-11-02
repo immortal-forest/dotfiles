@@ -19,6 +19,9 @@ import "../../services"
  *                      going counter-clockwise, so both read upright
  *              loop    title · artist repeated all the way round, spaced so
  *                      it closes seamlessly; spins with edgeSpin (s per lap)
+ *              side    title · artist hugging one vertical side (infoSide), and
+ *                      when longer than it, turning the corner onto the top or
+ *                      bottom edge (edgeCorner) — always oriented to read
  *            edgeSide outside|inside, edgeDir cw|ccw, infoGap = distance from the edge.
  *
  * Fills CoverArt's stage; (cx, cy, size, radius) is the cover box. It
@@ -252,7 +255,7 @@ Item {
         readonly property real per: 8 * hs + 4 * arc
         readonly property real dir: (root.cfg.edgeDir ?? "cw") === "ccw" ? -1 : 1
         readonly property real u0: ((root.cfg.edgeAngle ?? 0) / 360) * per
-        readonly property real lap: flow === "split" ? 0 : (root.cfg.edgeSpin ?? 0)
+        readonly property real lap: flow === "split" || flow === "side" ? 0 : (root.cfg.edgeSpin ?? 0)
         property real phase: 0
 
         NumberAnimation on phase {
@@ -306,6 +309,18 @@ Item {
                     var fb = Math.min(1, half / Math.max(1, wb));
                     lines.push({ u0: u0 + per / 2, dir: -1, c: wb / 2, k: fb, fit: fb });
                 }
+            } else if (flow === "side") {
+                // Readable on every side means: left reads up (cw) / down (ccw),
+                // right reads down (cw) / up (ccw), and the overflow lands on
+                // the top edge (cw) or bottom edge (ccw), upright either way.
+                // Left starts at its far corner and runs towards the turn; right
+                // ends at its far corner, so the run arrives through the turn.
+                var q = 2 * hs + arc;
+                var left = root.cfg.infoSide === "left", top = (root.cfg.edgeCorner ?? "top") !== "bottom";
+                var ws = layout(runsOf([title].concat(det)), 0, glyphs);
+                var fs = Math.min(1, (2 * hh + arc) * 0.96 / Math.max(1, ws));
+                var a0 = left ? (top ? 2 * q + hs + arc : 3 * q + hs) : (top ? q + hs : hs + arc);
+                lines.push({ u0: a0, dir: top ? 1 : -1, c: left ? 0 : ws, k: fs, fit: fs });
             } else if (flow === "loop") {
                 var unitRuns = runsOf([title].concat(det));
                 unitRuns.push({ text: root.sep, role: 2 });
