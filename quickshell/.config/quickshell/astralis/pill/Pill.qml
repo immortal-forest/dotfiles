@@ -266,11 +266,10 @@ Item {
     QtObject {
         id: clock
         readonly property var now: sysClock.date
-        readonly property string timeFormat: (Flags.time12h ? "h:mm AP" : "HH:mm")
+        readonly property string timeFormat: (Flags.time12h ? "h:mm" : "HH:mm")
             + (Flags.clockSeconds ? ":ss" : "")
             + (Flags.time12h ? " AP" : "")
-        // Qt counts h 1–12 only when the format has AP; the suffix is cut.
-        readonly property string hhmm: Qt.formatTime(now, timeFormat).split(" ")[0]
+        readonly property string hhmm: Qt.formatTime(now, timeFormat)
         readonly property string date: Qt.locale().toString(now, "ddd d MMM")
     }
 
