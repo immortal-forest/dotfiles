@@ -59,7 +59,18 @@ Singleton {
     // ── fetch ─────────────────────────────────────────────────────────────
     Connections {
         target: TrackInfo
-        function onKeyChanged() { fetchTimer.restart(); }
+        // Abandon the previous track's lookup: its unfinished "loading" entry
+        // would otherwise stay cached forever (blocking a refetch when it
+        // comes back), and its retry chain would clobber this track's retry.
+        function onKeyChanged() {
+            retry.stop();
+            var c = {}, cur = TrackInfo.key;
+            for (var key in root.cache)
+                if (key === cur || root.cache[key].status !== "loading")
+                    c[key] = root.cache[key];
+            root.cache = c;
+            fetchTimer.restart();
+        }
     }
     // The singleton is created lazily, often after the key is already set.
     Component.onCompleted: fetchTimer.restart()
@@ -159,15 +170,33 @@ Singleton {
     function fetch(k, title, artist, album, dur, attempt) {
         if (k.length === 0 || artist.length === 0 || (root.cache[k] && attempt === 0))
             return;
+        if (attempt !== 0 && k !== TrackInfo.key)
+            return;     // track moved on: this chain is abandoned
         root.store(k, { status: "loading" });
         // NetEase first: it carries word-timed lyrics (yrc), so held notes
         // hold. LRCLIB (line-timed) only when NetEase has no match.
         if (attempt === 0) {
+            var lrclib = function () { root.fetch(k, title, artist, album, dur, -1); };
             root.netease(title, artist, dur, function (lrc, roma, yrc) {
                 if (!root.useSource(k, "netease", lrc, roma, yrc, dur))
-                    root.fetch(k, title, artist, album, dur, -1);
+                    lrclib();
             }, function () {
-                root.fetch(k, title, artist, album, dur, -1);
+                // Spotify reports localized titles ("Dawn and Fireflies" for
+                // Ado's 夜明けと蛍) that NetEase/Kugou don't know: retry them
+                // under the original title before LRCLIB.
+                root.altTitle(title, artist, dur, function (alt) {
+                    if (!alt || k !== TrackInfo.key)
+                        return lrclib();
+                    root.netease(alt, artist, dur, function (lrc, roma, yrc) {
+                        if (!root.useSource(k, "netease", lrc, roma, yrc, dur))
+                            lrclib();
+                    }, function () {
+                        root.kugou(alt, artist, dur, function (lrc) {
+                            if (!root.useSource(k, "kugou", lrc, "", "", dur))
+                                lrclib();
+                        }, lrclib);
+                    });
+                });
             });
             return;
         }
@@ -270,8 +299,7 @@ Singleton {
             return false;
         if (yrc)
             lines = root.applyWordTiming(lines, root.parseYrc(yrc));
-        var e = { status: "synced", lines: lines, source: source };
-        if (roma)
+        var e = { status: "synced", lines: lines, source: source };        if (roma)
             e.sourceRoman = root.alignRoman(lines, roma);
         root.store(k, e);
         return true;
@@ -465,6 +493,26 @@ Singleton {
         });
     }
 
+    /** The track's original-language title from iTunes Japan (same artist,
+     *  length within 3s), or "" when it has none / it is the same title. */
+    function altTitle(title, artist, dur, cb) {
+        if (root.cjk.test(title))
+            return cb("");
+        root.getJson("https://itunes.apple.com/search?country=jp&entity=song&limit=10&term="
+                     + encodeURIComponent(artist + " " + title), function (code, d) {
+            var rs = d && d.results ? d.results : [];
+            for (var i = 0; i < rs.length; i++) {
+                var r = rs[i], t = String(r.trackName || "");
+                if (!root.cjk.test(t) || !root.titleMatch(r.artistName, artist))
+                    continue;
+                if (dur > 0 && !(r.trackTimeMillis && Math.abs(r.trackTimeMillis / 1000 - dur) <= 3))
+                    continue;
+                return cb(t);
+            }
+            cb("");
+        });
+    }
+
     function drop(k) {
         var c = Object.assign({}, root.cache);
         delete c[k];
@@ -476,6 +524,8 @@ Singleton {
         property var args: []
         interval: 3000
         function schedule(k, t, a, al, d, n) {
+            if (k !== TrackInfo.key)
+                return;     // an abandoned track's chain must not take the timer
             args = [k, t, a, al, d, n];
             interval = 3000 * n;
             restart();
