@@ -70,8 +70,9 @@ PanelWindow {
     readonly property var lines: {
         var d = clock.date;
         if (stacked)
-            return [Qt.formatTime(d, h12 ? "hh" : "HH"), Qt.formatTime(d, "mm")];
-        return [Qt.formatTime(d, h12 ? "h:mm" : "HH:mm")];
+            return [h12 ? Qt.formatTime(d, "hh AP").split(" ")[0] : Qt.formatTime(d, "HH"), Qt.formatTime(d, "mm")];
+        // Qt counts h/hh 1–12 only when the format has AP; the suffix is cut.
+        return [h12 ? Qt.formatTime(d, "h:mm AP").split(" ")[0] : Qt.formatTime(d, "HH:mm")];
     }
     readonly property bool dateOn: cfg.dateFormat !== "off"
     readonly property string dateText: Qt.formatDate(clock.date, cfg.dateFormat === "short" ? "ddd d MMM" : "dddd, d MMMM")

@@ -186,7 +186,8 @@ Item {
 
     // Clock parts, split so the colon can carry an accent tint and the minutes
     // read a touch quieter than the hour (hierarchy inside one glyph pair).
-    readonly property string hourStr: Qt.formatDateTime(clock.date, Flags.time12h ? "h" : "HH")
+    // Qt counts h 1–12 only when the format has AP; the suffix is cut.
+    readonly property string hourStr: Qt.formatDateTime(clock.date, Flags.time12h ? "h AP" : "HH").split(" ")[0]
     readonly property string minStr: Qt.formatDateTime(clock.date, "mm")
 
     /** Small kanji transport button (media surface's 前/次 language). */
