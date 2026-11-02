@@ -264,6 +264,19 @@ PanelWindow {
                     property real ty: 0
                     property real vy: 0
                     property bool placed: false
+                    // A gap's height animating (dots ↔ lyrics) moves every row
+                    // below it in the Column at once, before their staggered
+                    // springs start — the next line jumped, then got pulled
+                    // back. Absorb layout moves into the spring offset so only
+                    // the springs ever move a line on screen.
+                    property real layY: 0
+                    onYChanged: {
+                        if (placed) {
+                            ty -= y - layY;
+                            win.settling = true;
+                        }
+                        layY = y;
+                    }
 
                     readonly property int dist: index - win.cur
                     readonly property bool current: dist === 0
