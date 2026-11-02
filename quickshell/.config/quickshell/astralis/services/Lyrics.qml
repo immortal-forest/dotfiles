@@ -69,9 +69,15 @@ Singleton {
                 if (key === cur || root.cache[key].status !== "loading")
                     c[key] = root.cache[key];
             root.cache = c;
+            // Debounce only while skipping: a track that follows another
+            // within 3s waits 1.5s; a normal track change looks up at once.
+            var now = Date.now();
+            fetchTimer.interval = now - root.lastKeyChange < 3000 ? 1500 : 250;
+            root.lastKeyChange = now;
             fetchTimer.restart();
         }
     }
+    property real lastKeyChange: 0
     // The singleton is created lazily, often after the key is already set.
     Component.onCompleted: fetchTimer.restart()
     // Watchdog: if the track has no entry yet (metadata arrived piecemeal and
@@ -82,11 +88,12 @@ Singleton {
         running: TrackInfo.key.length > 0 && !root.entry
         onTriggered: fetchTimer.restart()
     }
-    // Debounce: skipping through tracks restarts this, so only a track that
-    // stays on for 2s is looked up (cached ones show at once — `entry`).
+    // Restarted on every track change (interval set there), so skipping
+    // through tracks only looks up the one that stays (cached ones show at
+    // once — `entry`).
     Timer {
         id: fetchTimer
-        interval: 2000
+        interval: 250
         onTriggered: root.fetch(TrackInfo.key, TrackInfo.title, TrackInfo.artist, TrackInfo.album, TrackInfo.duration, 0)
     }
 
@@ -112,7 +119,9 @@ Singleton {
     readonly property string romanScript: String(Qt.resolvedUrl("../scripts/romanize.sh")).replace(/^file:\/\//, "")
     // Toggling the option retries a failed run (e.g. kakasi installed since).
     onWantRomanChanged: romanize(true)
-    onEntryChanged: romanize()
+    // Deferred: patching the cache from inside entry's change notification
+    // is a binding loop on `entry` (QML drops the re-evaluation).
+    onEntryChanged: Qt.callLater(romanize)
 
     function romanize(retry) {
         var k = TrackInfo.key, e = root.entry;
