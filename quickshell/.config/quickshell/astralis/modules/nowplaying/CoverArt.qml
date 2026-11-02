@@ -35,6 +35,11 @@ PanelWindow {
      *  by the window edge). Tracks the halo's blur reach. */
     readonly property real haloReach: Math.round(Math.max(36 * s, Math.min(150 * s, coverSize * 0.38)))
     readonly property real pad: haloReach + Math.round(12 * s)
+    // Per-side room: the halo's pad, or more where the song info reaches further.
+    readonly property real padL: Math.round(Math.max(pad, info.reachL + 8 * s))
+    readonly property real padR: Math.round(Math.max(pad, info.reachR + 8 * s))
+    readonly property real padT: Math.round(Math.max(pad, info.reachT + 8 * s))
+    readonly property real padB: Math.round(Math.max(pad, info.reachB + 8 * s))
 
     // Nothing shows until a cover has actually decoded (no empty placeholder
     // square); while the placer is open it shows even with nothing playing.
@@ -47,10 +52,10 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     anchors.left: true
     anchors.top: true
-    margins.left: Math.round(cfg.x * sw - pad)
-    margins.top: Math.round(cfg.y * sh - pad)
-    implicitWidth: coverSize + pad * 2
-    implicitHeight: coverSize + pad * 2 + Math.round(70 * s)
+    margins.left: Math.round(cfg.x * sw - padL)
+    margins.top: Math.round(cfg.y * sh - padT)
+    implicitWidth: coverSize + padL + padR
+    implicitHeight: coverSize + padT + padB + Math.round(70 * s)
     visible: stage.opacity > 0.001
     mask: Region { item: hit }
 
@@ -143,8 +148,8 @@ PanelWindow {
         // ── the cover ────────────────────────────────────────────────────
         Item {
             id: frame
-            x: win.pad
-            y: win.pad
+            x: win.padL
+            y: win.padT
             width: win.coverSize
             height: width
             scale: Players.playing ? (hover.hovered ? 1.02 : 1) : 0.94
@@ -211,6 +216,21 @@ PanelWindow {
                         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
                     }
                 }
+                // Scrim under the song info when it sits on the cover.
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: parent.height * 0.55
+                    z: 2
+                    opacity: info.mode === "overlay" && info.wanted ? 1 : 0
+                    visible: opacity > 0.001
+                    Behavior on opacity { NumberAnimation { duration: Motion.standard } }
+                    gradient: Gradient {
+                        GradientStop { position: 0; color: "transparent" }
+                        GradientStop { position: 1; color: Qt.alpha("#000000", 0.62) }
+                    }
+                }
             }
 
             // Faint edge so light covers don't dissolve into a light wallpaper.
@@ -264,19 +284,34 @@ PanelWindow {
             }
         }
 
+        // ── song info: below / beside / on / around the cover ─────────────
+        CoverInfo {
+            id: info
+            anchors.fill: parent
+            s: win.s
+            cfg: win.cfg
+            cx: frame.x + frame.width / 2
+            cy: frame.y + frame.height / 2
+            size: win.coverSize
+            radius: frame.radius
+            coverScale: frame.scale
+            hovered: hover.hovered
+        }
+
         Item {
             id: hit
             x: frame.x
             y: frame.y
             width: frame.width
-            height: frame.height + caption.height + 30 * win.s
+            height: caption.y + caption.height + 8 * win.s - frame.y
         }
 
         // ── caption + edition dots ───────────────────────────────────────
         Column {
             id: caption
             anchors.top: frame.bottom
-            anchors.topMargin: 22 * win.s
+            // Under whatever song info hangs below the cover.
+            anchors.topMargin: 22 * win.s + (info.wanted ? info.reachB : 0)
             anchors.horizontalCenter: frame.horizontalCenter
             spacing: 10 * win.s
             width: win.coverSize

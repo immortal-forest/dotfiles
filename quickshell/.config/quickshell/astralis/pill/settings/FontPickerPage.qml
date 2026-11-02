@@ -47,8 +47,11 @@ SettingsPage {
      */
     property string mode: "ui"
     readonly property bool clockMode: mode === "clock"
+    /** "song" picks the cover widget's song-info face (Widgets.cover.infoFont). */
+    readonly property bool songMode: mode === "song"
+    readonly property bool widgetMode: clockMode || songMode
     /** The live pick for this mode ("" = the fallback/reset entry). */
-    readonly property string current: clockMode ? Widgets.depth.font : Flags.uiFont
+    readonly property string current: clockMode ? Widgets.depth.font : songMode ? Widgets.cover.infoFont : Flags.uiFont
     property string query: ""
     property int focusIndex: 0
 
@@ -59,7 +62,7 @@ SettingsPage {
      */
     property point lastPointer: Qt.point(-1, -1)
 
-    readonly property string resetLabel: clockMode
+    readonly property string resetLabel: widgetMode
         ? "Shell font (" + Appearance.font.family + ")"
         : "System default (" + Appearance.font.familyDefault + ")"
 
@@ -104,12 +107,14 @@ SettingsPage {
         }
         if (root.current.length > 0)
             return root.current;
-        return root.clockMode ? Appearance.font.family : Appearance.font.familyDefault;
+        return root.widgetMode ? Appearance.font.family : Appearance.font.familyDefault;
     }
 
     function pick(family) {
         if (root.clockMode)
             Widgets.set("depth", "font", family);
+        else if (root.songMode)
+            Widgets.set("cover", "infoFont", family);
         else
             Flags.uiFont = family;
     }
@@ -173,7 +178,7 @@ SettingsPage {
         anchors.top: parent.top
         s: root.s
         glyph: "字"
-        title: root.clockMode ? "CLOCK FONT" : "FONT"
+        title: root.clockMode ? "CLOCK FONT" : root.songMode ? "SONG INFO FONT" : "FONT"
         showBack: true
         onBack: root.back()
     }
@@ -218,7 +223,7 @@ SettingsPage {
             anchors.right: parent.right
             anchors.rightMargin: 12 * root.s
             anchors.verticalCenter: parent.verticalCenter
-            text: root.clockMode ? "12:34  09:58 — Monday, 2 November" : "Aa Bb Cc 0123 — the quick brown fox"
+            text: root.clockMode ? "12:34  09:58 — Monday, 2 November" : root.songMode ? "MIRROR · Ado — 残夢 · Zanmu" : "Aa Bb Cc 0123 — the quick brown fox"
             color: Colors.on_surface_variant
             font.family: root.previewFamily
             font.pixelSize: 13 * root.s

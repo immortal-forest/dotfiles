@@ -75,7 +75,7 @@ PillSurface {
 
     // Returning from the font picker (which owns focus for its search field)
     // to any keyboard-navigable page re-claims the focus sink.
-    onPageChanged: if (root.open && root.page !== "fontpicker" && root.page !== "clockfont") Qt.callLater(() => kbNav.forceActiveFocus());
+    onPageChanged: if (root.open && root.page !== "fontpicker" && root.page !== "clockfont" && root.page !== "songfont") Qt.callLater(() => kbNav.forceActiveFocus());
 
     // ── soul-bead seam: track the focused row on either side ────────────────
     readonly property var seamPage: sidebar.rowFocused ? sidebar
@@ -192,6 +192,7 @@ PillSurface {
         case "widgets":    return pgWidgets;
         case "fontpicker": return pgFontPicker;
         case "clockfont":  return pgClockFont;
+        case "songfont":   return pgSongFont;
         default:           return pgAppearance;
         }
     }
@@ -620,6 +621,21 @@ PillSurface {
                 s: root.s
                 mode: "clock"
                 active: root.page === "clockfont" && root.open
+                onRequestPage: (name) => root.openPage(name)
+                onBack: root.openPage("widgets")
+            }
+        }
+
+        // …and in "song" mode: the cover widget's song-info face.
+        PageSlot {
+            current: root.page === "songfont"
+
+            FontPickerPage {
+                id: pgSongFont
+                anchors.fill: parent
+                s: root.s
+                mode: "song"
+                active: root.page === "songfont" && root.open
                 onRequestPage: (name) => root.openPage(name)
                 onBack: root.openPage("widgets")
             }

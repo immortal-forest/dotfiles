@@ -2,3 +2,4 @@ NowPlaying 1.0 NowPlaying.qml
 CoverArt 1.0 CoverArt.qml
 LyricsView 1.0 LyricsView.qml
 WidgetEditor 1.0 WidgetEditor.qml
+CoverInfo 1.0 CoverInfo.qml

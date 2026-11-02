@@ -57,6 +57,7 @@ SettingsPage {
         { item: radiusRow, kind: "seg", vals: root.radiusOptions.map(o => o.value), get: function () { return Widgets.cover.radius; }, set: function (v) { Widgets.set("cover", "radius", v); } },
         { item: haloRow, kind: "toggle", get: function () { return Widgets.cover.halo; }, set: function (v) { Widgets.set("cover", "halo", v); } },
         { item: captionRow, kind: "toggle", get: function () { return Widgets.cover.caption; }, set: function (v) { Widgets.set("cover", "caption", v); } },
+        { item: songFontRow, kind: "nav", surface: "songfont" },
         { item: lyricsRow, kind: "toggle", get: function () { return Widgets.lyrics.on; }, set: function (v) { Widgets.set("lyrics", "on", v); } },
         { item: lyrWRow, kind: "scrub", bump: function (d) { lyrWScrub.bump(d); } },
         { item: lyrHRow, kind: "scrub", bump: function (d) { lyrHScrub.bump(d); } },
@@ -202,12 +203,29 @@ SettingsPage {
                 captionOnFocus: true
                 icon: "type"
                 visible: Widgets.cover.on
-                last: true
 
                 LinkToggle {
                     s: root.s
                     on: Widgets.cover.caption
                     onToggled: Widgets.set("cover", "caption", !Widgets.cover.caption)
+                }
+            }
+            SettingsRow {
+                id: songFontRow
+                surface: root
+                name: "Song info font"
+                icon: "type"
+                sub: Widgets.cover.infoFont.length > 0 ? Widgets.cover.infoFont : "Shell font (" + Appearance.font.family + ")"
+                visible: Widgets.cover.on && Widgets.cover.info !== "off"
+                last: true
+
+                GlyphIcon {
+                    width: 16 * root.s
+                    height: 16 * root.s
+                    name: "chevron-right"
+                    color: root.focusRowItem === songFontRow ? Colors.on_surface : Colors.on_surface_variant
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    stroke: 2.2
                 }
             }
 

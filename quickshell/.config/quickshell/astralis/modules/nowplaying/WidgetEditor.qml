@@ -854,6 +854,9 @@ PanelWindow {
             readonly property var cv: Widgets.cover
             readonly property var dc: Widgets.depth
             readonly property var swatches: ["primary", "tertiary", "secondary", "on_surface"].map(v => ({ value: v, swatch: Colors[v], label: "" }))
+            /** Theme roles plus the cover's own two hues. */
+            readonly property var inkSwatches: [{ value: "cover", swatch: TrackInfo.accent, label: "" }, { value: "cover2", swatch: TrackInfo.accent2, label: "" }]
+                .concat(["primary", "tertiary", "on_surface", "on_surface_variant"].map(v => ({ value: v, swatch: Colors[v], label: "" })))
             readonly property bool shown: win.panel.length > 0 && !win.folded
 
             // ── placement: hang from the button that opened it, on whichever
@@ -950,6 +953,175 @@ PanelWindow {
                     }
                     PRow { name: "Halo"; Sw { on: panelCard.cv.halo; onToggled: Widgets.set("cover", "halo", !on) } }
                     PRow { name: "Caption on hover"; Sw { on: panelCard.cv.caption; onToggled: Widgets.set("cover", "caption", !on) } }
+
+                    // ── song info ──
+                    Rectangle { width: parent.width; height: 1; color: Qt.alpha(Colors.on_surface, 0.08) }
+                    PRow {
+                        name: "Song info"
+                        Seg {
+                            opts: [{ label: "Off", value: "off" }, { label: "Below", value: "below" }, { label: "Side", value: "side" }, { label: "On", value: "overlay" }, { label: "Edge", value: "edge" }]
+                            value: panelCard.cv.info
+                            onPicked: (v) => Widgets.set("cover", "info", v)
+                        }
+                    }
+                    Column {
+                        visible: panelCard.cv.info !== "off"
+                        width: parent.width
+                        spacing: 6 * win.s
+                        readonly property bool edge: panelCard.cv.info === "edge"
+                        readonly property bool turns: edge && panelCard.cv.edgeFlow !== "split"
+
+                        PRow {
+                            visible: parent.edge
+                            name: "Flow"
+                            Seg {
+                                opts: [{ label: "Around", value: "around" }, { label: "Split", value: "split" }, { label: "Loop", value: "loop" }]
+                                value: panelCard.cv.edgeFlow
+                                onPicked: (v) => Widgets.set("cover", "edgeFlow", v)
+                            }
+                        }
+                        Lbl {
+                            visible: parent.edge
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            font.weight: Font.Medium
+                            opacity: 0.7
+                            text: panelCard.cv.edgeFlow === "split" ? "Title along the top, artist along the bottom — both upright."
+                                : panelCard.cv.edgeFlow === "loop" ? "Repeats all the way round the cover."
+                                : "One line following the edge from the start point."
+                        }
+                        PRow {
+                            visible: parent.edge
+                            name: "Edge"
+                            Seg {
+                                opts: [{ label: "Outside", value: "outside" }, { label: "Inside", value: "inside" }]
+                                value: panelCard.cv.edgeSide
+                                onPicked: (v) => Widgets.set("cover", "edgeSide", v)
+                            }
+                        }
+                        PRow {
+                            visible: parent.edge
+                            name: "Start"
+                            Stepper { value: panelCard.cv.edgeAngle; step: 15; from: -180; to: 180; suffix: "°"; onEdited: (v) => Widgets.set("cover", "edgeAngle", v) }
+                        }
+                        PRow {
+                            visible: parent.turns
+                            name: "Direction"
+                            Seg {
+                                opts: [{ label: "Clockwise", value: "cw" }, { label: "Counter", value: "ccw" }]
+                                value: panelCard.cv.edgeDir
+                                onPicked: (v) => Widgets.set("cover", "edgeDir", v)
+                            }
+                        }
+                        PRow {
+                            visible: parent.turns
+                            name: "Spin while playing"
+                            Seg {
+                                opts: [{ label: "Off", value: 0 }, { label: "Slow", value: 60 }, { label: "Med", value: 30 }, { label: "Fast", value: 12 }]
+                                value: panelCard.cv.edgeSpin
+                                onPicked: (v) => Widgets.set("cover", "edgeSpin", v)
+                            }
+                        }
+                        PRow {
+                            visible: panelCard.cv.info === "side"
+                            name: "Side"
+                            Seg {
+                                opts: [{ label: "Left", value: "left" }, { label: "Right", value: "right" }]
+                                value: panelCard.cv.infoSide
+                                onPicked: (v) => Widgets.set("cover", "infoSide", v)
+                            }
+                        }
+                        PRow {
+                            visible: !parent.edge
+                            name: "Align"
+                            Seg {
+                                readonly property bool side: panelCard.cv.info === "side"
+                                opts: [{ label: side ? "Top" : "Left", value: "start" }, { label: "Center", value: "center" }, { label: side ? "Bottom" : "Right", value: "end" }]
+                                value: panelCard.cv.infoAlign
+                                onPicked: (v) => Widgets.set("cover", "infoAlign", v)
+                            }
+                        }
+                        PRow {
+                            visible: !parent.edge
+                            name: "\"Now playing\" label"
+                            Sw { on: panelCard.cv.infoLabel; onToggled: Widgets.set("cover", "infoLabel", !on) }
+                        }
+                        PRow {
+                            name: "Show"
+                            Seg {
+                                opts: [{ label: "Title", value: "title" }, { label: "+ Artist", value: "artist" }, { label: "+ Album", value: "album" }]
+                                value: panelCard.cv.infoFields
+                                onPicked: (v) => Widgets.set("cover", "infoFields", v)
+                            }
+                        }
+                        PRow {
+                            name: "Visible"
+                            Seg {
+                                opts: [{ label: "Always", value: "always" }, { label: "Hover", value: "hover" }, { label: "Playing", value: "playing" }]
+                                value: panelCard.cv.infoShow
+                                onPicked: (v) => Widgets.set("cover", "infoShow", v)
+                            }
+                        }
+                        PRow {
+                            name: "Text size"
+                            Stepper { value: panelCard.cv.infoSize; step: 1; from: 8; to: 64; suffix: "px"; onEdited: (v) => Widgets.set("cover", "infoSize", v) }
+                        }
+                        PRow {
+                            name: "Artist / album size"
+                            Stepper { value: panelCard.cv.infoSub; step: 5; from: 40; to: 120; suffix: "%"; onEdited: (v) => Widgets.set("cover", "infoSub", v) }
+                        }
+                        PRow {
+                            name: "Weight"
+                            Seg {
+                                opts: [{ label: "Light", value: 300 }, { label: "Reg", value: 400 }, { label: "Semi", value: 600 }, { label: "Bold", value: 800 }]
+                                value: panelCard.cv.infoWeight
+                                onPicked: (v) => Widgets.set("cover", "infoWeight", v)
+                            }
+                        }
+                        PRow {
+                            name: "Case"
+                            Seg {
+                                opts: [{ label: "As is", value: "none" }, { label: "ABC", value: "upper" }, { label: "abc", value: "lower" }]
+                                value: panelCard.cv.infoCase
+                                onPicked: (v) => Widgets.set("cover", "infoCase", v)
+                            }
+                        }
+                        PRow {
+                            name: "Letter spacing"
+                            Stepper { value: panelCard.cv.infoTracking; step: 2; from: -10; to: 60; suffix: "%"; onEdited: (v) => Widgets.set("cover", "infoTracking", v) }
+                        }
+                        PRow {
+                            visible: panelCard.cv.infoFields !== "title" && parent.edge
+                            name: "Separator"
+                            Seg {
+                                opts: [{ label: "·", value: "dot" }, { label: "/", value: "slash" }, { label: "—", value: "dash" }, { label: "✦", value: "star" }]
+                                value: panelCard.cv.infoSep
+                                onPicked: (v) => Widgets.set("cover", "infoSep", v)
+                            }
+                        }
+                        PRow {
+                            name: "Title colour"
+                            Seg { opts: panelCard.inkSwatches; value: panelCard.cv.infoColor; onPicked: (v) => Widgets.set("cover", "infoColor", v) }
+                        }
+                        PRow {
+                            visible: panelCard.cv.infoFields !== "title"
+                            name: "Artist colour"
+                            Seg { opts: panelCard.inkSwatches; value: panelCard.cv.infoColor2; onPicked: (v) => Widgets.set("cover", "infoColor2", v) }
+                        }
+                        PRow {
+                            visible: panelCard.cv.info !== "overlay"
+                            name: "Gap from cover"
+                            Stepper { value: panelCard.cv.infoGap; step: 2; from: 0; to: 80; suffix: "px"; onEdited: (v) => Widgets.set("cover", "infoGap", v) }
+                        }
+                        PRow { name: "Shadow"; Sw { on: panelCard.cv.infoShadow; onToggled: Widgets.set("cover", "infoShadow", !on) } }
+                        Lbl {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            font.weight: Font.Medium
+                            opacity: 0.7
+                            text: "Font: the gear button → Song info font."
+                        }
+                    }
                 }
 
                 // ── lyrics ──

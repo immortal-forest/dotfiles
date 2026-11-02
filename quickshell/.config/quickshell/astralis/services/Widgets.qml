@@ -24,7 +24,19 @@ Singleton {
     readonly property var defaults: ({
         grid: 24,
         avoid: true,
-        cover: { on: true, x: 0.045, y: 0.29, w: 0.16, radius: 1, halo: true, caption: true },
+        // Song info (modules/nowplaying/CoverInfo.qml): info off|below|side|overlay|edge;
+        // infoFields title|artist (+artist)|album (+artist+album); infoShow always|hover|playing;
+        // infoFont "" = shell font; infoSize px, infoSub = detail size % of it; infoCase
+        // none|upper|lower; infoTracking %; infoSep dot|slash|dash|star; infoColor/infoColor2 =
+        // cover|cover2|a Colors role; infoAlign start|center|end; infoSide left|right; infoGap px
+        // from the cover; infoLabel = "NOW PLAYING" eyebrow. Edge: edgeFlow around|split|loop,
+        // edgeSide outside|inside, edgeDir cw|ccw, edgeAngle deg (0 = top centre), edgeSpin s/lap (0 = still).
+        cover: { on: true, x: 0.045, y: 0.29, w: 0.16, radius: 1, halo: true, caption: true,
+                 info: "edge", infoFields: "artist", infoShow: "always", infoFont: "",
+                 infoSize: 15, infoSub: 80, infoWeight: 600, infoCase: "upper", infoTracking: 12,
+                 infoSep: "dot", infoColor: "on_surface", infoColor2: "cover", infoAlign: "start",
+                 infoSide: "right", infoGap: 10, infoLabel: false, infoShadow: true,
+                 edgeFlow: "split", edgeSide: "outside", edgeDir: "cw", edgeAngle: 0, edgeSpin: 0 },
         lyrics: { on: true, x: 0.27, y: 0.2, w: 0.45, h: 0.6, size: 38, spacing: 1, anchor: 0.42, lines: 0, align: "left",
                   ink: "cover", glow: true, blur: true, backdrop: "off", roman: "off", offset: 0, fill: "sweep" },
         // Depth clock: a box like the others (x, y = top-left, w, h as screen fractions; the
