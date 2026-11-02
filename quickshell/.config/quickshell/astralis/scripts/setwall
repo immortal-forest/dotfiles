@@ -222,6 +222,12 @@ fi
 pkill -USR1 -x kitty   2>/dev/null || true
 pkill -USR2 -x ghostty 2>/dev/null || true
 
+# Spotify: ONE re-theme per setwall, after every matugen pass has written the
+# final color.ini (was a matugen post_hook → 2-3 racing `spicetify apply`s →
+# blank Spotify window). Backgrounded + detached; `9>&-` so a Spotify that
+# spicetify relaunches never inherits (and holds) setwall.lock.
+( setsid "$(dirname "$(readlink -f "$0")")/spotify-retheme" >/dev/null 2>&1 9>&- & ) || true
+
 if [ -z "${RETHEME_ONLY:-}" ]; then
     printf '%s\n' "$img" > "$HOME/.cache/astralis/current-wallpaper"
 fi
