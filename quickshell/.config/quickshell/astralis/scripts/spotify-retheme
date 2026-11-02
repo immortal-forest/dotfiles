@@ -42,7 +42,13 @@ sp() { local t="$1"; shift; timeout "$t" spicetify -q "$@" 7>&- 8>&-; }
 log="$state/spotify-retheme.log"
 {
     echo "== $(date '+%F %T') sum=$sum last=$last"
-    if [ -n "$spot" ] && [ -f "$spot/Apps/xpui.spa" ]; then
+    if [ "$(spicetify -v 2>/dev/null)" = "Dev" ]; then
+        # spicetify-cli-git builds as version "Dev" and patches with a dev CSS map
+        # that leaves Spotify BLANK (confirmed 2026-07-15 and again 2026-11-02).
+        # Never patch with it — install spicetify-bin.
+        echo "spicetify is the Dev (git) build — refusing to patch; install spicetify-bin"
+        false
+    elif [ -n "$spot" ] && [ -f "$spot/Apps/xpui.spa" ]; then
         # Spotify updated (or was never patched): needs a fresh backup + full patch.
         # A stale backup from the old Spotify version blocks `backup`, so clear it.
         sp 120 backup apply || { sp 30 clear; sp 120 backup apply; }
