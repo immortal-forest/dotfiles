@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# astralis — push the freshly rendered spicetify color.ini into a RUNNING Spotify.
+#
+# Called ONCE, backgrounded, at the end of setwall. This used to be a matugen
+# post_hook (`spicetify apply &`) — but setwall runs matugen up to 3 times per
+# wallpaper (M3 baseline, chroma rescue, base16 overlay), so 2-3 backgrounded
+# `apply`s raced: each re-patched Apps/xpui in place and force-killed+relaunched
+# Spotify while another was mid-patch → Spotify opened to a BLANK window
+# (shell up, xpui never mounts). Only "sometimes" because the rescue/overlay
+# passes only fire for muted walls / non-material palettes.
+#
+# Now: one run at a time (run.lock), at most one queued behind it (pending.lock,
+# later callers just exit — the queued run reads the newest color.ini anyway),
+# skipped when color.ini didn't change, and `refresh` (theme CSS/colours only, no
+# xpui re-patch) instead of a full `apply` whenever Spotify is already patched.
+# A full `backup apply` happens only when Spotify itself updated (spotify-launcher
+# drops a fresh, unpatched Apps/xpui.spa).
+set -u
+command -v spicetify >/dev/null 2>&1 || exit 0
+pgrep -x spotify     >/dev/null 2>&1 || exit 0   # never launch Spotify on a wallchange
+
+state="$HOME/.cache/astralis"
+mkdir -p "$state"
+exec 7>"$state/spicetify-pending.lock"
+flock -n 7 || exit 0                 # a run is already queued — it will pick up our colours
+exec 8>"$state/spicetify-run.lock"
+flock -w 180 8 || exit 0             # wait for an in-flight run to finish
+flock -u 7                           # we're running now; let the next change queue up
+sleep 1                              # coalesce a burst of back-to-back setwall runs
+
+ini="$HOME/.config/spicetify/Themes/Sleek/color.ini"
+[ -s "$ini" ] || exit 0
+cfg="$(spicetify -c 2>/dev/null)"; cfg="${cfg:-$HOME/.config/spicetify/config-xpui.ini}"
+spot="$(sed -n 's/^spotify_path *= *//p' "$cfg" 2>/dev/null)"
+sum="$(sha1sum "$ini" | cut -d' ' -f1)"
+last="$(cat "$state/spicetify-applied.sha1" 2>/dev/null || true)"
+
+# 7>&- 8>&-: spicetify relaunches Spotify, which would otherwise inherit our lock
+# fds and hold run.lock for as long as it lives (every later retheme then stalls).
+sp() { local t="$1"; shift; timeout "$t" spicetify -q "$@" 7>&- 8>&-; }
+
+log="$state/spotify-retheme.log"
+{
+    echo "== $(date '+%F %T') sum=$sum last=$last"
+    if [ "$(spicetify -v 2>/dev/null)" = "Dev" ]; then
+        # spicetify-cli-git builds as version "Dev" and patches with a dev CSS map
+        # that leaves Spotify BLANK (confirmed 2026-07-15 and again 2026-11-02).
+        # Never patch with it — install spicetify-bin.
+        echo "spicetify is the Dev (git) build — refusing to patch; install spicetify-bin"
+        false
+    elif [ -n "$spot" ] && [ -f "$spot/Apps/xpui.spa" ]; then
+        # Spotify updated (or was never patched): needs a fresh backup + full patch.
+        # A stale backup from the old Spotify version blocks `backup`, so clear it.
+        sp 120 backup apply || { sp 30 clear; sp 120 backup apply; }
+    elif [ "$sum" != "$last" ]; then
+        sp 90 refresh
+    else
+        echo "colours unchanged — skip"
+    fi
+    rc=$?
+    echo "rc=$rc"
+    [ "$rc" -eq 0 ] && printf '%s\n' "$sum" > "$state/spicetify-applied.sha1"
+} >>"$log" 2>&1 </dev/null   # no TTY: a spicetify prompt must fail, not hang
+# keep the log small
+tail -n 200 "$log" > "$log.$$" 2>/dev/null && mv "$log.$$" "$log"
+exit 0
