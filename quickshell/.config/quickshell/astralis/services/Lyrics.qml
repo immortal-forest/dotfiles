@@ -165,7 +165,16 @@ Singleton {
             + (album ? "&album_name=" + encodeURIComponent(album) : "")
             + (dur > 0 ? "&duration=" + Math.round(dur) : "");
         request(exact, function(code, d) {
-                if (root.transient(code) && attempt < 4) {
+            // LRCLIB down/overloaded (it 503s for long stretches): don't make
+            // the track wait on it — ask the fallback sources right away, and
+            // only go back to retrying LRCLIB if they have nothing either.
+            if (root.transient(code) && attempt === 0) {
+                root.fallback(k, title, artist, dur, 0, "none", function () {
+                    retry.schedule(k, title, artist, album, dur, 1);
+                });
+                return;
+            }
+            if (root.transient(code) && attempt < 4) {
                 retry.schedule(k, title, artist, album, dur, attempt + 1);
                 return;
             }
@@ -201,6 +210,14 @@ Singleton {
     function search(k, title, artist, album, dur, attempt, exact, url, first) {
         request(url, function(code, list) {
             if (root.transient(code)) {
+                // Same as the exact lookup: an overloaded LRCLIB search must
+                // not block the fallback sources.
+                if (attempt === 0) {
+                    root.fallback(k, title, artist, dur, 0, "none", function () {
+                        retry.schedule(k, title, artist, album, dur, 1);
+                    });
+                    return;
+                }
                 if (attempt < 4)
                     retry.schedule(k, title, artist, album, dur, attempt + 1);
                 else
@@ -230,14 +247,18 @@ Singleton {
     /** Where the current lyrics came from: "lrclib" | "netease" | "kugou". */
     readonly property string source: entry && entry.source ? entry.source : ""
 
-    function fallback(k, title, artist, dur, i, miss) {
+    /** onMiss (optional): called instead of caching `miss` when no source has it. */
+    function fallback(k, title, artist, dur, i, miss, onMiss) {
         if (TrackInfo.key !== k && root.cache[k] === undefined)
             return;
         if (i >= root.providers.length) {
-            root.store(k, { status: miss });
+            if (onMiss)
+                onMiss();
+            else
+                root.store(k, { status: miss });
             return;
         }
-        var next = function () { root.fallback(k, title, artist, dur, i + 1, miss); };
+        var next = function () { root.fallback(k, title, artist, dur, i + 1, miss, onMiss); };
         var got = function (lrc, roma) {
             var lines = lrc ? root.parse(lrc, dur, true) : [];
             if (lines.filter(l => !l.gap).length < 3)
