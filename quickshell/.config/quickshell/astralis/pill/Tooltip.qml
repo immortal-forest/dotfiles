@@ -35,11 +35,11 @@ Item {
     height: bubble.height + pointerH
     z: 20
 
-    anchors.horizontalCenter: parent.horizontalCenter
-    anchors.bottom: below ? undefined : parent.top
-    anchors.bottomMargin: below ? 0 : gap
-    anchors.top: below ? parent.bottom : undefined
-    anchors.topMargin: below ? gap : 0
+    // Plain x/y rather than anchors: anchors that flip between top/bottom at
+    // runtime (placement follows the host's position) could leave both edges
+    // set for a frame and stretch the bubble over its own control.
+    x: parent ? Math.round((parent.width - width) / 2) : 0
+    y: below ? (parent ? parent.height : 0) + gap : -height - gap
 
     visible: armed || opacity > 0.01
     opacity: armed ? 1 : 0
@@ -61,9 +61,8 @@ Item {
 
     Rectangle {
         id: bubble
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: root.below ? undefined : parent.top
-        anchors.bottom: root.below ? parent.bottom : undefined
+        x: Math.round((root.width - width) / 2)
+        y: root.below ? root.pointerH : 0
         width: Math.max(titleText.implicitWidth, descText.implicitWidth) + 22 * root.s
         height: column.implicitHeight + 14 * root.s
         radius: 9 * root.s
@@ -111,9 +110,9 @@ Item {
     Canvas {
         width: 11 * root.s
         height: root.pointerH
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: root.below ? parent.top : undefined
-        anchors.bottom: root.below ? undefined : parent.bottom
+        x: Math.round((root.width - width) / 2)
+        y: root.below ? 0 : root.height - height
+        onYChanged: requestPaint()
         // Canvas paints are one-shot; retrigger on a matugen retheme so the
         // pointer never lags the bubble body (astralis adaptation).
         readonly property color tipColor: Colors.surface_container

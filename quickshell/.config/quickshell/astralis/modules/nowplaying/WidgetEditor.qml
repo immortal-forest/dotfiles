@@ -42,7 +42,29 @@ PanelWindow {
         win.panelBtn = btn;
         win.panel = win.panel === name ? "" : name;
     }
-    onFoldedChanged: if (folded) panel = ""
+    /** Dock button under the pointer — the one shared tooltip follows it. */
+    property Item tipBtn: null
+    /**
+     * Fold / unfold keeps the dock's centre where it was and clamps it on
+     * screen; x animates together with width only for that morph (a drag
+     * writes x directly and must not lag behind the pointer).
+     */
+    property bool foldMorph: false
+    onFoldedChanged: {
+        if (folded)
+            panel = "";
+        tipBtn = null;
+        const w = folded ? dock.height : dockRow.implicitWidth + 12 * win.s;
+        const cx = dock.x + dock.width / 2;
+        foldMorph = true;
+        dock.x = Math.round(Math.max(0, Math.min(win.sw - w, cx - w / 2)));
+        foldMorphEnd.restart();
+    }
+    Timer {
+        id: foldMorphEnd
+        interval: Motion.expressiveFastSpatialDur + 40
+        onTriggered: win.foldMorph = false
+    }
 
     function mix(a, b, f) {
         return Qt.rgba(a.r + (b.r - a.r) * f, a.g + (b.g - a.g) * f, a.b + (b.b - a.b) * f, a.a + (b.a - a.a) * f);
@@ -544,15 +566,17 @@ PanelWindow {
                     opacity: b.active ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: Motion.fast } }
                 }
-                HoverHandler { id: bh; cursorShape: Qt.PointingHandCursor }
-                TapHandler { id: tap; onTapped: b.clicked() }
-                Tooltip {
-                    s: win.s
-                    title: b.tip
-                    desc: b.tipDesc
-                    show: bh.hovered && b.tip.length > 0
-                    placement: dock.y < win.sh / 2 ? "below" : "above"
+                HoverHandler {
+                    id: bh
+                    cursorShape: Qt.PointingHandCursor
+                    onHoveredChanged: {
+                        if (hovered)
+                            win.tipBtn = b;
+                        else if (win.tipBtn === b)
+                            win.tipBtn = null;
+                    }
                 }
+                TapHandler { id: tap; onTapped: b.clicked() }
             }
             component Sep: Rectangle {
                 width: 1
@@ -563,12 +587,37 @@ PanelWindow {
 
             Rectangle {
                 id: dock
-                // Free-floating: starts top-centre; dragging overwrites x/y.
-                x: Math.round((win.sw - width) / 2)
-                y: Math.round(24 * win.s)
+                // Free-floating: starts top-centre BELOW the pill (the pill's
+                // rest face sits in the top ~44px; the dock used to cover its
+                // clock). Dragging and fold/unfold overwrite x/y.
+                // x is placed imperatively (centred once the window has a
+                // width), never bound: a live binding on x survives writes
+                // made through the fold Behavior and snaps the dock back.
+                // Re-centres while the window/row settle, until the user
+                // drags it or folds it; from then on x is theirs.
+                property bool placed: false
+                function place() {
+                    if (dock.placed || win.foldMorph)
+                        return;
+                    dock.x = Math.max(0, Math.round((win.sw - dock.width) / 2));
+                }
+                Component.onCompleted: dock.place()
+                onWidthChanged: dock.place()
+                Connections {
+                    target: win
+                    function onSwChanged() { dock.place(); }
+                    function onFoldedChanged() { dock.placed = true; }
+                }
+                y: Math.round(76 * win.s)
                 width: win.folded ? height : dockRow.implicitWidth + 12 * win.s
                 height: 40 * win.s
                 radius: height / 2
+                // The row is wider than the dock mid-morph; never let it spill.
+                clip: true
+                Behavior on x {
+                    enabled: win.foldMorph
+                    NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveFastSpatial }
+                }
                 // Cover-tinted gradient: deep accent bleeding in from the left,
                 // the second cover hue fading out on the right.
                 gradient: Gradient {
@@ -587,6 +636,7 @@ PanelWindow {
                     xAxis.maximum: win.sw - dock.width
                     yAxis.minimum: 0
                     yAxis.maximum: win.sh - dock.height
+                    onActiveChanged: if (active) dock.placed = true
                 }
                 HoverHandler { cursorShape: Qt.SizeAllCursor }
 
@@ -649,6 +699,29 @@ PanelWindow {
                     Btn { icon: "minus"; tip: "Preview"; tipDesc: "Hide the editor · H"; onClicked: win.chrome = false }
                     Sep {}
                     Btn { icon: "check"; accent: true; tip: "Done"; tipDesc: "Esc"; onClicked: Widgets.editing = false }
+                }
+            }
+
+            /**
+             * One tooltip for the whole dock, outside it (the dock clips), on
+             * a proxy spanning the hovered button's column at the dock's full
+             * height. It goes on the side away from an open panel, and stays
+             * quiet for the button whose panel is already showing.
+             */
+            Item {
+                id: tipProxy
+                readonly property Item btn: win.tipBtn
+                x: btn ? dock.x + dockRow.x + btn.x : 0
+                y: dock.y
+                width: btn ? btn.width : 0
+                height: dock.height
+                Tooltip {
+                    s: win.s
+                    title: tipProxy.btn ? tipProxy.btn.tip : ""
+                    desc: tipProxy.btn ? tipProxy.btn.tipDesc : ""
+                    show: tipProxy.btn !== null && tipProxy.btn.tip.length > 0 && !tipProxy.btn.on && !win.folded
+                    placement: win.panel.length > 0 ? (panelCard.below ? "above" : "below")
+                        : (dock.y < win.sh / 2 ? "below" : "above")
                 }
             }
         }
