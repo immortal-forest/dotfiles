@@ -557,9 +557,12 @@ Singleton {
                 continue;
             }
             var stamps = [];
-            var m, re = /\[(\d+):(\d+(?:\.\d+)?)\]/g, last = 0;
+            // [mm:ss.xx] — and NetEase's [mm:ss:xx] (colon before the
+            // fraction), which otherwise parsed to zero lines and threw the
+            // track onto LRCLIB's slow retry chain.
+            var m, re = /\[(\d+):(\d+)(?:[.:](\d+))?\]/g, last = 0;
             while ((m = re.exec(row)) !== null) {
-                stamps.push(parseInt(m[1]) * 60 + parseFloat(m[2]));
+                stamps.push(parseInt(m[1]) * 60 + parseInt(m[2]) + (m[3] ? parseFloat("0." + m[3]) : 0));
                 last = re.lastIndex;
             }
             if (stamps.length === 0)
