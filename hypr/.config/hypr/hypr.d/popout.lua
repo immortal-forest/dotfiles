@@ -1,4 +1,4 @@
--- Popout follow: SUPER+O pins the newest popout window (browser
+-- Popout follow: SUPER+SHIFT+O pins the newest popout window (browser
 -- Picture-in-Picture, Discord call/stream popout) so it rides along to every
 -- workspace you switch to — but never into a special workspace. Press again
 -- to release it; it stays floating where it is on the current workspace.
@@ -128,7 +128,7 @@ function M.onSpecial(ws, mon)
 	setPinned(w, ws == nil)
 end
 
-hl.bind("SUPER + O", M.toggle, { description = "Popout: follow across workspaces (newest PiP / Discord popout)" })
+hl.bind("SUPER + SHIFT + O", M.toggle, { description = "Popout: follow across workspaces (newest PiP / Discord popout)" })
 
 hl.on("workspace.special_active", M.onSpecial)
 

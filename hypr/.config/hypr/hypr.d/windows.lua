@@ -41,6 +41,9 @@ hl.window_rule({ name = "astralis-settings-float",    match = { title = "^astral
 hl.window_rule({ name = "astralis-settings-center",   match = { title = "^astralis-settings$" }, center = true })
 hl.window_rule({ name = "astralis-settings-rounding", match = { title = "^astralis-settings$" }, rounding = 0 })
 hl.window_rule({ name = "astralis-settings-noborder", match = { title = "^astralis-settings$" }, border_size = 0 })
+-- Blur is drawn for the window's full rectangle, so behind the transparent
+-- corners it showed as a square edge outside the Panel's curve.
+hl.window_rule({ name = "astralis-settings-noblur",   match = { title = "^astralis-settings$" }, no_blur = true })
 
 -- Tearing (immediate mode for games)
 hl.window_rule({ name = "tear-lunar",     match = { class = "^Lunar Client" },      immediate = true })
@@ -101,6 +104,13 @@ hl.layer_rule({
 hl.layer_rule({
 	name  = "astralis-powermenu",
 	match = { namespace = "^astralis-powermenu$" },
+	blur         = true,
+	ignore_alpha = false,
+})
+-- 覧 overview overlay: same frost as the power menu.
+hl.layer_rule({
+	name  = "astralis-dashboard",
+	match = { namespace = "^astralis-dashboard$" },
 	blur         = true,
 	ignore_alpha = false,
 })

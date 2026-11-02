@@ -7,6 +7,10 @@ hl.config({
 		disable_hyprland_logo = true,
 		disable_splash_rendering = true,
 		force_default_wallpaper = 0,
+		-- Honour xdg-activation: clicking a notification (or a link handed to a
+		-- running app) lets that app raise and focus its window, jumping
+		-- workspaces if needed. Off, Hyprland silently ignores the request.
+		focus_on_activate = true,
 		-- Open new windows on the workspace that is active when they MAP, not the
 		-- one that was focused when their process launched. Single-instance apps
 		-- (ghostty +new-window, zen) otherwise route the new window to the

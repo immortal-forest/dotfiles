@@ -31,6 +31,7 @@ hl.bind(mainMod .. " + SHIFT + C", hl.dsp.exec_cmd('skwd-helm random'))         
 hl.bind(mainMod .. " + V",     hl.dsp.exec_cmd('qs -c astralis ipc call pill clipboard ""'))     -- clipboard history
 hl.bind(mainMod .. " + L",      hl.dsp.exec_cmd("loginctl lock-session"))                        -- lock screen (astralis WlSessionLock)
 hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd('qs -c astralis ipc call power toggle'))          -- full-screen power / session menu
+hl.bind(mainMod .. " + O",     hl.dsp.exec_cmd('qs -c astralis ipc call dashboard toggle'))      -- astralis: 覧 overview
 hl.bind(mainMod .. " + N",     hl.dsp.exec_cmd('qs -c astralis ipc call pill notifications ""')) -- astralis: notification center
 hl.bind(mainMod .. " + A",     hl.dsp.exec_cmd('qs -c astralis ipc call pill mixer ""'))         -- astralis: audio mixer
 hl.bind(mainMod .. " + D",     hl.dsp.exec_cmd('qs -c astralis ipc call pill calendar ""'))      -- astralis: calendar
