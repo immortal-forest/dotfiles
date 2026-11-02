@@ -160,6 +160,19 @@ Singleton {
         if (k.length === 0 || artist.length === 0 || (root.cache[k] && attempt === 0))
             return;
         root.store(k, { status: "loading" });
+        // NetEase first: it carries word-timed lyrics (yrc), so held notes
+        // hold. LRCLIB (line-timed) only when NetEase has no match.
+        if (attempt === 0) {
+            root.netease(title, artist, dur, function (lrc, roma, yrc) {
+                if (!root.useSource(k, "netease", lrc, roma, yrc, dur))
+                    root.fetch(k, title, artist, album, dur, -1);
+            }, function () {
+                root.fetch(k, title, artist, album, dur, -1);
+            });
+            return;
+        }
+        if (attempt < 0)
+            attempt = 0;
         var q = "track_name=" + encodeURIComponent(title) + "&artist_name=" + encodeURIComponent(artist);
         var exact = "https://lrclib.net/api/get?" + q
             + (album ? "&album_name=" + encodeURIComponent(album) : "")
@@ -241,11 +254,28 @@ Singleton {
     }
 
     // ── fallback sources (keyless): NetEase → Kugou ───────────────────────
-    // Tried in order when LRCLIB has no synced lyrics. A hit must match the
+    // After NetEase (tried first, in fetch) and LRCLIB both miss. A hit must match the
     // title (normalised) and, when the duration is known, be within 5s.
-    readonly property var providers: ["netease", "kugou"]
+    readonly property var providers: ["kugou"]
     /** Where the current lyrics came from: "lrclib" | "netease" | "kugou". */
     readonly property string source: entry && entry.source ? entry.source : ""
+
+    /** Store a keyless source's LRC (+ romaji, + word timing) as the track's
+     *  lyrics; false when it is too thin to use (< 3 sung lines). */
+    function useSource(k, source, lrc, roma, yrc, dur) {
+        if (TrackInfo.key !== k && root.cache[k] === undefined)
+            return true;    // track moved on; nothing to do, and don't chain on
+        var lines = lrc ? root.parse(lrc, dur, true) : [];
+        if (lines.filter(l => !l.gap).length < 3)
+            return false;
+        if (yrc)
+            lines = root.applyWordTiming(lines, root.parseYrc(yrc));
+        var e = { status: "synced", lines: lines, source: source };
+        if (roma)
+            e.sourceRoman = root.alignRoman(lines, roma);
+        root.store(k, e);
+        return true;
+    }
 
     /** onMiss (optional): called instead of caching `miss` when no source has it. */
     function fallback(k, title, artist, dur, i, miss, onMiss) {
@@ -260,15 +290,8 @@ Singleton {
         }
         var next = function () { root.fallback(k, title, artist, dur, i + 1, miss, onMiss); };
         var got = function (lrc, roma, yrc) {
-            var lines = lrc ? root.parse(lrc, dur, true) : [];
-            if (lines.filter(l => !l.gap).length < 3)
-                return next();
-            if (yrc)
-                lines = root.applyWordTiming(lines, root.parseYrc(yrc));
-            var e = { status: "synced", lines: lines, source: root.providers[i] };
-            if (roma)
-                e.sourceRoman = root.alignRoman(lines, roma);
-            root.store(k, e);
+            if (!root.useSource(k, root.providers[i], lrc, roma, yrc, dur))
+                next();
         };
         if (root.providers[i] === "netease")
             root.netease(title, artist, dur, got, next);
@@ -352,26 +375,14 @@ Singleton {
                 return next();
             root.getJson("https://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=" + best.id
                          + "&accesskey=" + best.accesskey, function (c2, l) {
-                var lrc = l && l.content ? root.utf8(Qt.atob(l.content)) : "";
+                // Qt.atob already decodes the bytes as UTF-8 (verified: "5pel"
+                // → 日); decoding again turned every kana/kanji into mojibake.
+                var lrc = l && l.content ? String(Qt.atob(l.content)).replace(/^﻿/, "") : "";
                 if (!/\[\d+:\d+/.test(lrc))
                     return next();
                 got(lrc, "");
             });
         });
-    }
-
-    /** Decode a binary (byte-per-char) string as UTF-8. */
-    function utf8(b) {
-        var out = "", i = 0;
-        while (i < b.length) {
-            var c = b.charCodeAt(i++) & 0xff, cp;
-            if (c < 0x80) cp = c;
-            else if (c < 0xe0) cp = ((c & 0x1f) << 6) | (b.charCodeAt(i++) & 0x3f);
-            else if (c < 0xf0) cp = ((c & 0x0f) << 12) | ((b.charCodeAt(i++) & 0x3f) << 6) | (b.charCodeAt(i++) & 0x3f);
-            else cp = ((c & 0x07) << 18) | ((b.charCodeAt(i++) & 0x3f) << 12) | ((b.charCodeAt(i++) & 0x3f) << 6) | (b.charCodeAt(i++) & 0x3f);
-            out += String.fromCodePoint(cp);
-        }
-        return out.replace(/^﻿/, "");
     }
 
     /** Source-provided romaji (an LRC) → one string per line, matched by timestamp. */
