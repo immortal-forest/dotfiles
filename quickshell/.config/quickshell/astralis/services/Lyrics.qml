@@ -259,10 +259,12 @@ Singleton {
             return;
         }
         var next = function () { root.fallback(k, title, artist, dur, i + 1, miss, onMiss); };
-        var got = function (lrc, roma) {
+        var got = function (lrc, roma, yrc) {
             var lines = lrc ? root.parse(lrc, dur, true) : [];
             if (lines.filter(l => !l.gap).length < 3)
                 return next();
+            if (yrc)
+                lines = root.applyWordTiming(lines, root.parseYrc(yrc));
             var e = { status: "synced", lines: lines, source: root.providers[i] };
             if (roma)
                 e.sourceRoman = root.alignRoman(lines, roma);
@@ -320,12 +322,14 @@ Singleton {
             }
             if (!best)
                 return next();
-            root.getJson("https://music.163.com/api/song/lyric?id=" + best.id + "&lv=1&tv=-1&rv=-1", function (c2, l) {
+            // v1 endpoint: also returns `yrc`, NetEase's word-timed lyrics.
+            root.getJson("https://music.163.com/api/song/lyric/v1?id=" + best.id + "&lv=-1&yv=-1&tv=-1&rv=-1", function (c2, l) {
                 var lrc = l && l.lrc && l.lrc.lyric ? l.lrc.lyric : "";
                 var roma = l && l.romalrc && l.romalrc.lyric ? l.romalrc.lyric : "";
+                var yrc = l && l.yrc && l.yrc.lyric ? l.yrc.lyric : "";
                 if (!/\[\d+:\d+/.test(lrc))
                     return next();
-                got(lrc, roma);
+                got(lrc, roma, yrc);
             });
         });
     }
@@ -380,6 +384,73 @@ Singleton {
                 if (!rl[j].gap && Math.abs(rl[j].t - l.t) < 0.08)
                     return rl[j].text;
             return "";
+        });
+    }
+
+    /**
+     * NetEase yrc → [{ t, span, segs: [{ t, d, text }] }] (seconds). A line is
+     * `[start,dur]` followed by `(start,dur,0)text` per sung word/character;
+     * the JSON credit rows (`{"t":…}`) are skipped.
+     */
+    function parseYrc(yrc) {
+        var out = [];
+        var rows = String(yrc).split(/\r?\n/);
+        for (var i = 0; i < rows.length; i++) {
+            var h = rows[i].match(/^\[(\d+),(\d+)\]/);
+            if (!h)
+                continue;
+            var segs = [], m, re = /\((\d+),(\d+),\d+\)([^(]*)/g;
+            while ((m = re.exec(rows[i])) !== null)
+                segs.push({ t: parseInt(m[1]) / 1000, d: parseInt(m[2]) / 1000, text: m[3] });
+            if (segs.length > 0)
+                out.push({ t: parseInt(h[1]) / 1000, span: parseInt(h[2]) / 1000, segs: segs });
+        }
+        return out;
+    }
+
+    /**
+     * Replace the estimated per-word timing with the real one wherever a yrc
+     * line starts at (about) the same time as an LRC line. Held notes then
+     * hold the highlight instead of it running on at speaking pace.
+     */
+    function applyWordTiming(lines, ylines) {
+        if (ylines.length === 0)
+            return lines;
+        return lines.map(function (l) {
+            if (l.gap)
+                return l;
+            var y = null, best = 0.6;
+            for (var j = 0; j < ylines.length; j++) {
+                var dd = Math.abs(ylines[j].t - l.t);
+                if (dd < best) {
+                    best = dd;
+                    y = ylines[j];
+                }
+            }
+            if (!y)
+                return l;
+            var span = Math.max(0.1, Math.min(y.span, l.end - y.t));
+            var words = [];
+            for (var k = 0; k < y.segs.length; k++) {
+                var sg = y.segs[k];
+                var txt = sg.text.replace(/\s+$/, "");
+                if (txt.length === 0) {
+                    if (words.length > 0)
+                        words[words.length - 1].space = true;
+                    continue;
+                }
+                words.push({
+                    text: txt,
+                    space: txt.length < sg.text.length,
+                    w: 1,
+                    a: Math.max(0, Math.min(1, (sg.t - y.t) / span)),
+                    b: Math.max(0, Math.min(1, (sg.t + sg.d - y.t) / span))
+                });
+            }
+            if (words.length === 0)
+                return l;
+            return { t: y.t, end: l.end, span: span, text: y.segs.map(s => s.text).join("").trim(),
+                     gap: false, words: words, timed: true };
         });
     }
 
