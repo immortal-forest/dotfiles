@@ -149,37 +149,31 @@ PillSurface {
     }
 
     /**
-     * Audio/cursor toggle, sized and coloured like a SettingsSeg option so the
-     * Audio row reads as one more line of the same card: on is the primary
-     * fill, off is bare with the struck-through glyph.
+     * A capture toggle (desktop audio / mic / cursor) as one of three equal
+     * tiles. The state is spelled out under the label, because a struck-through
+     * glyph alone read as "disabled" rather than "off". On fills
+     * primary_container and squares its corners; off is the bare stadium.
      */
-    component AudioChip: Rectangle {
-        id: chip
+    component CaptureTile: Rectangle {
+        id: ct
         property string icon: ""
-        property string offIcon: chip.icon
+        property string offIcon: ct.icon
         property string label: ""
         property bool on: false
         property bool supported: true
         signal toggled()
 
-        width: chipRow.implicitWidth + 24 * root.s
-        height: M3.controlHeight * root.s
-        radius: height / 2
-        opacity: chip.supported ? 1 : 0.32
-        enabled: chip.supported
-        color: chip.on ? Colors.primary
-            : (chipArea.containsMouse ? Qt.alpha(Colors.on_surface, 0.08) : "transparent")
+        readonly property color ink: ct.on ? Colors.on_primary_container : Colors.on_surface_variant
+
+        height: 52 * root.s
+        radius: (ctArea.pressed ? 12 : (ct.on ? 16 : 26)) * root.s
+        color: ct.on ? Colors.primary_container
+            : (ctArea.containsMouse ? Colors.surface_container_highest : Colors.surface_container_high)
+        opacity: ct.supported ? 1 : 0.32
+        enabled: ct.supported
         Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-        Accessible.role: Accessible.CheckBox
-        Accessible.name: chip.label
-        Accessible.checkable: true
-        Accessible.checked: chip.on
-        Accessible.focusable: chip.supported
-        Accessible.onPressAction: chip.toggled()
-
-        scale: chipArea.pressed ? 0.94 : 1
-        Behavior on scale {
+        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        Behavior on radius {
             NumberAnimation {
                 duration: Motion.glide
                 easing.type: Motion.easeBezier
@@ -187,59 +181,70 @@ PillSurface {
             }
         }
 
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: ct.label
+        Accessible.checkable: true
+        Accessible.checked: ct.on
+        Accessible.focusable: ct.supported
+        Accessible.onPressAction: ct.toggled()
+
         Row {
-            id: chipRow
-            anchors.centerIn: parent
-            spacing: 6 * root.s
+            anchors.left: parent.left
+            anchors.leftMargin: 14 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 10 * root.s
 
             GlyphIcon {
                 anchors.verticalCenter: parent.verticalCenter
-                width: 13 * root.s
-                height: 13 * root.s
-                name: chip.on ? chip.icon : chip.offIcon
-                color: chip.on ? Colors.on_primary : Colors.on_surface_variant
+                width: 16 * root.s
+                height: 16 * root.s
+                name: ct.on ? ct.icon : ct.offIcon
+                color: ct.ink
                 stroke: 1.8
             }
 
-            Text {
+            Column {
                 anchors.verticalCenter: parent.verticalCenter
-                text: chip.label
-                color: chip.on ? Colors.on_primary : Colors.on_surface_variant
-                font.family: Appearance.font.family
-                font.pixelSize: 10.5 * root.s
-                font.weight: Font.Bold
+                spacing: 1 * root.s
+
+                Text {
+                    text: ct.label
+                    color: ct.on ? Colors.on_primary_container : Colors.on_surface
+                    font.family: Appearance.font.family
+                    font.pixelSize: 11 * root.s
+                    font.weight: Font.Bold
+                }
+                Text {
+                    text: !ct.supported ? "N/A" : (ct.on ? "On" : "Off")
+                    color: Qt.alpha(ct.ink, 0.75)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 9 * root.s
+                    font.weight: Font.DemiBold
+                }
             }
         }
 
         MouseArea {
-            id: chipArea
+            id: ctArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: chip.toggled()
+            onClicked: ct.toggled()
         }
     }
 
-    /**
-     * A capture source: one of three equal tonal tiles. Picking only selects
-     * (persisted in Flags.recordSource); the Record button below starts the
-     * take, so a stray click on a tile never begins recording. The selected
-     * tile fills secondary_container and squares its corners.
-     */
-    component SourceTile: Rectangle {
-        id: st
-        property string key: ""
+    /** Tonal stadium chip for the action row (countdown, save folder). */
+    component ActionChip: Rectangle {
+        id: ac
         property string icon: ""
         property string label: ""
-        readonly property bool selected: Flags.recordSource === st.key
-        readonly property bool hot: stArea.containsMouse
-        readonly property color ink: st.selected ? Colors.on_secondary_container
-            : (st.hot ? Colors.on_surface : Colors.on_surface_variant)
+        property real maxLabelWidth: 200 * root.s
+        signal activated(int button)
 
-        height: 64 * root.s
-        radius: (stArea.pressed ? 12 : (st.selected ? 20 : 30)) * root.s
-        color: st.selected ? Colors.secondary_container
-            : (st.hot ? Colors.surface_container_highest : Colors.surface_container_high)
+        width: acRow.implicitWidth + 30 * root.s
+        height: 52 * root.s
+        radius: acArea.pressed ? 16 * root.s : height / 2
+        color: acArea.containsMouse ? Colors.surface_container_highest : Colors.surface_container_high
         Behavior on color { ColorAnimation { duration: Motion.fast } }
         Behavior on radius {
             NumberAnimation {
@@ -249,45 +254,47 @@ PillSurface {
             }
         }
 
-        Accessible.role: Accessible.RadioButton
-        Accessible.name: st.label
-        Accessible.checkable: true
-        Accessible.checked: st.selected
+        Accessible.role: Accessible.Button
         Accessible.focusable: true
-        Accessible.onPressAction: Flags.recordSource = st.key
+        Accessible.onPressAction: ac.activated(Qt.LeftButton)
 
-        Column {
+        Row {
+            id: acRow
             anchors.centerIn: parent
             spacing: 7 * root.s
 
             GlyphIcon {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 20 * root.s
-                height: 20 * root.s
-                name: st.icon
-                color: st.ink
-                stroke: 1.7
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                anchors.verticalCenter: parent.verticalCenter
+                width: 15 * root.s
+                height: 15 * root.s
+                name: ac.icon
+                color: acArea.containsMouse ? Colors.primary : Colors.on_surface_variant
+                stroke: 1.8
             }
             Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: st.label
-                color: st.ink
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, ac.maxLabelWidth)
+                text: ac.label
+                color: acArea.containsMouse ? Colors.primary : Colors.on_surface
                 font.family: Appearance.font.family
-                font.pixelSize: 11.5 * root.s
-                font.weight: st.selected ? Font.Bold : Font.DemiBold
+                font.pixelSize: 11 * root.s
+                font.weight: Font.Bold
+                font.features: ({ "tnum": 1 })
+                elide: Text.ElideMiddle
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
         }
 
         MouseArea {
-            id: stArea
+            id: acArea
             anchors.fill: parent
             hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: Qt.PointingHandCursor
-            onClicked: Flags.recordSource = st.key
+            onClicked: (mouse) => ac.activated(mouse.button)
         }
     }
+
 
     /** Round tonal transport button (pause / resume) for the running take. */
     component TransportButton: Rectangle {
@@ -434,24 +441,100 @@ PillSurface {
             width: parent.width
             height: 64 * root.s
 
-            // Idle — pick what to capture.
-            Row {
+            /**
+             * Idle — pick what to capture: one segmented track with a lit
+             * indicator that slides to the chosen source. Picking only
+             * selects; Record below starts the take.
+             */
+            Rectangle {
                 id: sourceRow
                 anchors.fill: parent
-                spacing: 8 * root.s
+                radius: height / 2
+                color: Colors.surface_container_high
                 opacity: (!root.recording && !root.arming && !root.showError) ? 1 : 0
                 visible: opacity > 0.01
                 enabled: opacity > 0.9 && !root.picking
                 Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
+                readonly property real inset: 5 * root.s
+                readonly property real segW: (sourceRow.width - 2 * sourceRow.inset) / root.sources.length
+                readonly property int current: {
+                    for (let i = 0; i < root.sources.length; i++)
+                        if (root.sources[i].key === Flags.recordSource)
+                            return i;
+                    return 0;
+                }
+
+                Rectangle {
+                    x: sourceRow.inset + sourceRow.current * sourceRow.segW
+                    y: sourceRow.inset
+                    width: sourceRow.segW
+                    height: sourceRow.height - 2 * sourceRow.inset
+                    radius: height / 2
+                    color: Colors.secondary_container
+                    Behavior on x {
+                        NumberAnimation {
+                            duration: Motion.glide
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+                }
+
                 Repeater {
                     model: root.sources
-                    SourceTile {
+                    Item {
+                        id: seg
                         required property var modelData
-                        width: (sourceRow.width - 2 * sourceRow.spacing) / 3
-                        key: modelData.key
-                        icon: modelData.icon
-                        label: modelData.label
+                        required property int index
+                        readonly property bool selected: sourceRow.current === seg.index
+                        readonly property color ink: seg.selected ? Colors.on_secondary_container
+                            : (segArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant)
+                        x: sourceRow.inset + seg.index * sourceRow.segW
+                        y: sourceRow.inset
+                        width: sourceRow.segW
+                        height: sourceRow.height - 2 * sourceRow.inset
+
+                        Accessible.role: Accessible.RadioButton
+                        Accessible.name: seg.modelData.label
+                        Accessible.checkable: true
+                        Accessible.checked: seg.selected
+                        Accessible.focusable: true
+                        Accessible.onPressAction: Flags.recordSource = seg.modelData.key
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 5 * root.s
+                            scale: segArea.pressed ? 0.94 : 1
+                            Behavior on scale { NumberAnimation { duration: Motion.fast } }
+
+                            GlyphIcon {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 18 * root.s
+                                height: 18 * root.s
+                                name: seg.modelData.icon
+                                color: seg.ink
+                                stroke: 1.7
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: seg.modelData.label
+                                color: seg.ink
+                                font.family: Appearance.font.family
+                                font.pixelSize: 10.5 * root.s
+                                font.weight: seg.selected ? Font.Bold : Font.DemiBold
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            }
+                        }
+
+                        MouseArea {
+                            id: segArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Flags.recordSource = seg.modelData.key
+                        }
                     }
                 }
             }
@@ -770,9 +853,9 @@ PillSurface {
             }
         }
 
-        Item { width: 1; height: 12 * root.s }
+        Item { width: 1; height: 10 * root.s }
 
-        // ── take settings, in one tonal card ────────────────────────────────
+        // ── video settings, in one tonal card ───────────────────────────────
         Rectangle {
             width: parent.width
             height: setCol.implicitHeight + 8 * root.s
@@ -810,186 +893,184 @@ PillSurface {
                         onPicked: (v) => Flags.recordQuality = v
                     }
                 }
-
-                OptionRow {
-                    label: "Countdown"
-
-                    SettingsSeg {
-                        s: root.s
-                        options: root.countdownOptions
-                        value: Flags.recordCountdown
-                        onPicked: (v) => Flags.recordCountdown = v
-                    }
-                }
-
-                OptionRow {
-                    label: "Capture"
-
-                    Row {
-                        spacing: 2 * root.s
-
-                        AudioChip {
-                            icon: "speaker"
-                            offIcon: "speaker-off"
-                            label: "Desktop"
-                            on: Flags.recordDesktop
-                            onToggled: Flags.recordDesktop = !Flags.recordDesktop
-                        }
-                        AudioChip {
-                            icon: "mic"
-                            offIcon: "mic-off"
-                            label: "Mic"
-                            on: Flags.recordMic
-                            onToggled: Flags.recordMic = !Flags.recordMic
-                        }
-                        AudioChip {
-                            icon: "cursor"
-                            label: "Cursor"
-                            on: Flags.recordCursor
-                            supported: ScreenRec.cap.cursor
-                            onToggled: Flags.recordCursor = !Flags.recordCursor
-                        }
-                    }
-                }
-
-                // Save to: the newest take if there is one this session, else
-                // the folder it would land in. The whole line is the target.
-                OptionRow {
-                    id: saveRow
-                    label: "Save to"
-
-                    Accessible.role: Accessible.Button
-                    Accessible.name: ScreenRec.lastFile.length > 0 ? "Open last recording" : "Open recordings folder"
-                    Accessible.description: outText.text
-                    Accessible.focusable: true
-                    Accessible.onPressAction: ScreenRec.lastFile.length > 0 ? ScreenRec.openLast() : ScreenRec.openFolder()
-
-                    Row {
-                        spacing: 8 * root.s
-                        height: M3.controlHeight * root.s
-
-                        Text {
-                            id: outText
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, 200 * root.s)
-                            text: ScreenRec.lastFile.length > 0
-                                ? ScreenRec.baseName(ScreenRec.lastFile)
-                                : ScreenRec.dir.replace(Quickshell.env("HOME"), "~")
-                            color: outArea.containsMouse ? Colors.primary : Colors.on_surface_variant
-                            font.family: Appearance.font.family
-                            font.pixelSize: 10.5 * root.s
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideMiddle
-                            maximumLineCount: 1
-                            Behavior on color { ColorAnimation { duration: Motion.fast } }
-                        }
-                        GlyphIcon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 13 * root.s
-                            height: 13 * root.s
-                            name: ScreenRec.lastFile.length > 0 ? "play" : "chevron-right"
-                            color: outArea.containsMouse ? Colors.primary : Colors.on_surface_variant
-                            stroke: 1.8
-                        }
-                        Item { width: 6 * root.s; height: 1 }
-                    }
-
-                    MouseArea {
-                        id: outArea
-                        parent: saveRow
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: ScreenRec.lastFile.length > 0 ? ScreenRec.openLast() : ScreenRec.openFolder()
-                    }
-                }
             }
         }
 
-        Item { width: 1; height: 10 * root.s }
+        Item { width: 1; height: 8 * root.s }
 
-        // ── record ──────────────────────────────────────────────────────────
-        /**
-         * The one filled control while idle. Closes the surface first: it must
-         * be off-screen before the encoder opens, or the shell records its own
-         * UI (and the window/region pickers grab the pointer).
-         */
-        Rectangle {
-            id: recBtn
-            readonly property bool live: !root.recording && !root.arming && !root.showError
-            readonly property bool usable: recBtn.live && ScreenRec.available && !root.picking
+        // ── what goes into the take besides pixels ──────────────────────────
+        Row {
+            id: capRow
             width: parent.width
-            height: 52 * root.s
-            radius: recArea.pressed ? 16 * root.s : height / 2
-            color: recArea.containsMouse && recBtn.usable ? Qt.lighter(Colors.error, 1.08) : Colors.error
-            opacity: recBtn.live ? (ScreenRec.available ? 1 : 0.38) : 0.38
-            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-            Behavior on color { ColorAnimation { duration: Motion.fast } }
-            Behavior on radius {
-                NumberAnimation {
-                    duration: Motion.glide
-                    easing.type: Motion.easeBezier
-                    easing.bezierCurve: Motion.expressiveFastSpatial
+            spacing: 8 * root.s
+            readonly property real tileW: (capRow.width - 2 * capRow.spacing) / 3
+
+            CaptureTile {
+                width: capRow.tileW
+                icon: "speaker"
+                offIcon: "speaker-off"
+                label: "Desktop"
+                on: Flags.recordDesktop
+                onToggled: Flags.recordDesktop = !Flags.recordDesktop
+            }
+            CaptureTile {
+                width: capRow.tileW
+                icon: "mic"
+                offIcon: "mic-off"
+                label: "Mic"
+                on: Flags.recordMic
+                onToggled: Flags.recordMic = !Flags.recordMic
+            }
+            CaptureTile {
+                width: capRow.tileW
+                icon: "cursor"
+                label: "Cursor"
+                on: Flags.recordCursor
+                supported: ScreenRec.cap.cursor
+                onToggled: Flags.recordCursor = !Flags.recordCursor
+            }
+        }
+
+        Item { width: 1; height: 14 * root.s }
+
+        // ── action row: countdown · save folder · record ────────────────────
+        Row {
+            id: actRow
+            width: parent.width
+            spacing: 8 * root.s
+
+            /**
+             * Countdown as one chip: click steps forward through Off/3/5/10,
+             * right-click steps back. It sits beside Record because it only
+             * changes what happens when Record is pressed.
+             */
+            ActionChip {
+                id: countChip
+                icon: "stopwatch"
+                label: Flags.recordCountdown > 0 ? Flags.recordCountdown + "s" : "Off"
+                Accessible.name: "Countdown"
+                Accessible.description: label + " — tap to change"
+                onActivated: (button) => {
+                    const opts = root.countdownOptions;
+                    let i = 0;
+                    for (let k = 0; k < opts.length; k++)
+                        if (opts[k].value === Flags.recordCountdown)
+                            i = k;
+                    const step = button === Qt.RightButton ? opts.length - 1 : 1;
+                    Flags.recordCountdown = opts[(i + step) % opts.length].value;
                 }
             }
 
-            function go() {
-                if (!recBtn.usable)
-                    return;
-                root.requestClose();
-                ScreenRec.start(Flags.recordSource);
+            // Save folder, or the newest take once there is one this session.
+            ActionChip {
+                id: saveChip
+                readonly property bool hasTake: ScreenRec.lastFile.length > 0
+                icon: saveChip.hasTake ? "play" : "download"
+                label: saveChip.hasTake ? "Last take"
+                    : ScreenRec.dir.replace(/\/+$/, "").split("/").pop()
+                maxLabelWidth: 90 * root.s
+                Accessible.name: saveChip.hasTake ? "Open last recording" : "Open recordings folder"
+                Accessible.description: ScreenRec.dir.replace(Quickshell.env("HOME"), "~")
+                onActivated: (button) => {
+                    if (saveChip.hasTake && button !== Qt.RightButton)
+                        ScreenRec.openLast();
+                    else
+                        ScreenRec.openFolder();
+                }
             }
 
-            Accessible.role: Accessible.Button
-            Accessible.name: "Start recording " + Flags.recordSource
-            Accessible.focusable: recBtn.usable
-            Accessible.onPressAction: recBtn.go()
-
-            Row {
-                id: recRow
-                anchors.centerIn: parent
-                spacing: 10 * root.s
-
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: (recArea.containsMouse && recBtn.usable ? 12 : 10) * root.s
-                    height: width
-                    radius: width / 2
-                    color: Colors.on_error
-                    Behavior on width {
-                        NumberAnimation {
-                            duration: Motion.glide
-                            easing.type: Motion.easeBezier
-                            easing.bezierCurve: Motion.expressiveFastSpatial
-                        }
+            /**
+             * The one filled control while idle. Closes the surface first: it
+             * must be off-screen before the encoder opens, or the shell records
+             * its own UI (and the window/region pickers grab the pointer).
+             */
+            Rectangle {
+                id: recBtn
+                readonly property bool live: !root.recording && !root.arming && !root.showError
+                readonly property bool usable: recBtn.live && ScreenRec.available && !root.picking
+                readonly property string srcLabel: {
+                    for (let i = 0; i < root.sources.length; i++)
+                        if (root.sources[i].key === Flags.recordSource)
+                            return root.sources[i].label.toLowerCase();
+                    return Flags.recordSource;
+                }
+                width: actRow.width - countChip.width - saveChip.width - 2 * actRow.spacing
+                height: 52 * root.s
+                radius: recArea.pressed ? 16 * root.s : height / 2
+                color: recArea.containsMouse && recBtn.usable ? Qt.lighter(Colors.error, 1.08) : Colors.error
+                opacity: recBtn.live ? (ScreenRec.available ? 1 : 0.38) : 0.38
+                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on radius {
+                    NumberAnimation {
+                        duration: Motion.glide
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveFastSpatial
                     }
                 }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Start recording"
-                    color: Colors.on_error
-                    font.family: Appearance.font.family
-                    font.pixelSize: 13 * root.s
-                    font.weight: Font.Bold
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: Flags.recordCountdown > 0
-                    text: "in " + Flags.recordCountdown + "s"
-                    color: Qt.alpha(Colors.on_error, 0.65)
-                    font.family: Appearance.font.family
-                    font.pixelSize: 11.5 * root.s
-                    font.weight: Font.DemiBold
-                }
-            }
 
-            MouseArea {
-                id: recArea
-                anchors.fill: parent
-                hoverEnabled: true
-                enabled: recBtn.usable
-                cursorShape: Qt.PointingHandCursor
-                onClicked: recBtn.go()
+                function go() {
+                    if (!recBtn.usable)
+                        return;
+                    root.requestClose();
+                    ScreenRec.start(Flags.recordSource);
+                }
+
+                Accessible.role: Accessible.Button
+                Accessible.name: "Start recording " + Flags.recordSource
+                Accessible.focusable: recBtn.usable
+                Accessible.onPressAction: recBtn.go()
+
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 10 * root.s
+
+                    // Record mark: a ring around a dot that swells on hover.
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 18 * root.s
+                        height: width
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: 2 * root.s
+                            border.color: Colors.on_error
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: (recArea.containsMouse && recBtn.usable ? 10 : 8) * root.s
+                            height: width
+                            radius: width / 2
+                            color: Colors.on_error
+                            Behavior on width {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Record " + recBtn.srcLabel
+                        color: Colors.on_error
+                        font.family: Appearance.font.family
+                        font.pixelSize: 13 * root.s
+                        font.weight: Font.Bold
+                    }
+                }
+
+                MouseArea {
+                    id: recArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: recBtn.usable
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: recBtn.go()
+                }
             }
         }
     }

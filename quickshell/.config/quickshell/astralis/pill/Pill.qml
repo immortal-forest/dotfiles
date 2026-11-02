@@ -191,7 +191,7 @@ Item {
         // Header 24 + 14 + state panel 80 + 12 + settings card 134 + 10 +
         // chip row 34 + 8 + output 36 = 352 content ⇒ 380 fixed; 430 wide fits
         // the frame-rate and quality strips on one line each.
-        recorder:  { size: () => { surfaceItem(ldRecorder);  return Qt.size(430 * s, 424 * s); }, ame: () => surfaceItem(ldRecorder) }
+        recorder:  { size: () => { surfaceItem(ldRecorder);  return Qt.size(430 * s, 348 * s); }, ame: () => surfaceItem(ldRecorder) }
     })
 
     // Mode ladder (Ricelin Pill.qml:224–231; game/quickChoose/quickCount rungs
