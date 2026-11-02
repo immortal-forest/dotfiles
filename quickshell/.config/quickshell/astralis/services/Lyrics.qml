@@ -82,9 +82,11 @@ Singleton {
         running: TrackInfo.key.length > 0 && !root.entry
         onTriggered: fetchTimer.restart()
     }
+    // Debounce: skipping through tracks restarts this, so only a track that
+    // stays on for 2s is looked up (cached ones show at once — `entry`).
     Timer {
         id: fetchTimer
-        interval: 500
+        interval: 2000
         onTriggered: root.fetch(TrackInfo.key, TrackInfo.title, TrackInfo.artist, TrackInfo.album, TrackInfo.duration, 0)
     }
 

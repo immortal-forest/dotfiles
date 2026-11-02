@@ -38,6 +38,14 @@ Item {
     property real radius: 0
     property real coverScale: 1
     property bool hovered: false
+    /** The cover's centre as a fraction of the screen: "auto" placements face
+     *  the screen centre (a cover on the right gets its info on the left). */
+    property real fx: 0.5
+    property real fy: 0.5
+    readonly property string side: (cfg.infoSide ?? "auto") === "auto" ? (fx > 0.5 ? "left" : "right") : cfg.infoSide
+    readonly property string turn: (cfg.edgeCorner ?? "auto") === "auto" ? (fy > 0.5 ? "top" : "bottom") : cfg.edgeCorner
+    readonly property string align: (cfg.infoAlign ?? "auto") !== "auto" ? cfg.infoAlign
+        : mode === "side" ? (fy > 0.5 ? "start" : "end") : "start"
 
     readonly property string mode: cfg.info ?? "off"
     readonly property bool edge: mode === "edge"
@@ -49,8 +57,8 @@ Item {
           : true)
 
     /** How far past each cover edge the info reaches (CoverArt sizes its window by it). */
-    readonly property real reachL: mode === "side" && cfg.infoSide === "left" ? gap + sideW : edgeReach
-    readonly property real reachR: mode === "side" && cfg.infoSide !== "left" ? gap + sideW : edgeReach
+    readonly property real reachL: mode === "side" && side === "left" ? gap + sideW : edgeReach
+    readonly property real reachR: mode === "side" && side !== "left" ? gap + sideW : edgeReach
     readonly property real reachT: edgeReach
     readonly property real reachB: mode === "below" ? gap + stack.implicitHeight : edgeReach
     readonly property real edgeReach: edge && cfg.edgeSide !== "inside" ? gap + fm1.height + 6 * s : 0
@@ -154,8 +162,8 @@ Item {
         Column {
             id: stack
             visible: root.block
-            readonly property string align: root.cfg.infoAlign ?? "start"
-            readonly property bool leftSide: root.cfg.infoSide === "left"
+            readonly property string align: root.align
+            readonly property bool leftSide: root.side === "left"
             readonly property real m: Math.max(14 * root.s, root.radius * 0.32)
             readonly property real l: root.cx - root.size / 2
             readonly property real t: root.cy - root.size / 2
@@ -316,11 +324,17 @@ Item {
                 // Left starts at its far corner and runs towards the turn; right
                 // ends at its far corner, so the run arrives through the turn.
                 var q = 2 * hs + arc;
-                var left = root.cfg.infoSide === "left", top = (root.cfg.edgeCorner ?? "top") !== "bottom";
+                var left = root.side === "left", top = root.turn !== "bottom";
                 var ws = layout(runsOf([title].concat(det)), 0, glyphs);
                 var fs = Math.min(1, (2 * hh + arc) * 0.96 / Math.max(1, ws));
-                var a0 = left ? (top ? 2 * q + hs + arc : 3 * q + hs) : (top ? q + hs : hs + arc);
-                lines.push({ u0: a0, dir: top ? 1 : -1, c: left ? 0 : ws, k: fs, fit: fs });
+                if ((root.cfg.edgeAt ?? "side") === "corner") {
+                    // Centred on the turn's corner arc, wrapping both ways.
+                    var cm = (left ? (top ? 3 : 2) : (top ? 0 : 1)) * q + hs + arc / 2;
+                    lines.push({ u0: cm, dir: top ? 1 : -1, c: ws / 2, k: fs, fit: fs });
+                } else {
+                    var a0 = left ? (top ? 2 * q + hs + arc : 3 * q + hs) : (top ? q + hs : hs + arc);
+                    lines.push({ u0: a0, dir: top ? 1 : -1, c: left ? 0 : ws, k: fs, fit: fs });
+                }
             } else if (flow === "loop") {
                 var unitRuns = runsOf([title].concat(det));
                 unitRuns.push({ text: root.sep, role: 2 });

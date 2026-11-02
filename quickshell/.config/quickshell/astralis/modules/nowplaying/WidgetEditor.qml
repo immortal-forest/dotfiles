@@ -1028,8 +1028,8 @@ PanelWindow {
                             visible: panelCard.cv.info === "side" || parent.sideFlow
                             name: "Side"
                             Seg {
-                                opts: [{ label: "Left", value: "left" }, { label: "Right", value: "right" }]
-                                value: panelCard.cv.infoSide
+                                opts: [{ label: "Auto", value: "auto" }, { label: "Left", value: "left" }, { label: "Right", value: "right" }]
+                                value: panelCard.cv.infoSide ?? "auto"
                                 onPicked: (v) => Widgets.set("cover", "infoSide", v)
                             }
                         }
@@ -1037,9 +1037,18 @@ PanelWindow {
                             visible: parent.sideFlow
                             name: "Turns onto"
                             Seg {
-                                opts: [{ label: "Top", value: "top" }, { label: "Bottom", value: "bottom" }]
-                                value: panelCard.cv.edgeCorner ?? "top"
+                                opts: [{ label: "Auto", value: "auto" }, { label: "Top", value: "top" }, { label: "Bottom", value: "bottom" }]
+                                value: panelCard.cv.edgeCorner ?? "auto"
                                 onPicked: (v) => Widgets.set("cover", "edgeCorner", v)
+                            }
+                        }
+                        PRow {
+                            visible: parent.sideFlow
+                            name: "Position"
+                            Seg {
+                                opts: [{ label: "Side", value: "side" }, { label: "Corner", value: "corner" }]
+                                value: panelCard.cv.edgeAt ?? "side"
+                                onPicked: (v) => Widgets.set("cover", "edgeAt", v)
                             }
                         }
                         PRow {
@@ -1047,8 +1056,8 @@ PanelWindow {
                             name: "Align"
                             Seg {
                                 readonly property bool side: panelCard.cv.info === "side"
-                                opts: [{ label: side ? "Top" : "Left", value: "start" }, { label: "Center", value: "center" }, { label: side ? "Bottom" : "Right", value: "end" }]
-                                value: panelCard.cv.infoAlign
+                                opts: [{ label: "Auto", value: "auto" }, { label: side ? "Top" : "Left", value: "start" }, { label: "Center", value: "center" }, { label: side ? "Bottom" : "Right", value: "end" }]
+                                value: panelCard.cv.infoAlign ?? "auto"
                                 onPicked: (v) => Widgets.set("cover", "infoAlign", v)
                             }
                         }

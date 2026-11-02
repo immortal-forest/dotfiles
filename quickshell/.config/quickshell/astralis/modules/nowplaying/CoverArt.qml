@@ -296,6 +296,8 @@ PanelWindow {
             radius: frame.radius
             coverScale: frame.scale
             hovered: hover.hovered
+            fx: win.cfg.x + win.coverSize / 2 / win.sw
+            fy: win.cfg.y + win.coverSize / 2 / win.sh
         }
 
         Item {
