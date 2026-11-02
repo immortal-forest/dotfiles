@@ -68,7 +68,7 @@ Singleton {
     function norm(s) {
         return String(s || "").toLowerCase().normalize("NFKC")
             .replace(/[\(\[].*?[\)\]]/g, "").replace(/\s+-\s+(single|ep)$/, "")
-            .replace(/[^\p{L}\p{N}]+/gu, "");
+            .replace(/[\s!-\/:-@\[-`{-~\u00a0-\u00bf\u2000-\u206f\u3000-\u303f\u30fb]+/g, ""); // QML JS has no \p{L}
     }
 
     function loose(a, b) {
@@ -82,15 +82,36 @@ Singleton {
 
     readonly property var versionWords: /\b(remix|live|instrumental|acoustic|karaoke|sped|slowed|nightcore|cover|demo|edit|mix)\b|リミックス|インスト/i
 
-    /** Same song, same version? */
+    /** Same song, same version? 2 = title match, 1 = only the length matches
+     *  (a translated title), 0 = no. */
     function sameSong(cTitle, cArtist, cDur) {
         if (!loose(cArtist, root.artist))
-            return false;
+            return 0;
         if (root.versionWords.test(cTitle) && !root.versionWords.test(root.rawTitle))
-            return false;
+            return 0;
         if (loose(cTitle, root.title))
-            return true;
-        return root.duration > 0 && cDur > 0 && Math.abs(cDur - root.duration) < 1.5;
+            return 2;
+        return root.duration > 0 && cDur > 0 && Math.abs(cDur - root.duration) < 1.5 ? 1 : 0;
+    }
+
+    /** Indices of results that are this song. A length-only match counts only
+     *  when nothing in the results matches by title; otherwise it is just
+     *  another song by the artist that happens to be as long (Ado's 逆光 for
+     *  unravel). fn(r) → [title, artist, seconds] or null to skip. */
+    function matches(rs, fn) {
+        var lv = rs.map(r => { var f = fn(r); return f ? sameSong(f[0], f[1], f[2]) : 0; });
+        var need = lv.indexOf(2) >= 0 ? 2 : 1;
+        var out = [];
+        for (var i = 0; i < lv.length; i++)
+            if (lv[i] >= need)
+                out.push(i);
+        return out;
+    }
+
+    /** The picture behind a cover url, so one image under two store titles
+     *  (jp/us) counts once. */
+    function imageKey(u) {
+        return String(u).replace(/\/\d+x\d+bb\.(jpg|png)$/, "");
     }
 
     // ── candidates ────────────────────────────────────────────────────────
@@ -122,15 +143,24 @@ Singleton {
                        source: Players.serviceLabel || "Player", year: "", genre: "" });
         // Alternates join once every source has answered, so the list (and the
         // n/total count) settles in one step.
+        // An edition of the playing album is the picture already showing: it
+        // only marks its name and image as seen (so its other-store title
+        // doesn't come back as a "new" cover).
         var lst = entry && entry.pending <= 0 ? entry.list.filter(c => !root.bad[c.url]) : [];
-        var own = norm(root.album);
-        var sorted = lst.slice().sort((a, b) => (norm(b.album) === own ? 1 : 0) - (norm(a.album) === own ? 1 : 0));
+        // Same edition from several sources → keep the fast CDNs; Cover Art
+        // Archive redirects through archive.org and takes seconds.
+        var rank = c => (loose(c.album, root.album) ? 0 : 10) + (c.source === "MusicBrainz" ? 1 : 0);
+        var sorted = lst.slice().sort((a, b) => rank(a) - rank(b));
         for (var i = 0; i < sorted.length; i++) {
             var c = sorted[i];
             var k = norm(c.album) || c.url;
-            if (seen[k])
+            var ik = "img:" + imageKey(c.url);
+            if (seen[k] || seen[ik])
                 continue;
             seen[k] = true;
+            seen[ik] = true;
+            if (pa.length > 0 && loose(c.album, root.album))
+                continue;
             out.push(c);
         }
         return out;
@@ -220,10 +250,9 @@ Singleton {
                 function(d) {
                     var items = [];
                     var rs = d && d.results ? d.results : [];
-                    for (var i = 0; i < rs.length; i++) {
-                        var r = rs[i];
-                        if (!r.artworkUrl100 || !sameSong(r.trackName, r.artistName, (r.trackTimeMillis || 0) / 1000))
-                            continue;
+                    var ok = root.matches(rs, r => r.artworkUrl100 ? [r.trackName, r.artistName, (r.trackTimeMillis || 0) / 1000] : null);
+                    for (var j = 0; j < ok.length; j++) {
+                        var r = rs[ok[j]];
                         items.push({
                             url: r.artworkUrl100.replace(/\/\d+x\d+bb\.(jpg|png)$/, "/" + root.artSize + "x" + root.artSize + "bb.jpg"),
                             album: String(r.collectionName || "").replace(/\s+-\s+(Single|EP)$/, ""),
@@ -240,10 +269,9 @@ Singleton {
         get("https://api.deezer.com/search?limit=25&q=" + term, function(d) {
             var items = [];
             var rs = d && d.data ? d.data : [];
-            for (var i = 0; i < rs.length; i++) {
-                var r = rs[i];
-                if (!r.album || !r.album.cover_xl || !r.artist || !sameSong(r.title, r.artist.name, r.duration || 0))
-                    continue;
+            var ok = root.matches(rs, r => r.album && r.album.cover_xl && r.artist ? [r.title, r.artist.name, r.duration || 0] : null);
+            for (var j = 0; j < ok.length; j++) {
+                var r = rs[ok[j]];
                 items.push({ url: r.album.cover_xl, album: r.album.title || "", kind: r.album.record_type || "",
                              source: "Deezer", year: "", genre: "" });
             }
@@ -279,18 +307,18 @@ Singleton {
             var seen = {};
             try {
                 var recs = JSON.parse(txt).recordings || [];
-                for (var i = 0; i < recs.length; i++) {
-                    var r = recs[i];
-                    var ra = (r["artist-credit"] || []).map(a => a.name).join(" ");
-                    if (!sameSong(r.title, ra, (r.length || 0) / 1000))
-                        continue;
+                var live = root.versionWords.test(root.rawTitle);
+                var ok = root.matches(recs, r => [r.title, (r["artist-credit"] || []).map(a => a.name).join(" "), (r.length || 0) / 1000]);
+                for (var i = 0; i < ok.length; i++) {
+                    var r = recs[ok[i]];
                     var rels = r.releases || [];
                     for (var j = 0; j < rels.length; j++) {
                         var rel = rels[j];
                         var g = rel["release-group"] || {};
                         var va = (rel["artist-credit"] || []).some(a => /various artists/i.test(a.name));
-                        var comp = (g["secondary-types"] || []).indexOf("Compilation") >= 0;
-                        if (!g.id || seen[g.id] || va || comp)
+                        var st = g["secondary-types"] || [];
+                        var comp = st.indexOf("Compilation") >= 0;
+                        if (!g.id || seen[g.id] || va || comp || (st.indexOf("Live") >= 0 && !live))
                             continue;
                         seen[g.id] = true;
                         groups.push({ id: g.id, album: g.title || rel.title || "", kind: g["primary-type"] || "",
