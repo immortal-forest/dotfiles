@@ -1,0 +1,77 @@
+diff --git a/skwd-wall/src/app/model.rs b/skwd-wall/src/app/model.rs
+index 9ee7f7de..f808b893 100644
+--- a/skwd-wall/src/app/model.rs
++++ b/skwd-wall/src/app/model.rs
+@@ -93,8 +93,14 @@ impl App {
+         let roots = &self.library_session.folder_roots;
+         self.library_session.all_folders = catalog.available_folders(roots, None);
+         let shown = catalog.available_folders(roots, Some(false));
+-        let mut options = vec![String::from("*")];
+-        options.extend(catalog.available_folders(roots, Some(self.library_session.filters.reveal)));
++        // astralis: per-folder only. No "All wallpapers" (*) entry and no
++        // library-root ("main") entry; use the roots only if they have no subfolders.
++        let available = catalog.available_folders(roots, Some(self.library_session.filters.reveal));
++        let mut options: Vec<String> =
++            available.iter().filter(|folder| !roots.contains(*folder)).cloned().collect();
++        if options.is_empty() {
++            options = available;
++        }
+         self.library_session.folder_hidden = options
+             .iter()
+             .map(|folder| folder != ALL_WALLPAPERS && !shown.contains(folder))
+@@ -109,7 +115,8 @@ impl App {
+         if !options.contains(selected)
+             && (!self.library_session.library.catalog().items.is_empty() || outside_roots)
+         {
+-            self.library_session.filters.folder = Filters::default().folder;
++            self.library_session.filters.folder =
++                options.first().cloned().unwrap_or_else(|| Filters::default().folder);
+         }
+         self.library_session.folder_options = options;
+     }
+diff --git a/skwd-wall/src/app/update/filters.rs b/skwd-wall/src/app/update/filters.rs
+index 48b3890f..6ce49bef 100644
+--- a/skwd-wall/src/app/update/filters.rs
++++ b/skwd-wall/src/app/update/filters.rs
+@@ -7,7 +7,16 @@ pub(super) fn set_folder(app: &mut App, folder: String) -> Task<Message> {
+     app.chrome.bar.menu = None;
+     app.chrome.bar.menu_scroll.snap(0.0);
+     app.library_session.playlist_filter = None;
+-    app.change_filters(|flt| flt.folder = if folder.is_empty() { "*".into() } else { folder });
++    // astralis: never fall back to "All wallpapers"; an empty pick means the first folder.
++    let folder = if folder.is_empty() || folder == "*" {
++        match app.library_session.folder_options.first() {
++            Some(first) => first.clone(),
++            None => return Task::none(),
++        }
++    } else {
++        folder
++    };
++    app.change_filters(|flt| flt.folder = folder);
+     Task::none()
+ }
+ 
+@@ -31,10 +40,9 @@ pub(super) fn cycle_folder(app: &mut App, backwards: bool) -> Task<Message> {
+ }
+ 
+ pub(super) fn toggle_folder(app: &mut App) -> Task<Message> {
+-    if app.menu_capturing() {
+-        return Task::none();
+-    }
+-    set_folder(app, String::from("*"))
++    // astralis: per-folder only, the "toggle to All wallpapers" bind is disabled.
++    let _ = app;
++    Task::none()
+ }
+ 
+ pub(super) fn toggle_show_hidden(app: &mut App) -> Task<Message> {
+@@ -108,7 +116,8 @@ pub(super) fn toggle_random_rotate(app: &mut App) -> Task<Message> {
+ }
+ 
+ pub(super) fn toggle_filter_bar(app: &mut App) -> Task<Message> {
+-    if app.menu_capturing() {
++    // astralis: the top filter bar stays hidden completely.
++    if true || app.menu_capturing() {
+         return Task::none();
+     }
+     app.chrome.filter_bar_visible = !app.chrome.filter_bar_visible;

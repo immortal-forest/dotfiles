@@ -1,0 +1,37 @@
+# astralis-patched skwd-wall-v2 GUI. deck/paper/lens stay on the stock -bin packages.
+# Update: bump _ver + sha256sums (from the AUR skwd-wall-v2 PKGBUILD), then `makepkg -si`.
+# Patch: per-folder only (no "All wallpapers"/root entries, Ctrl+M disabled),
+#        top filter bar never shown (Shift+Up disabled).
+pkgname=skwd-wall-v2
+_ver=1.0.0-beta.26
+pkgver=${_ver//-/_}
+pkgrel=1.1
+pkgdesc='GPU-rendered graphical client for the Skwd wallpaper suite v2 (astralis patches)'
+arch=(x86_64)
+url='https://github.com/liixini/skwd-wall/tree/v2'
+license=(MIT)
+depends=(fontconfig gcc-libs libxkbcommon skwd-deck skwd-paper vulkan-icd-loader wayland)
+optdepends=('skwd-lens: semantic wallpaper search')
+makedepends=(cargo clang gcc lld pkgconf patchelf shaderc vulkan-headers wayland-protocols)
+options=(!debug !lto)
+source=("skwd-suite-${_ver}.tar.xz::https://github.com/liixini/skwd-wall/releases/download/v${_ver}/skwd-suite-${_ver}.tar.xz"
+        astralis.patch)
+sha256sums=('681f81332824657307201c922cbe5c4566267d4ceb5a507647d37b6c35b49b46'
+            SKIP)
+
+prepare() {
+  cd "skwd-suite-${_ver}"
+  patch -Np1 -i "$srcdir/astralis.patch"
+}
+
+build() {
+  cd "skwd-suite-${_ver}"
+  export CARGO_PROFILE_RELEASE_STRIP=symbols
+  export SKWD_USE_LLD=1
+  ./distribution/build.sh wall
+}
+
+package() {
+  cd "skwd-suite-${_ver}"
+  ./distribution/install.sh wall "$pkgdir"
+}

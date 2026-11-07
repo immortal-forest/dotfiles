@@ -1,0 +1,5 @@
+# Let the wheel group switch the ACPI platform profile (Saver/Balanced/
+# Performance/Max) without root, so the astralis overview can set it.
+# Install: sudo install -m644 90-platform-profile.rules /etc/udev/rules.d/
+#          sudo udevadm control --reload && sudo udevadm trigger -s platform-profile
+ACTION=="add|change", SUBSYSTEM=="platform-profile", RUN+="/usr/bin/chgrp wheel /sys%p/profile", RUN+="/usr/bin/chmod 0664 /sys%p/profile"
