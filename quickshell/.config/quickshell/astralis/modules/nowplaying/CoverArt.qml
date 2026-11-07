@@ -9,7 +9,7 @@ import "../../services"
 
 /**
  * astralis — desktop cover-art widget. The cover IS the widget: a large,
- * rounded hi-res cover floating on the wallpaper with its own blurred colour
+ * rounded hi-res cover floating on the wallpaper with a blurred wallpaper-colour
  * bleeding out behind it as an ambient halo.
  *
  * Alternate covers of the same song (TrackInfo.covers — other editions /
@@ -61,25 +61,14 @@ PanelWindow {
 
     // Which way the last swap went (+1 next, -1 prev) — the slide follows it.
     property int dir: 1
-    // Halo colours, latched when a cover swaps in (and when the cover's
-    // palette lands while nothing is pending), faded across.
-    property color haloA: TrackInfo.accent
-    property color haloB: TrackInfo.accent2
-    property color haloC: TrackInfo.accentDeep
+    // Halo colours: the wallpaper's palette (matugen roles), faded across
+    // when the wallpaper changes.
+    property color haloA: Colors.primary
+    property color haloB: Colors.tertiary
+    property color haloC: Colors.primary_container
     Behavior on haloA { ColorAnimation { duration: Motion.largeDur } }
     Behavior on haloB { ColorAnimation { duration: Motion.largeDur } }
     Behavior on haloC { ColorAnimation { duration: Motion.largeDur } }
-    function latchHalo() {
-        haloA = TrackInfo.accent;
-        haloB = TrackInfo.accent2;
-        haloC = TrackInfo.accentDeep;
-    }
-    Connections {
-        target: TrackInfo
-        function onAccentChanged() { if (slots.pending < 0) win.latchHalo(); }
-        function onAccent2Changed() { if (slots.pending < 0) win.latchHalo(); }
-        function onAccentDeepChanged() { if (slots.pending < 0) win.latchHalo(); }
-    }
     property int shownIndex: TrackInfo.index
     property string shownKey: TrackInfo.key
 
@@ -94,10 +83,10 @@ PanelWindow {
         // ── ambient halo: the cover's colours glowing out around its edges ──
         // A rounded rect with the cover's own corner radius (so it follows the
         // Square/Soft/Round/Circle setting), a little larger than the cover,
-        // filled with a diagonal sweep of the cover hues, then blurred. The
+        // filled with a diagonal sweep of the wallpaper hues, then blurred. The
         // blur radius is tied to the window pad, so the glow always fades out
-        // before the window edge and never clips square. Colours only change
-        // when a new cover has actually swapped in (win.haloA/B/C, set in flip()).
+        // before the window edge and never clips square. Colours are the
+        // wallpaper's palette (win.haloA/B/C).
         Item {
             id: halo
             visible: win.cfg.halo && slots.ready
@@ -435,7 +424,6 @@ PanelWindow {
         slots.pending = -1;
         slots.front = back;
         slots.ready = true;
-        win.latchHalo();
         var inc = rep.itemAt(back), out = rep.itemAt(1 - back);
         slide.stop();
         if (inc) inc.x = 0;
