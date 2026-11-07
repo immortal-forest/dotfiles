@@ -87,10 +87,6 @@ Item {
      * every page open.
      */
     property bool settled: false
-    Behavior on height {
-        enabled: srow.settled
-        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
-    }
 
     /**
      * Content-entrance cascade: fade + rise once when the owning page/sidebar
@@ -141,9 +137,38 @@ Item {
         Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
     }
 
+    /**
+     * Hover only counts once the pointer RESTS on the row: sweeping across
+     * the list passes each row in well under this, so rows don't expand and
+     * collapse under a moving pointer (the reflow made the page ripple). The
+     * highlight tint still follows the pointer instantly — it doesn't move
+     * anything. Keyboard focus is unaffected.
+     */
+    readonly property int hoverDwellMs: 280
+    property bool dwelled: false
+    /** Caption visible (drives the row's height). */
+    readonly property bool captionShown: sub.length > 0 && (!captionOnFocus || focused || dwelled)
+
     HoverHandler {
         id: srowHover
-        onHoveredChanged: if (srow.surface) srow.surface.reportRowHover(srow, hovered)
+        onHoveredChanged: {
+            if (hovered) {
+                dwellTimer.restart();
+            } else {
+                dwellTimer.stop();
+                srow.dwelled = false;
+                if (srow.surface) srow.surface.reportRowHover(srow, false);
+            }
+        }
+    }
+
+    Timer {
+        id: dwellTimer
+        interval: srow.hoverDwellMs
+        onTriggered: {
+            srow.dwelled = true;
+            if (srow.surface) srow.surface.reportRowHover(srow, true);
+        }
     }
 
     Rectangle {
@@ -213,7 +238,7 @@ Item {
         anchors.right: controlSlot.left
         anchors.rightMargin: 14 * srow.s
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 5 * srow.s
+        spacing: 0
 
         Text {
             text: srow.name
@@ -223,26 +248,60 @@ Item {
             font.pixelSize: 12.5 * srow.s
             font.weight: Font.DemiBold
         }
-        Text {
-            id: subText
+        // The caption lives in a clipping box whose HEIGHT animates, so the
+        // text block (vertically centred) grows smoothly: the title glides up
+        // and the row follows, instead of the caption claiming its full space
+        // in one frame and the title jumping half a line while the row eased.
+        Item {
+            id: capBox
             width: parent.width
-            // `shown` drives layout (implicitHeight, hence the row height);
-            // opacity fades the caption in/out over that so it eases in with
-            // the growing row rather than hard-popping at full opacity.
-            readonly property bool shown: srow.sub.length > 0
-                && (!srow.captionOnFocus || srow.focused || srowHover.hovered)
-            visible: shown || opacity > 0.01
-            opacity: shown ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-            text: srow.sub
-            // 0.85 (was 0.65): the caption renders over surface_container_highest
-            // on hover/focus, where 0.65 fell to ~4.02:1 — below AA. 0.85 clears
-            // 4.5:1 at this 10.5px size.
-            color: Qt.alpha(Colors.on_surface_variant, 0.85)
-            font.family: Appearance.font.family
-            font.pixelSize: 10.5 * srow.s
-            wrapMode: Text.WordWrap
-            lineHeight: 1.2
+            clip: true
+            height: subText.shown ? subText.implicitHeight + 5 * srow.s : 0
+            visible: height > 0.5
+            Behavior on height {
+                enabled: srow.settled
+                // Both ways on M3 `emphasized` (gentle start, long soft settle);
+                // the collapse a little shorter so moving on doesn't drag.
+                NumberAnimation {
+                    duration: subText.shown ? Motion.normalDur : Motion.expressiveFastSpatialDur
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.emphasized
+                }
+            }
+
+            Text {
+                id: subText
+                y: 5 * srow.s
+                width: parent.width
+                // `shown` drives layout (implicitHeight, hence the row height);
+                // opacity fades the caption in/out over that so it eases in with
+                // the growing row rather than hard-popping at full opacity.
+                readonly property bool shown: srow.captionShown
+                visible: shown || opacity > 0.01
+                opacity: shown ? 1 : 0
+                // In: wait for the row to open up a little, then fade over most of
+                // the grow, so the text arrives with the space rather than ahead
+                // of it. Out: no wait, gone over the first ~half of the collapse.
+                Behavior on opacity {
+                    SequentialAnimation {
+                        PauseAnimation { duration: subText.shown ? Math.round(Motion.normalDur * 0.25) : 0 }
+                        NumberAnimation {
+                            duration: subText.shown ? Motion.standard : Motion.smallDur
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.standardCurve
+                        }
+                    }
+                }
+                text: srow.sub
+                // 0.85 (was 0.65): the caption renders over surface_container_highest
+                // on hover/focus, where 0.65 fell to ~4.02:1 — below AA. 0.85 clears
+                // 4.5:1 at this 10.5px size.
+                color: Qt.alpha(Colors.on_surface_variant, 0.85)
+                font.family: Appearance.font.family
+                font.pixelSize: 10.5 * srow.s
+                wrapMode: Text.WordWrap
+                lineHeight: 1.2
+            }
         }
     }
 

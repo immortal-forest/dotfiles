@@ -41,7 +41,7 @@ ShellRoot {
     property string openMon: ""
     property string openSurface: ""
 
-    /** Full-screen music visualizer pair (bottom + flipped top) per monitor. */
+    /** Full-screen music visualizer per monitor (edges picked by Flags.vizLayout). */
     property bool vizEnabled: false
 
     /** Standalone full-screen session/power menu overlay (modules/powermenu). */
@@ -315,7 +315,7 @@ ShellRoot {
     GlobalShortcut { appid: "quickshell"; name: "mediaNext";   onPressed: Players.next() }
     GlobalShortcut { appid: "quickshell"; name: "mediaPrev";   onPressed: Players.previous() }
 
-    // ── visualizer: mirrored mountain-wave pair, created only while enabled ─
+    // ── visualizer: edge waves (layout = Flags.vizLayout), created only while enabled ─
     Variants {
         model: Quickshell.screens
 
@@ -329,16 +329,6 @@ ShellRoot {
                 sourceComponent: Visualizer {
                     screen: vizScope.modelData
                     s: vizScope.s
-                    anchorBottom: true
-                }
-            }
-
-            Loader {
-                active: root.vizEnabled
-                sourceComponent: Visualizer {
-                    screen: vizScope.modelData
-                    s: vizScope.s
-                    anchorBottom: false
                 }
             }
         }
@@ -604,7 +594,7 @@ ShellRoot {
                     anchors.horizontalCenter: parent.horizontalCenter
 
                     s: overlay.s
-                    vizBehind: root.vizEnabled
+                    vizBehind: root.vizEnabled && Flags.vizLayout !== "bottom" && Flags.vizLayout !== "sides"
                     screenName: overlay.modelData.name
                     barWindow: overlay
                     surface: overlay.surface

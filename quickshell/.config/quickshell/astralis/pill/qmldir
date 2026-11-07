@@ -23,3 +23,4 @@ Workspaces 1.0 Workspaces.qml
 WifiSignal 1.0 WifiSignal.qml
 InkStroke 1.0 InkStroke.qml
 DropMenu 1.0 DropMenu.qml
+SettingsDrop 1.0 SettingsDrop.qml

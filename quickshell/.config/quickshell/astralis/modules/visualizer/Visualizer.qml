@@ -1,75 +1,226 @@
+pragma ComponentBehavior: Bound
+
 import Quickshell
-import Quickshell.Wayland
 import Quickshell.Io
 import QtQuick
 import "../../colors"
 import "../../services"
 
 /**
- * astralis — full-screen music visualizer (ported from ~/shell
- * components/Visualizer.qml). A transparent, click-through layer-shell window
- * on WlrLayer.Bottom that draws a smoothed quadratic-spline "mountain wave"
- * from the shared Cava singleton, filled with a primary→tertiary→secondary
- * linear gradient plus a translated/scaled shadow pass at 0.25 alpha.
+ * astralis — full-screen music visualizer, one per screen (ported from
+ * ~/shell components/Visualizer.qml). Draws a smoothed quadratic-spline
+ * "mountain wave" filled with a primary→tertiary→secondary gradient, plus a
+ * stretched shadow pass at 0.25 alpha and a LOWER background ridge that reads
+ * the spectrum the other way round (so its crests land in the main wave's
+ * valleys) with its own deeper gradient.
  *
- * A third, LOWER background wave is drawn behind the shadow + main: it reuses
- * the same spectrum but MIRRORED (data read right-to-left) at ~0.65 amplitude,
- * so its crests land in the main wave's valleys and peek through instead of
- * hiding directly beneath it. It carries its OWN deeper-purple gradient (via the
- * pass's `stops`) so the shorter ridge stays differentiable from the other two.
+ * WHERE it draws is `Flags.vizLayout` (Settings → Appearance → Visualizer):
+ *   top · bottom · topBottom (two mirrored waves) · sides (left + right) ·
+ *   topHalf (the top wave bends round both corners and bleeds ~40% down the
+ *   sides, tapering off) · topSides (up the left, across the top, down the
+ *   right) · all (one closed loop round the screen).
+ * Every layout is a list of PATHS along the screen edges; the wave is offset
+ * inward along each edge's normal, and at a corner the miter normal puts the
+ * offset point on the diagonal so the wave turns the corner without folding.
  *
- * Faithful to ~/shell, this spawns its OWN cava (20 bars, pulse, 30fps) that
- * runs only while the window exists (the shell.qml Loader is gated on
- * vizEnabled), so the wave keeps the reference's 20-point density rather than
- * the 5-bar rest-pill singleton. Frame-to-frame smoothing
- * (shown += (target - shown) * 0.3) flows it.
+ * Drawn by VizLayer: ONE click-through full-screen surface of GPU Shapes.
+ * (Separate per-edge surfaces commit frames independently, which tore the wave
+ * into steps where they met; a full-screen Canvas would software-raster the
+ * whole screen 30×/s.)
  *
- * The two visualizers are deliberately INDEPENDENT: this one is runtime-only,
- * owned by `vizEnabled` (Super+B / `ipc call visualizer toggle`); the rest-pill
- * spectrum is the persisted `Flags.musicViz` setting driving the shared Cava
- * singleton. Neither switch touches the other.
- *
- * `anchorBottom: false` flips the wave to hang from the top edge, so shell.qml
- * mounts a mirrored bottom+top pair per screen.
+ * One cava (20 bars, pulse, 30fps) per screen feeds the layer, and runs only
+ * while this scope exists — shell.qml's Loader keeps it on `vizEnabled`
+ * (Super+B / `ipc call visualizer toggle`). That toggle is deliberately
+ * independent of `Flags.musicViz` (the rest-pill spectrum's switch).
  */
-PanelWindow {
-    id: musicVis
+Scope {
+    id: viz
 
-    property bool anchorBottom: true
-    property bool flipped: !anchorBottom
+    property var screen
     property real s: 1
 
-    implicitHeight: Math.round(200 * s)
-    color: "transparent"
+    readonly property string layout: Flags.vizLayout
+    /** Full wave height for straight edges (bent layouts scale it down). */
+    readonly property real depth: Math.round(200 * s)
+    readonly property real sw: screen ? screen.width : 0
+    readonly property real sh: screen ? screen.height : 0
 
-    WlrLayershell.layer: WlrLayer.Bottom
-    WlrLayershell.namespace: "astralis-viz"
-    exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+    /** Whether a wave runs along the top edge (the pill dims over it). */
+    readonly property bool hasTop: ["top", "topBottom", "topHalf", "topSides", "all"].indexOf(layout) >= 0
 
-    anchors {
-        left: true
-        right: true
-        bottom: anchorBottom
-        top: !anchorBottom
+    /**
+     * Edge paths for the layout, in screen coordinates. `sym` paths are fed a
+     * mirrored spectrum so the one wave stays balanced left/right:
+     *   "u"    bass at the top centre, treble at the side bottoms
+     *   "loop" bass at the top centre, treble at the bottom centre
+     */
+    readonly property var paths: {
+        const W = sw, H = sh;
+        if (W <= 0 || H <= 0)
+            return [];
+        const P = (x, y) => ({ x: x, y: y });
+        let defs;
+        switch (layout) {
+        case "top":       defs = [{ v: [P(0, 0), P(W, 0)] }]; break;
+        case "bottom":    defs = [{ v: [P(0, H), P(W, H)] }]; break;
+        case "sides":     defs = [{ v: [P(0, 0), P(0, H)] }, { v: [P(W, 0), P(W, H)] }]; break;
+        // Bent layouts run a lot more edge, so the band is thinner there.
+        case "topHalf":   defs = [{ v: [P(0, H * 0.4), P(0, 0), P(W, 0), P(W, H * 0.4)], sym: "u",
+                                    scale: 0.65, taper: 0.18 }]; break;
+        case "topSides":  defs = [{ v: [P(0, H), P(0, 0), P(W, 0), P(W, H)], sym: "u",
+                                    scale: 0.6, taper: 0.06 }]; break;
+        case "all":       defs = [{ v: [P(W / 2, 0), P(W, 0), P(W, H), P(0, H), P(0, 0), P(W / 2, 0)],
+                                    sym: "loop", closed: true, scale: 0.5 }]; break;
+        default:          defs = [{ v: [P(0, 0), P(W, 0)] }, { v: [P(0, H), P(W, H)] }]; break;
+        }
+        return defs.map(d => viz.buildPath(d, W, H));
     }
+
+    /** Samples a polyline evenly by arc length (corners always sampled). */
+    function buildPath(def, W, H) {
+        const v = def.v;
+        const segs = [];
+        let L = 0;
+        for (let i = 0; i < v.length - 1; i++) {
+            const dx = v[i + 1].x - v[i].x, dy = v[i + 1].y - v[i].y;
+            const len = Math.hypot(dx, dy);
+            let nx = -dy / len, ny = dx / len;
+            // Point the normal into the screen.
+            const mx = (v[i].x + v[i + 1].x) / 2, my = (v[i].y + v[i + 1].y) / 2;
+            if (nx * (W / 2 - mx) + ny * (H / 2 - my) < 0) { nx = -nx; ny = -ny; }
+            segs.push({ a: v[i], dx: dx / len, dy: dy / len, len: len, nx: nx, ny: ny, at: L });
+            L += len;
+        }
+        // Same spacing the original 20-point top/bottom wave had.
+        const step = W / 19;
+        const n = Math.max(1, Math.round(L / step));
+        const pos = [];
+        for (let k = 0; k <= n; k++)
+            pos.push(k * L / n);
+        // Interior corners: force a sample, drop uniform ones crowding it.
+        // (svgFor also drops, per frame, any that the rounded corner's arc
+        // currently overlaps — it reaches 2× the band height along each edge.)
+        const clear = step * 0.35;
+        const corners = segs.slice(1).map(sg => sg.at);
+        const out = [];
+        const segAt = d => {
+            let j = 0;
+            while (j < segs.length - 1 && d >= segs[j + 1].at) j++;
+            return j;
+        };
+        const all = pos.filter(d => corners.every(c => Math.abs(d - c) > clear))
+                       .concat(corners).sort((a, b) => a - b);
+        for (const d of all) {
+            const j = segAt(d);
+            const sg = segs[j];
+            const off = d - sg.at;
+            const pt = { x: sg.a.x + sg.dx * off, y: sg.a.y + sg.dy * off,
+                         nx: sg.nx, ny: sg.ny, t: L > 0 ? d / L : 0 };
+            if (j > 0 && Math.abs(off) < 0.001) {
+                // Corner: u = incoming edge's normal, w = outgoing edge's.
+                pt.corner = true;
+                pt.ux = segs[j - 1].nx; pt.uy = segs[j - 1].ny;
+                pt.wx = sg.nx; pt.wy = sg.ny;
+            }
+            let cd = Infinity;
+            for (const c of corners)
+                cd = Math.min(cd, Math.abs(d - c));
+            pt.at = d;
+            pt.cd = cd;            // arc-length distance to the nearest corner
+            pt.cnear = corners.length ? corners.reduce((b, c) => Math.abs(d - c) < Math.abs(d - b) ? c : b) : -1;
+            out.push(pt);
+        }
+        return { verts: v, samples: out, sym: def.sym || "", closed: !!def.closed,
+                 scale: def.scale || 1, taper: def.taper || 0 };
+    }
+
+    /** Spectrum laid out for a path; `alt` is the lower ridge's arrangement. */
+    function arrange(levels, sym, alt) {
+        const S = levels, R = levels.slice().reverse();
+        if (sym === "u") return alt ? S.concat(R) : R.concat(S);
+        if (sym === "loop") return alt ? R.concat(S) : S.concat(R);
+        return alt ? R : S;
+    }
+
+    // Linear interpolation into `data` at fraction t (0..1).
+    function sampleAt(data, t) {
+        const p = Math.max(0, Math.min(1, t)) * (data.length - 1);
+        const i = Math.floor(p);
+        const f = p - i;
+        return i + 1 < data.length ? data[i] * (1 - f) + data[i + 1] * f : data[i];
+    }
+
+    /**
+     * SVG fill for one pass of the wave along `path`: the offset curve
+     * (quadratic-smoothed through the samples, as the original did) closed back
+     * along the screen edge — or, for a loop, the curve plus the screen rect
+     * (filled even-odd → the band between). `stretch` widens the shadow pass
+     * about the path's middle; `taper` eases open ends of bent paths to 0.
+     */
+    function svgFor(path, data, amp, stretch) {
+        if (data.length < 2 || path.samples.length < 2)
+            return "";
+        const h = depth * path.scale * amp;
+        const f = n => n.toFixed(1);
+        const vals = path.samples.map(p => {
+            let env = 1;
+            if (path.taper > 0) {
+                const e = Math.min(p.t, 1 - p.t) / path.taper;
+                env = e >= 1 ? 1 : e * e * (3 - 2 * e);
+            }
+            return sampleAt(data, 0.5 + (p.t - 0.5) / stretch) * h * env;
+        });
+        const cornerVal = {};
+        path.samples.forEach((p, i) => { if (p.corner) cornerVal[p.at] = vals[i]; });
+        const pts = [];
+        path.samples.forEach((p, i) => {
+            const val = vals[i];
+            if (!p.corner) {
+                // Skip samples the rounded corner's arc currently covers.
+                const cv = cornerVal[p.cnear];
+                if (cv !== undefined && p.cd < 2.05 * cv)
+                    return;
+                pts.push({ x: p.x + p.nx * val, y: p.y + p.ny * val });
+                return;
+            }
+            // Rounded inner corner, radius = band height: a quarter arc from
+            // the incoming edge's offset line to the outgoing one, centred at
+            // 2·val along both normals. Collapses into the corner at silence.
+            const K = 8;
+            for (let k = 0; k <= K; k++) {
+                const th = (k / K) * Math.PI / 2;
+                const a = val * (2 - Math.cos(th)), b = val * (2 - Math.sin(th));
+                pts.push({ x: p.x + p.ux * a + p.wx * b, y: p.y + p.uy * a + p.wy * b });
+            }
+        });
+        const sm = path.samples;
+        let d = path.closed ? `M${f(pts[0].x)} ${f(pts[0].y)}`
+                            : `M${f(sm[0].x)} ${f(sm[0].y)} L${f(pts[0].x)} ${f(pts[0].y)}`;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const a = pts[i], b = pts[i + 1];
+            d += ` Q${f(a.x)} ${f(a.y)} ${f((a.x + b.x) / 2)} ${f((a.y + b.y) / 2)}`;
+        }
+        const z = pts[pts.length - 1];
+        d += ` L${f(z.x)} ${f(z.y)}`;
+        if (path.closed)
+            return d + ` Z M0 0 L${f(sw)} 0 L${f(sw)} ${f(sh)} L0 ${f(sh)} Z`;
+        const last = sm[sm.length - 1];
+        d += ` L${f(last.x)} ${f(last.y)}`;
+        const vs = path.verts;
+        for (let i = vs.length - 2; i >= 1; i--)
+            d += ` L${f(vs[i].x)} ${f(vs[i].y)}`;
+        return d + " Z";
+    }
+
+    /** Smoothed spectrum (0..1, bass→treble). */
+    property var levels: []
 
     /** Must match `framerate` in the cava config below (the repaint cadence). */
     readonly property int cavaFps: 30
 
-    // Own cava capture (20 bars, pulse) — spawned only while this window
-    // exists, so density matches ~/shell. Each frame eases toward the target
-    // with the reference's 0.3 smoothing factor before painting.
     Process {
         id: cavaProc
-        // Visibility is the ONLY gate: this window is created by a Loader that
-        // shell.qml keeps on `vizEnabled`, so being mapped already means the
-        // full-screen visualizer was switched on (Super+B / `ipc call visualizer
-        // toggle`). It must NOT also read Flags.musicViz — that flag is the
-        // rest-pill spectrum's own switch (services/Cava.qml `wanted`), and
-        // sharing it meant turning the pill bars off in Settings silently
-        // starved this window's cava too, leaving the full-screen wave flat.
-        running: musicVis.visible
+        running: true
         command: ["sh", "-c", `cava -p /dev/stdin <<EOF
 [general]
 bars = 20
@@ -99,50 +250,35 @@ EOF
                 const target = data.split(";")
                     .map(p => parseFloat(p.trim()) / 1000)
                     .filter(p => !isNaN(p));
-
                 if (target.length === 0)
                     return;
 
                 const smoothFactor = 0.3;
-
-                if (canvas.cavaData.length === 0
-                    || canvas.cavaData.length !== target.length) {
-                    canvas.cavaData = target;
+                const cur = viz.levels;
+                if (cur.length !== target.length) {
+                    viz.levels = target;
                 } else {
                     const smoothed = [];
                     for (let i = 0; i < target.length; i++)
-                        smoothed.push(canvas.cavaData[i] + (target[i] - canvas.cavaData[i]) * smoothFactor);
-                    canvas.cavaData = smoothed;
+                        smoothed.push(cur[i] + (target[i] - cur[i]) * smoothFactor);
+                    viz.levels = smoothed;
                 }
 
-                // Advance the colour ring on the same beat as the repaint (see
-                // `cyclePhase`). Reduce-motion holds the gradient still rather
-                // than running it faster — Motion.mult would shorten the period,
-                // which is the opposite of what a calmer setting should do.
+                // Colour ring rides the repaint beat. Reduce-motion holds it
+                // still rather than running it faster (Motion.mult would
+                // shorten the period — the opposite of calmer).
                 if (Flags.vizColorCycle && !Motion.reduceMotion)
-                    musicVis.cyclePhase += musicVis.colorRing.length
-                        / (musicVis.cycleSeconds * musicVis.cavaFps);
+                    viz.cyclePhase += viz.colorRing.length / (viz.cycleSeconds * viz.cavaFps);
 
-                canvas.requestPaint();
             }
         }
     }
 
     /**
-     * Colour cycle (Settings → Appearance → "Visualizer colour cycle"). Off,
-     * the two ridges hold their fixed matugen triples. On, both walk this ring
-     * of wallpaper-derived roles, so the wave drifts through the whole palette
-     * instead of holding one gradient.
-     *
-     * The order alternates a bright accent with a deep container on purpose.
-     * matugen palettes are hue-COHERENT — on the wallpaper this was tuned
-     * against, every accent sits between 13 and 35 degrees — so rotating hue
-     * alone would be nearly invisible. TONE is what reads as movement, and
-     * since the gradient samples one ring entry apart, an alternating ring
-     * means the wave always carries a bright→deep ramp whose hues rotate under
-     * it. Roles the palette collapses onto one value are dropped: primary,
-     * primary_fixed_dim and surface_tint are frequently identical, and a
-     * duplicate entry is a dead beat in the cycle.
+     * Colour cycle (Settings → Appearance → "Visualizer colour cycle"). The
+     * ring alternates a bright accent with a deep container: matugen palettes
+     * are hue-coherent, so TONE is what reads as movement. Roles the palette
+     * collapses onto one value are dropped (a duplicate is a dead beat).
      */
     readonly property var colorRing: {
         const want = [Colors.primary, Colors.tertiary_container, Colors.secondary,
@@ -159,130 +295,24 @@ EOF
         return out.length >= 2 ? out : [Colors.primary, Colors.tertiary];
     }
 
-    /**
-     * Position in the ring, in ring-entries. Advanced by the cava frame handler
-     * rather than by an animation on purpose: that handler already calls
-     * requestPaint at cava's 30fps, so the gradient rides repaints that were
-     * happening anyway instead of forcing this three-pass Canvas to redraw at
-     * the panel's 165Hz. `cyclePhase` is read inside onPaint, never bound to,
-     * so advancing it costs nothing until the next frame lands.
-     */
+    /** Position in the ring, in ring-entries; read in onPaint, never bound. */
     property real cyclePhase: 0
     /** Seconds for one full trip around the ring. */
     readonly property real cycleSeconds: 42
 
     /** Ring colour at a fractional index, wrapped and blended between entries. */
     function ringColor(at) {
-        const n = musicVis.colorRing.length;
+        const n = viz.colorRing.length;
         const p = ((at % n) + n) % n;
         const i = Math.floor(p);
-        return Qt.tint(musicVis.colorRing[i],
-                       Qt.alpha(musicVis.colorRing[(i + 1) % n], p - i));
+        return Qt.tint(viz.colorRing[i], Qt.alpha(viz.colorRing[(i + 1) % n], p - i));
     }
 
-    Canvas {
-        id: canvas
-        anchors.fill: parent
-        property var cavaData: []
+    /** The drawing surface (exposed so a dev harness can grab its pixels). */
+    readonly property var surface: surfaceWin
 
-        onPaint: {
-            var ctx = getContext("2d");
-            ctx.clearRect(0, 0, width, height);
-
-            // The two ridges sit a third of the ring apart so the lower one
-            // stays differentiable from the main wave all the way round, the
-            // same job the fixed deeper-purple triple does when cycling is off.
-            var cycling = Flags.vizColorCycle;
-            var lowStops = cycling
-                ? [musicVis.ringColor(musicVis.cyclePhase + 2),
-                   musicVis.ringColor(musicVis.cyclePhase + 2.5),
-                   musicVis.ringColor(musicVis.cyclePhase + 3)]
-                : [Colors.tertiary, Colors.tertiary_container, Colors.secondary];
-            var mainStops = cycling
-                ? [musicVis.ringColor(musicVis.cyclePhase),
-                   musicVis.ringColor(musicVis.cyclePhase + 0.5),
-                   musicVis.ringColor(musicVis.cyclePhase + 1)]
-                : undefined;
-
-            // Backmost first: the lower mirrored ridge (its own deeper-purple
-            // gradient so it stays distinct), then the main wave's shadow, then
-            // the main wave itself.
-            drawMountainWave(ctx, cavaData, { amp: 0.65, alpha: 0.5, mirror: true,
-                                              stops: lowStops });
-            drawMountainWave(ctx, cavaData, { shadow: true });
-            drawMountainWave(ctx, cavaData, { stops: mainStops });
-        }
-
-        function drawMountainWave(ctx, data, opts) {
-            if (data.length < 2)
-                return;
-
-            var amp = opts.amp !== undefined ? opts.amp : 1.0;
-            var n = data.length;
-            // Sampled level for index i (mirrored → read right-to-left), scaled
-            // by this pass's amplitude.
-            function v(i) {
-                var idx = opts.mirror ? (n - 1 - i) : i;
-                return data[idx] * amp;
-            }
-            // y for index i, honouring flip (base at top vs bottom).
-            function yAt(i) {
-                return musicVis.flipped ? (v(i) * height) : (height - v(i) * height);
-            }
-
-            var gradient = ctx.createLinearGradient(0, 0, width, height);
-
-            // Canvas gradients need "#rrggbb" strings; a raw QML color
-            // serializes as #aarrggbb and corrupts the stops. `opts.stops` lets a
-            // pass (the low mirrored wave) carry a distinct gradient.
-            var stops = opts.stops || [Colors.primary, Colors.tertiary, Colors.secondary];
-            gradient.addColorStop(0.0, String(stops[0]));
-            gradient.addColorStop(0.5, String(stops[1]));
-            gradient.addColorStop(1.0, String(stops[2]));
-
-            ctx.beginPath();
-
-            if (opts.shadow) {
-                ctx.globalAlpha = opts.alpha !== undefined ? opts.alpha : 0.25;
-                ctx.save();
-                ctx.translate(0, musicVis.flipped ? 10 : -10);
-                ctx.scale(1.02, 1.05);
-            } else {
-                ctx.globalAlpha = opts.alpha !== undefined ? opts.alpha : 1.0;
-            }
-
-            ctx.fillStyle = gradient;
-
-            // For flipped: base is at top (y=0), waves grow downward
-            // For normal: base is at bottom (y=height), waves grow upward
-            var baseY = musicVis.flipped ? 0 : height;
-
-            ctx.moveTo(0, baseY);
-            ctx.lineTo(0, yAt(0));
-
-            var barWidth = width / (n - 1);
-
-            for (var i = 0; i < n - 1; i++) {
-                var xCurr = i * barWidth;
-                var yCurr = yAt(i);
-
-                var xNext = (i + 1) * barWidth;
-                var yNext = yAt(i + 1);
-
-                var xMid = (xCurr + xNext) / 2;
-                var yMid = (yCurr + yNext) / 2;
-
-                ctx.quadraticCurveTo(xCurr, yCurr, xMid, yMid);
-            }
-
-            var lastX = (n - 1) * barWidth;
-            ctx.lineTo(lastX, yAt(n - 1));
-            ctx.lineTo(width, baseY);
-            ctx.closePath();
-            ctx.fill();
-
-            if (opts.shadow)
-                ctx.restore();
-        }
+    VizLayer {
+        id: surfaceWin
+        viz: viz
     }
 }

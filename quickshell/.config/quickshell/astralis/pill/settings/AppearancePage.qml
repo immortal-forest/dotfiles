@@ -25,6 +25,13 @@ SettingsPage {
 
     contentY: flick.contentY
 
+    readonly property var vizLayouts: [
+        { label: "Top", value: "top" }, { label: "Bottom", value: "bottom" },
+        { label: "Top + bottom", value: "topBottom" }, { label: "Sides", value: "sides" },
+        { label: "Top + half sides", value: "topHalf" }, { label: "Top + sides", value: "topSides" },
+        { label: "Full frame", value: "all" }
+    ]
+
     rows: {
         var r = [
             { item: timeRow, kind: "seg", vals: [false, true], get: function () { return Flags.time12h; }, set: function (v) { Flags.time12h = v; } },
@@ -41,6 +48,7 @@ SettingsPage {
             r.push({ item: base16Row, kind: "toggle", get: function () { return Flags.base16Shell; }, set: function (v) { Flags.base16Shell = v; } });
         r.push(
             { item: vizRow, kind: "toggle", get: function () { return Flags.musicViz; }, set: function (v) { Flags.musicViz = v; } },
+            { item: vizLayoutRow, kind: "seg", vals: root.vizLayouts.map(function (o) { return o.value; }), get: function () { return Flags.vizLayout; }, set: function (v) { Flags.vizLayout = v; } },
             { item: vizCycleRow, kind: "toggle", get: function () { return Flags.vizColorCycle; }, set: function (v) { Flags.vizColorCycle = v; } },
             { item: scaleRow, kind: "seg", vals: [0.9, 1.0, 1.1, 1.25], get: function () { return Flags.uiScale; }, set: function (v) { Flags.uiScale = v; } },
             { item: dashScaleRow, kind: "seg", vals: [0.7, 0.8, 0.9, 1.0], get: function () { return Flags.dashScale; }, set: function (v) { Flags.dashScale = v; } },
@@ -199,6 +207,31 @@ SettingsPage {
                     accessibleName: vizRow.name
                     on: Flags.musicViz
                     onToggled: Flags.musicViz = !Flags.musicViz
+                }
+            }
+
+            SettingsRow {
+                id: vizLayoutRow
+                surface: root
+                name: "Visualizer edges"
+                sub: "Where the full-screen wave runs"
+                captionOnFocus: true
+                icon: "waves"
+                // Lift above the rows below so the open menu paints over them.
+                z: vizDrop.showing ? 20 : 0
+
+                SettingsDrop {
+                    id: vizDrop
+                    s: root.s
+                    accessibleName: vizLayoutRow.name
+                    options: root.vizLayouts
+                    value: Flags.vizLayout
+                    onPicked: (v) => Flags.vizLayout = v
+                    // Close when the page goes away.
+                    Connections {
+                        target: root
+                        function onActiveChanged() { if (!root.active) vizDrop.open = false; }
+                    }
                 }
             }
 

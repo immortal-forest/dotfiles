@@ -53,6 +53,7 @@ Singleton {
     property alias weatherCity: adapter.weatherCity
     property alias musicViz: adapter.musicViz
     property alias vizColorCycle: adapter.vizColorCycle
+    property alias vizLayout: adapter.vizLayout
     property alias nightLightMode: adapter.nightLightMode
     property alias nightLightTemp: adapter.nightLightTemp
     property alias nightLightOnMin: adapter.nightLightOnMin
@@ -241,6 +242,10 @@ Singleton {
             // Full-screen visualizer: walk the whole wallpaper palette instead
             // of holding one primary→tertiary→secondary gradient.
             property bool vizColorCycle: false
+            // Full-screen visualizer edges: top | bottom | topBottom | sides |
+            // topHalf (top, bleeding ~40% down the sides) | topSides (one wave up, across and down, round the top corners) |
+            // all (one loop round the whole screen).
+            property string vizLayout: "topBottom"
             property string nightLightMode: "off"
             property int nightLightTemp: 4000
             property int nightLightOnMin: 1260
