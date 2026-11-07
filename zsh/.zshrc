@@ -40,6 +40,10 @@ zinit light zsh-users/zsh-completions
 zinit light zsh-users/zsh-autosuggestions
 zinit light Aloxaf/fzf-tab
 
+# Plain redirections (> < >> |&): a coloured `>` splits the font's ligatures
+# (-> => >= <= |> <|) since Ghostty won't join characters of different colours
+ZSH_HIGHLIGHT_STYLES[redirection]=none
+
 # Load completions
 autoload -U compinit && compinit
 

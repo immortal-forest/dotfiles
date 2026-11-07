@@ -2,8 +2,9 @@ theme = matugen
 
 cursor-style = block
 
-font-family = CaskaydiaCove Nerd Font
-font-feature = calt, liga, dlig
+font-family = Obel Mono Lig
+font-family = Symbols Nerd Font Mono
+font-feature = calt
 font-size = 16
 
 custom-shader = shaders/blaze.glsl
