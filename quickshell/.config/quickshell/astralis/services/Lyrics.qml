@@ -175,7 +175,7 @@ Singleton {
         t.start();
     }
 
-    // ── romanization (on demand, scripts/romanize.sh) ─────────────────────
+    // ── romanization (on demand, scripts/romanize.py) ─────────────────────
     /** Per-line romanized text for the current track ([] until ready). */
     readonly property var roman: entry && entry.roman ? entry.roman : []
     /** `lines` re-timed on their romanized text (the widget's "replace" mode). */
@@ -183,7 +183,7 @@ Singleton {
     /** "" | "busy" | "ready" | "none" (nothing to romanize) | "nokakasi" | "error" */
     readonly property string romanStatus: entry && entry.romanStatus ? entry.romanStatus : ""
     readonly property bool wantRoman: Widgets.lyrics.roman !== "off"
-    readonly property string romanScript: String(Qt.resolvedUrl("../scripts/romanize.sh")).replace(/^file:\/\//, "")
+    readonly property string romanScript: String(Qt.resolvedUrl("../scripts/romanize.py")).replace(/^file:\/\//, "")
     // Toggling the option retries a failed run (e.g. kakasi installed since).
     onWantRomanChanged: romanize(true)
     // Deferred: writing `romans` from inside entry's change notification
