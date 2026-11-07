@@ -5,7 +5,7 @@ return {
     lazy = false,
   },
   {
-    "nvchad/nvim-colorizer.lua",
+    "catgoose/nvim-colorizer.lua",
     event = "User FilePost",
     opts = {
       user_default_options = {
@@ -20,13 +20,6 @@ return {
       end, 0)
     end,
   },
-  {
-    "R-nvim/R.nvim",
-    lazy = false,
-    config = function()
-      require "configs.r"
-    end,
-  },
 
   {
     "vyfor/cord.nvim",
@@ -39,7 +32,7 @@ return {
   },
 
   {
-    "echasnovski/mini.icons",
+    "nvim-mini/mini.icons",
     version = false,
     config = function()
       require("mini.icons").setup()
@@ -61,8 +54,8 @@ return {
 
   {
     "MeanderingProgrammer/render-markdown.nvim",
-    ft = { "markdown", "quarto", "rmd" },
-    dependencies = { "nvim-treesitter/nvim-treesitter", "echasnovski/mini.icons" },
+    ft = { "markdown", "quarto" },
+    dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-mini/mini.icons" },
     config = function()
       require "configs.markdown"
     end,
@@ -98,13 +91,44 @@ return {
     lazy = true,
     cmd = "Silicon",
     opts = {
-      background = "#89b4fa",
-      font = "Maple Mono NF=34;Noto Color Emoji=34",
+      -- background is set from the current theme's accent on each shot (mappings.lua)
+      font = "Obel Mono Lig=34;Noto Color Emoji=34",
       num_separator = "\u{258f} ",
       theme = "Coldark-Dark",
       output = function()
         return vim.fn.expand "~/Pictures/Snapshots/" .. os.date "!%Y-%m-%dT%H-%M-%SZ" .. "_code.png"
       end,
+    },
+  },
+
+  -- nvim-treesitter is on the `main` branch now (NvChad v2.5): parsers are only
+  -- installed via :TSInstallAll (also run on build) and need the tree-sitter CLI.
+  {
+    "nvim-treesitter/nvim-treesitter",
+    opts = {
+      ensure_installed = {
+        "lua",
+        "luadoc",
+        "printf",
+        "vim",
+        "vimdoc",
+        "query",
+        "bash",
+        "c",
+        "cpp",
+        "python",
+        "qmljs",
+        "markdown",
+        "markdown_inline",
+        "json",
+        "yaml",
+        "toml",
+        "hyprlang",
+        "regex",
+        "diff",
+        "gitcommit",
+        "git_config",
+      },
     },
   },
 

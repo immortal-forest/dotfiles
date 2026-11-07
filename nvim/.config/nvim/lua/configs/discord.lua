@@ -21,7 +21,7 @@ require("cord").setup {
   text = {
     workspace = function(opts)
       if SONG then
-        return ('Listening "' .. SONG .. " - " .. ARTIST .. '"')
+        return 'Listening "' .. SONG .. (ARTIST and (" - " .. ARTIST) or "") .. '"'
       end
       return opts.workspace
     end,

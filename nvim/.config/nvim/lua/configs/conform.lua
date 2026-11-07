@@ -1,20 +1,11 @@
-local slow_format_filetypes = {
-  lua = true,
-  python = true,
-  sh = true,
-  json = true,
-  jsonc = true,
-  c = true,
-  cpp = true,
-  markdown = true,
-}
+-- filetypes whose formatter timed out once; they format after save from then on
+local slow_format_filetypes = {}
 
 local options = {
   formatters_by_ft = {
     lua = { "stylua" },
     sh = { "shfmt" },
     python = { "ruff_organize_imports", "ruff_fix", "ruff_format" },
-    r = { "air" },
     c = { "clang-format" },
     cpp = { "clang-format" },
     json = { "fixjson" },

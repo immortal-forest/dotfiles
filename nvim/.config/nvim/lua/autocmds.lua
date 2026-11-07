@@ -4,8 +4,12 @@ local autocmd = vim.api.nvim_create_autocmd
 local usercmd = vim.api.nvim_create_user_command
 
 autocmd({ "BufWritePost", "BufReadPost" }, {
-  callback = function()
-    require("lint").try_lint()
+  group = vim.api.nvim_create_augroup("user_lint", { clear = true }),
+  callback = function(args)
+    -- real files only: not help, Trouble, nvdash, terminals...
+    if vim.bo[args.buf].buftype == "" then
+      require("lint").try_lint()
+    end
   end,
 })
 
@@ -24,21 +28,13 @@ autocmd("LspAttach", {
   desc = "LSP: Disable hover capability from Ruff",
 })
 
--- Enable inlay hints for LSP servers that support it
-autocmd("LspAttach", {
-  callback = function(args)
-    local client = vim.lsp.get_client_by_id(args.data.client_id)
-    if client and client.server_capabilities.inlayHintProvider then
-      vim.lsp.inlay_hint.enable(true, { bufnr = args.buf })
-    end
-  end,
-  desc = "LSP: Enable inlay hints",
-})
+-- Inlay hints on by default (globally, so <leader>uh toggles every buffer)
+vim.lsp.inlay_hint.enable(true)
 
 autocmd("BufDelete", {
   callback = function()
     local bufs = vim.t.bufs
-    if #bufs == 1 and vim.api.nvim_buf_get_name(bufs[1]) == "" then
+    if bufs and #bufs == 1 and vim.api.nvim_buf_get_name(bufs[1]) == "" then
       vim.cmd "Nvdash"
     end
   end,
@@ -64,3 +60,28 @@ usercmd("FormatEnable", function()
 end, {
   desc = "Re-enable autoformat-on-save",
 })
+
+-- Live wallpaper theme: matugen rewrites lua/themes/matugen.lua on every
+-- wallpaper change (several times per setwall run, hence the debounce); when
+-- that's the active theme, recompile base46 so open nvims recolour in place.
+do
+  local dir = vim.fn.stdpath "config" .. "/lua/themes"
+  local watcher, debounce = vim.uv.new_fs_event(), vim.uv.new_timer()
+  if watcher and debounce and vim.uv.fs_stat(dir) then
+    watcher:start(dir, {}, function(_, fname)
+      if fname ~= "matugen.lua" then
+        return
+      end
+      debounce:stop()
+      debounce:start(
+        400,
+        0,
+        vim.schedule_wrap(function()
+          if require("nvconfig").base46.theme == "matugen" then
+            require("base46").load_all_highlights()
+          end
+        end)
+      )
+    end)
+  end
+end
