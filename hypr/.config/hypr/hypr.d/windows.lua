@@ -5,6 +5,16 @@ hl.window_rule({
 	suppress_event = "maximize",
 })
 
+-- Spotify requests activation whenever the StatusNotifier tray host vanishes
+-- (every astralis reload/restart); with focus_on_activate that stole focus and
+-- pulled special:scratch open. Keep the urgent hint, drop the focus jump.
+-- (Not suppress_event = "activatefocus": that one only binds at map time.)
+hl.window_rule({
+	name  = "spotify-no-activate-focus",
+	match = { class = "^spotify$" },
+	focus_on_activate = false,
+})
+
 -- XWayland drag fix
 hl.window_rule({
 	name  = "xwayland-drag-fix",
