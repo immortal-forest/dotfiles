@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Shapes
 import Quickshell
 import Quickshell.Wayland
 import "../../colors"
@@ -66,6 +67,14 @@ PanelWindow {
     readonly property color glowC: cfg.ink === "theme" ? Colors.primary : cfg.ink === "mono" ? Qt.rgba(1, 1, 1, 0.55) : TrackInfo.accentDeep
 
     readonly property bool shown: Players.has && Lyrics.has
+    /** fill "write": the current line is hand-written over its faded ghost as it
+     *  is sung — every character drawn stroke by stroke in its real writing
+     *  order (Lyrics.glyphs: KanjiVG for kana/kanji, a Hershey single-line font
+     *  for Latin; scripts/strokes.py). Characters with no stroke data fade in. */
+    readonly property bool writeMode: cfg.fill === "write"
+    /** Write mode: pen width (em) and the pause between strokes (em of travel). */
+    readonly property real penW: 0.075
+    readonly property real penLift: 0.18
 
     color: "transparent"
     WlrLayershell.layer: win.layer
@@ -107,7 +116,10 @@ PanelWindow {
             win.basePos = p;
             win.baseAt = t;
         }
-        win.pos = (Players.playing ? win.basePos + (t - win.baseAt) : win.basePos) + win.shift;
+        var np = (Players.playing ? win.basePos + (t - win.baseAt) : win.basePos) + win.shift;
+        // Same rule as step(): no small rewinds while playing.
+        if (!Players.playing || np >= win.pos || win.pos - np > 1)
+            win.pos = np;
     }
 
     Timer {
@@ -157,8 +169,15 @@ PanelWindow {
         var t = now();
         var dt = Math.min(0.1, Math.max(0, t - win.lastFrame));   // AMLL MAX_FRAME_DELTA
         win.lastFrame = t;
-        if (Players.playing)
-            win.pos = win.basePos + (t - win.baseAt) + win.shift;
+        if (Players.playing) {
+            var np = win.basePos + (t - win.baseAt) + win.shift;
+            // A position read a little behind our clock would step the
+            // lyrics back (flipping a line that just started back to the one
+            // before); hold instead until the clock catches up. Real seeks
+            // back are larger and still jump.
+            if (np >= win.pos || win.pos - np > 1)
+                win.pos = np;
+        }
         if (!win.settling)
             return;
         var target = win.offTarget;
@@ -295,11 +314,11 @@ PanelWindow {
                     property real act: current ? 1 : 0
                     Behavior on act { NumberAnimation { duration: Motion.normalDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.emphasizedDecel } }
 
-                    // Instrumental breaks only take space while they are the
-                    // current line (else they left an empty hole in the
-                    // column); animated so the column never jumps.
-                    property real gapH: current ? 28 * win.s : 0
-                    Behavior on gapH { NumberAnimation { duration: Motion.normalDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
+                    // Instrumental breaks are an ordinary row of fixed height:
+                    // their dots scroll in and out with the lines around them.
+                    // (They used to grow in only while current, which shoved
+                    // every line below down and back again around each break.)
+                    readonly property real gapH: 28 * win.s
 
                     width: col.width
                     height: modelData.gap ? gapH : dimFlow.height + (rtext.length > 0 ? romanText.implicitHeight + 4 * win.s : 0)
@@ -343,32 +362,34 @@ PanelWindow {
                         shadowHorizontalOffset: 0
                     }
 
-                    // ── instrumental gap: three dots breathe and fill ──────
+                    // ── instrumental gap: three dots fill as it passes ─────
                     Row {
                         visible: line.modelData.gap
                         x: win.centered ? (parent.width - width) / 2 : win.righted ? parent.width - width : 0
                         spacing: 12 * win.s
-                        opacity: line.gapH / (28 * win.s)
                         anchors.verticalCenter: parent.verticalCenter
                         Repeater {
                             model: 3
                             Rectangle {
                                 required property int index
-                                readonly property real f: line.current
+                                // Fill one by one across the break; a passed break stays
+                                // lit as it scrolls away instead of snapping back to dim.
+                                readonly property real f: line.dist < 0 ? 1 : line.current
                                     ? Math.max(0, Math.min(1, ((win.pos - line.modelData.t) / Math.max(0.5, line.modelData.end - line.modelData.t - 0.3)) * 3 - index))
                                     : 0
-                                readonly property real breath: line.current ? 0.06 * Math.sin(win.pos * 3.2 - index * 0.7) : 0
                                 width: 12 * win.s
                                 height: width
                                 radius: width / 2
                                 color: win.mix(Qt.alpha(TrackInfo.ink, 0.35), index === 1 ? win.litB : win.litA, f)
-                                scale: 0.78 + 0.3 * f + breath
+                                scale: 0.78 + 0.3 * f
                             }
                         }
                     }
 
                     readonly property real fadeW: win.fontPx * 0.5
                     readonly property real litOpacity: act
+                    /** Write mode: drawn in strokes while current, and while fading out after. */
+                    readonly property bool writing: win.writeMode && !modelData.gap && (current || act > 0.001)
 
                     // ── dim ink (layout master) ────────────────────────────
                     // Word placement, computed here (not a Flow) so wrapped
@@ -437,7 +458,10 @@ PanelWindow {
                                 readonly property real fill: line.dist < 0 ? 1 : line.current && win.cfg.fill === "line" ? 1 : line.current
                                     ? Math.max(0, Math.min(1, (line.prog - modelData.a) / Math.max(0.0001, modelData.b - modelData.a)))
                                     : 0
-                                readonly property real lift: fill * fill * (3 - 2 * fill) * 3 * win.s * line.act
+                                readonly property int chars: Array.from(modelData.text).length
+                                readonly property real baseY: dimText.baselineOffset
+                                // Written words stay on the line (ink doesn't hop).
+                                readonly property real lift: win.writeMode ? 0 : fill * fill * (3 - 2 * fill) * 3 * win.s * line.act
                                 width: dimText.implicitWidth + (modelData.space ? spaceM.advanceWidth(" ") : 0)
                                 height: dimText.implicitHeight
                                 Text {
@@ -445,6 +469,8 @@ PanelWindow {
                                     y: -word.lift
                                     text: word.modelData.text
                                     color: Qt.alpha(TrackInfo.ink, 0.9 - 0.52 * line.act)
+                                    // Writing: the unsung text stays as this faded ghost;
+                                    // the lit layer writes over it.
                                     font.family: line.cjk ? Appearance.font.jp : Appearance.font.family
                                     font.pixelSize: win.fontPx
                                     font.weight: Font.DemiBold
@@ -479,14 +505,102 @@ PanelWindow {
                                     y: line.place[index] ? line.place[index].y : 0
                                     width: twin ? twin.width : 0
                                     height: twin ? twin.height : 0
+                                    readonly property color ink: win.mix(win.litA, win.litB,
+                                                                         twin ? Math.min(1, (twin.x + twin.width / 2) / Math.max(1, dimFlow.width * 0.8)) : 0)
                                     Text {
+                                        visible: !line.writing
                                         y: parent.twin ? -parent.twin.lift : 0
                                         text: parent.modelData.text
-                                        color: win.mix(win.litA, win.litB,
-                                                       parent.twin ? Math.min(1, (parent.twin.x + parent.twin.width / 2) / Math.max(1, dimFlow.width * 0.8)) : 0)
+                                        color: parent.ink
                                         font.family: line.cjk ? Appearance.font.jp : Appearance.font.family
                                         font.pixelSize: win.fontPx
                                         font.weight: Font.DemiBold
+                                    }
+                                    // Handwritten: each character's strokes in writing
+                                    // order, sitting on the ghost's own character cell.
+                                    Repeater {
+                                        model: line.writing ? Array.from(parent.modelData.text) : []
+                                        Item {
+                                            id: cell
+                                            required property string modelData
+                                            required property int index
+                                            readonly property Item w: parent.twin
+                                            readonly property FontMetrics fm: line.cjk ? jpM : spaceM
+                                            readonly property var g: Lyrics.glyphs[modelData]
+                                            readonly property int n: w ? w.chars : 1
+                                            /** 0 → 1 as this character is written. */
+                                            readonly property real p: w ? Math.max(0, Math.min(1, w.fill * n - index)) : 0
+                                            x: fm.advanceWidth(parent.modelData.text.slice(0, index))
+                                            width: fm.advanceWidth(modelData)
+                                            height: parent.height
+                                            // Pen travel: stroke lengths plus a lift between strokes.
+                                            readonly property var starts: {
+                                                var a = [], t = 0;
+                                                if (g)
+                                                    for (var i = 0; i < g.s.length; i++) {
+                                                        a.push(t);
+                                                        t += g.s[i][1] + (i < g.s.length - 1 ? win.penLift * g.u : 0);
+                                                    }
+                                                a.push(t);
+                                                return a;
+                                            }
+                                            readonly property real travel: p * starts[starts.length - 1]
+
+                                            Text {
+                                                visible: !cell.g
+                                                text: cell.modelData
+                                                opacity: cell.p
+                                                color: cell.parent.ink
+                                                font.family: line.cjk ? Appearance.font.jp : Appearance.font.family
+                                                font.pixelSize: win.fontPx
+                                                font.weight: Font.DemiBold
+                                            }
+                                            Item {
+                                                id: pen
+                                                visible: !!cell.g
+                                                // Fit the strokes' centre line onto the font's own ink box
+                                                // for this character (inset by half the pen), uniformly so
+                                                // the pen stays round; a flat glyph (一, ー) fits its long side.
+                                                readonly property rect ink: cell.fm.tightBoundingRect(cell.modelData)
+                                                readonly property real penPx: win.penW * win.fontPx
+                                                readonly property var b: cell.g ? cell.g.b : [0, 0, 1, 1]
+                                                readonly property real bw: Math.max(0.01, b[2] - b[0])
+                                                readonly property real bh: Math.max(0.01, b[3] - b[1])
+                                                readonly property real kx: Math.max(1, ink.width - penPx) / bw
+                                                readonly property real ky: Math.max(1, ink.height - penPx) / bh
+                                                readonly property real flat: cell.g ? 0.15 * cell.g.u : 1
+                                                readonly property real k: bw < flat ? ky : bh < flat ? kx : Math.min(kx, ky)
+                                                x: ink.x + ink.width / 2 - (b[0] + bw / 2) * k
+                                                y: (cell.w ? cell.w.baseY : win.fontPx) + ink.y + ink.height / 2 - (b[1] + bh / 2) * k
+                                                width: cell.g ? cell.g.w : 0
+                                                height: cell.g ? cell.g.u : 0
+                                                scale: k
+                                                transformOrigin: Item.TopLeft
+                                                Repeater {
+                                                    model: cell.g ? cell.g.s : []
+                                                    Shape {
+                                                        id: stroke
+                                                        required property var modelData
+                                                        required property int index
+                                                        readonly property real len: modelData[1]
+                                                        readonly property real drawn: Math.max(0, Math.min(len, cell.travel - cell.starts[index]))
+                                                        readonly property real sw: pen.penPx / Math.max(0.0001, pen.k)
+                                                        visible: drawn > 0.01
+                                                        preferredRendererType: Shape.GeometryRenderer
+                                                        ShapePath {
+                                                            strokeColor: cell.parent.ink
+                                                            strokeWidth: stroke.sw
+                                                            fillColor: "transparent"
+                                                            capStyle: ShapePath.RoundCap
+                                                            joinStyle: ShapePath.RoundJoin
+                                                            strokeStyle: stroke.drawn >= stroke.len ? ShapePath.SolidLine : ShapePath.DashLine
+                                                            dashPattern: [stroke.drawn / stroke.sw, (stroke.len + 4 * stroke.sw) / stroke.sw]
+                                                            PathSvg { path: modelData[0] }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -518,7 +632,8 @@ PanelWindow {
                                     readonly property real cut: parent.w / Math.max(1, span)
                                     width: span
                                     height: parent.height
-                                    x: (parent.twin ? parent.twin.fill : 0) * span - span
+                                    // Write mode: the strokes reveal themselves; no sweep.
+                                    x: (parent.twin ? (line.writing ? 1 : parent.twin.fill) : 0) * span - span
                                     gradient: Gradient {
                                         orientation: Gradient.Horizontal
                                         GradientStop { position: 0; color: "white" }
@@ -548,6 +663,12 @@ PanelWindow {
             }
         }
 
+        FontMetrics {
+            id: jpM
+            font.family: Appearance.font.jp
+            font.pixelSize: win.fontPx
+            font.weight: Font.DemiBold
+        }
         FontMetrics {
             id: spaceM
             font.family: Appearance.font.family

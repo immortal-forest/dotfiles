@@ -64,10 +64,11 @@ Singleton {
 
     /** Word-timed (NetEase yrc) beats everything — held notes hold. Then
      *  line-synced: NetEase for CJK lyrics (it ships romaji too), LRCLIB for
-     *  the rest, Kugou last. */
+     *  the rest, Kugou last. Lyrics in the original script beat a romaji
+     *  transcription of the same song (LRCLIB often has only the latter). */
     function score(src, cand) {
         var base = src === "kugou" ? 1 : src === "netease" ? (cand.cjk ? 3 : 2) : (cand.cjk ? 2 : 3);
-        return (cand.timed ? 10 : 0) + base;
+        return (cand.timed ? 10 : 0) + (cand.cjk ? 4 : 0) + base;
     }
     function ranked(c) {
         return root.sources.filter(s => !!c.cands[s])
@@ -175,6 +176,33 @@ Singleton {
         t.start();
     }
 
+    // ── pen strokes for the "write" fill (on demand, scripts/strokes.py) ──
+    /** char → { u, w, s: [[svgPath, length], …] } in writing order; {} until ready. */
+    readonly property var glyphs: entry && entry.glyphs ? entry.glyphs : ({})
+    readonly property bool wantGlyphs: Widgets.lyrics.fill === "write"
+    readonly property string strokesScript: String(Qt.resolvedUrl("../scripts/strokes.py")).replace(/^file:\/\//, "")
+    onWantGlyphsChanged: Qt.callLater(loadGlyphs)
+
+    function loadGlyphs() {
+        var e = root.entry;
+        if (!root.wantGlyphs || !e || e.status !== "synced" || e.glyphStatus)
+            return;
+        // romanLines arrive later ("replace" mode): a re-run covers their characters.
+        var texts = e.lines.map(l => l.text).concat(e.rlines ? e.rlines.map(l => l.text) : []);
+        var rk = TrackInfo.key + "|" + e.source;
+        var key = texts.join("\n");
+        root.setRoman(rk, { glyphStatus: "busy" });
+        var p = Qt.createQmlObject('import Quickshell.Io; Process { stdout: StdioCollector {} }', root, "Lyrics.glyphs");
+        p.command = ["python3", "-I", root.strokesScript, key];
+        p.exited.connect(function (code) {
+            var g = null;
+            try { g = JSON.parse(p.stdout.text); } catch (x) {}
+            p.destroy();
+            root.setRoman(rk, g && code === 0 ? { glyphStatus: "ready", glyphs: g } : { glyphStatus: "error" });
+        });
+        p.running = true;
+    }
+
     // ── romanization (on demand, scripts/romanize.py) ─────────────────────
     /** Per-line romanized text for the current track ([] until ready). */
     readonly property var roman: entry && entry.roman ? entry.roman : []
@@ -188,7 +216,10 @@ Singleton {
     onWantRomanChanged: romanize(true)
     // Deferred: writing `romans` from inside entry's change notification
     // is a binding loop on `entry` (QML drops the re-evaluation).
-    onEntryChanged: Qt.callLater(romanize)
+    onEntryChanged: {
+        Qt.callLater(romanize);
+        Qt.callLater(loadGlyphs);
+    }
 
     function romanize(retry) {
         var e = root.entry;
@@ -225,7 +256,7 @@ Singleton {
                 n.span = l.span;    // keep the original line's sung span
                 return n;
             });
-            root.setRoman(rk, { romanStatus: "ready", roman: clean, rlines: rl });
+            root.setRoman(rk, { romanStatus: "ready", roman: clean, rlines: rl, glyphStatus: "" });
         });
         p.running = true;
     }
@@ -280,7 +311,11 @@ Singleton {
                     altWait.forEach(f => f(alt));
                 });
         };
+        // A failed/blocked request is not a miss: flagged transient so the
+        // result isn't saved and the source is asked again next time.
         var keyed = function (src, fn) {
+            var failed = false;
+            var miss = () => done(src, null, failed ? { transient: true } : null);
             var tryTitle = function (t, onMiss) {
                 fn(t, artist, dur, function (lrc, roma, yrc) {
                     var c = root.candidate(lrc, roma, yrc, dur);
@@ -288,10 +323,13 @@ Singleton {
                         done(src, c);
                     else
                         onMiss();
-                }, onMiss);
+                }, function (bad) {
+                    failed = failed || !!bad;
+                    onMiss();
+                });
             };
             tryTitle(title, function () {
-                withAlt(a => a ? tryTitle(a, () => done(src, null)) : done(src, null));
+                withAlt(a => a ? tryTitle(a, miss) : miss());
             });
         };
         keyed("netease", root.netease);
@@ -300,9 +338,13 @@ Singleton {
     }
 
     function finish(k, c) {
-        if (!root.sources.some(s => c.cands[s]) && c.transient) {
-            // Network trouble, not a real miss: forget it after a while so
-            // the watchdog asks again.
+        // A source failed on the network: don't save, so it is asked again
+        // (a saved file with any lyrics is fresh forever — a one-off NetEase
+        // failure used to lock a romaji-only LRCLIB result in for good).
+        if (c.transient) {
+            if (root.sources.some(s => c.cands[s]))
+                return;
+            // Nothing at all: forget it after a while so the watchdog asks again.
             root.later(20000, function () {
                 if (root.cache[k] && root.cache[k].run === c.run) {
                     var cc = Object.assign({}, root.cache);
@@ -421,6 +463,9 @@ Singleton {
     function netease(title, artist, dur, got, next) {
         var q = encodeURIComponent(artist + " " + title);
         root.getJson("https://music.163.com/api/search/get?s=" + q + "&type=1&limit=12", function (code, d) {
+            // NetEase's anti-bot answer is HTTP 200 with { code: -460 } and no result.
+            if (root.transient(code) || !d || (d.code && d.code !== 200))
+                return next(true);
             var songs = d && d.result && d.result.songs ? d.result.songs : [];
             var best = null, bestScore = -1;
             for (var j = 0; j < songs.length; j++) {
@@ -441,6 +486,8 @@ Singleton {
                 return next();
             // v1 endpoint: also returns `yrc`, NetEase's word-timed lyrics.
             root.getJson("https://music.163.com/api/song/lyric/v1?id=" + best.id + "&lv=-1&yv=-1&tv=-1&rv=-1", function (c2, l) {
+                if (root.transient(c2) || !l || (l.code && l.code !== 200))
+                    return next(true);
                 var lrc = l && l.lrc && l.lrc.lyric ? l.lrc.lyric : "";
                 var roma = l && l.romalrc && l.romalrc.lyric ? l.romalrc.lyric : "";
                 var yrc = l && l.yrc && l.yrc.lyric ? l.yrc.lyric : "";
@@ -455,6 +502,8 @@ Singleton {
         var q = encodeURIComponent(artist + " " + title);
         root.getJson("https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=" + q
                      + (dur > 0 ? "&duration=" + Math.round(dur * 1000) : ""), function (code, d) {
+            if (root.transient(code) || !d)
+                return next(true);
             var cands = d && d.candidates ? d.candidates : [];
             var best = null;
             for (var j = 0; j < cands.length; j++) {
@@ -469,6 +518,8 @@ Singleton {
                 return next();
             root.getJson("https://lyrics.kugou.com/download?ver=1&client=pc&fmt=lrc&charset=utf8&id=" + best.id
                          + "&accesskey=" + best.accesskey, function (c2, l) {
+                if (root.transient(c2) || !l)
+                    return next(true);
                 // Qt.atob already decodes the bytes as UTF-8 (verified: "5pel"
                 // → 日); decoding again turned every kana/kanji into mojibake.
                 var lrc = l && l.content ? String(Qt.atob(l.content)).replace(/^﻿/, "") : "";

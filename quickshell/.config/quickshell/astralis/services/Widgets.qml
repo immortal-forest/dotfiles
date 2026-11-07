@@ -13,7 +13,7 @@ import Quickshell.Io
  * side = w × screen width. Lyrics options: size (px), lines (shown each side
  * of the current one; 0 = as many as fit), spacing (line-gap
  * multiplier), anchor (current line's height fraction), align left|center|right,
- * ink cover|theme|mono (lit-text gradient), roman off|below|replace, offset (s, + = lyrics earlier), fill sweep|line. `editing` opens the full-screen placer
+ * ink cover|theme|mono (lit-text gradient), roman off|below|replace, offset (s, + = lyrics earlier), fill sweep|line|write. `editing` opens the full-screen placer
  * (modules/nowplaying/WidgetEditor.qml) on every screen.
  *
  * Same write guard as Flags: never overwrite a file we could not parse.

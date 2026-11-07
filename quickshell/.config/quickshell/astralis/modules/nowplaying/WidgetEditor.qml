@@ -1160,7 +1160,7 @@ PanelWindow {
                     PRow {
                         name: "Fill"
                         Seg {
-                            opts: [{ label: "Sweep", value: "sweep" }, { label: "Whole line", value: "line" }]
+                            opts: [{ label: "Sweep", value: "sweep" }, { label: "Whole line", value: "line" }, { label: "Write", value: "write" }]
                             value: panelCard.ly.fill
                             onPicked: (v) => Widgets.set("lyrics", "fill", v)
                         }
