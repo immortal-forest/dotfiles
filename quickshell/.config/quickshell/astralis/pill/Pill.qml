@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import Quickshell.Hyprland
+import Quickshell.Io
 import "../colors"
 import "../services"
 import "../config"
@@ -61,25 +62,42 @@ Item {
      * The special workspace shown on this pill's monitor, surfaced as a plain word
      * in place of the clock so it is obvious you are looking at the minimized stash
      * or the private space rather than your real desktop. Empty in the normal case.
+     *
+     * Tracked from Hyprland's `activespecial` event (fires on every open AND
+     * close, "special:name,MONITOR" / ",MONITOR"), seeded once from hyprctl.
+     * It used to read the monitor's lastIpcObject, which is only a snapshot:
+     * monitors are never re-pulled (refreshMonitors() breaks the model, see
+     * shell.qml), so a special flashed open at login (Spotify starting silently
+     * into special:scratch) stuck as "Scratch" until something else moved it.
      */
-    /**
-     * This pill's Hyprland monitor object, resolved by name. Cached in one
-     * binding so the linear scan over Hyprland.monitors.values runs once per
-     * monitor-model change instead of inside every consumer on every IPC tick;
-     * downstream reads (specialView) then key off the monitor's own live
-     * properties (lastIpcObject) without re-scanning.
-     */
-    readonly property var hMonitor: {
-        var ms = Hyprland.monitors.values;
-        for (var i = 0; i < ms.length; i++)
-            if (ms[i] && ms[i].name === pill.screenName)
-                return ms[i];
-        return null;
+    property string specialName: ""
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name !== "activespecial")
+                return;
+            var d = String(event.data), cut = d.lastIndexOf(",");
+            if (cut >= 0 && d.slice(cut + 1) === pill.screenName)
+                pill.specialName = d.slice(0, cut);
+        }
+    }
+    Process {
+        running: pill.screenName.length > 0
+        command: ["hyprctl", "monitors", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var ms = JSON.parse(text);
+                    for (var i = 0; i < ms.length; i++)
+                        if (ms[i].name === pill.screenName)
+                            pill.specialName = ms[i].specialWorkspace ? ms[i].specialWorkspace.name || "" : "";
+                } catch (e) {}
+            }
+        }
     }
 
     readonly property string specialView: {
-        var o = hMonitor ? hMonitor.lastIpcObject : null;
-        var sw = (o && o.specialWorkspace) ? o.specialWorkspace.name : "";
+        var sw = pill.specialName;
         if (sw === "special:minimized") return "Minimized";
         if (sw === "special:private") return "Private";
         if (sw === "special:stash") return "Stash";
