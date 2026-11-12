@@ -2,6 +2,8 @@ pragma Singleton
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
+import Quickshell.Hyprland
 import Quickshell.Services.Notifications
 
 /**
@@ -59,7 +61,7 @@ Singleton {
         var order = [];
         for (var i = 0; i < tracked.length; i++) {
             var n = tracked[i];
-            var app = (n.appName && n.appName.length) ? n.appName : "System";
+            var app = root.sourceLabel(n);
             if (map[app] === undefined) { map[app] = []; order.push(app); }
             map[app].push({ live: true, n: n, t: arrivalMs[n.id] || 0 });
         }
@@ -70,7 +72,8 @@ Singleton {
         }
         function coalesce(list, it) {
             var last = list.length > 0 ? list[list.length - 1] : null;
-            if (last && last.n.summary === it.n.summary && last.n.body === it.n.body) {
+            if (last && last.n.summary === it.n.summary && last.n.body === it.n.body
+                    && last.n.image === it.n.image && last.n.appIcon === it.n.appIcon) {
                 last.count++;
                 last.items.push(it.n);
             } else {
@@ -117,7 +120,21 @@ Singleton {
         a[n.id] = Date.now();
         root.arrivalMs = a;
         var e = Object.assign({}, root.expireAt);
-        e[n.id] = Date.now() + (n.urgency === NotificationUrgency.Low ? 3000 : 4500);
+        // Screenshots/recordings carry one-click actions: give them time to be
+        // used. Otherwise honour a sender's own short timeout (Hyprland's
+        // popout asks for 1.5s) and fall back to the urgency default.
+        var k = root.kindOf(n);
+        var life = n.urgency === NotificationUrgency.Low ? 3000 : 4500;
+        // expireTimeout is documented in seconds; guard against a build
+        // that hands the raw spec milliseconds through.
+        var t = n.expireTimeout;
+        if (t > 0)
+            life = Math.max(1500, Math.min(10000, t > 100 ? t : t * 1000));
+        if (k === "screenshot" || (k === "recording" && !root.isFailure(n)))
+            life = Math.max(life, 8000);
+        e[n.id] = Date.now() + life;
+        if (k === "screenshot")
+            root.probeShot(root.localImage(n));
         root.expireAt = e;
         root.hookClosed(n);
         var critical = n.urgency === NotificationUrgency.Critical;
@@ -156,53 +173,359 @@ Singleton {
         }
     }
 
-    /**
-     * Best icon source for a notification (live or history snapshot):
-     * image://icon/ payloads resolve through the theme, raster image paths
-     * pass through, then appIcon/desktopEntry/appName try the icon theme.
-     */
+    // ── kinds ───────────────────────────────────────────────────────────────
+    //
+    // One cheap, data-only classifier every view reads (works on a live
+    // Notification and on a history snapshot, which carries its kind/label/
+    // files precomputed at close time):
+    //   screenshot — summary/app says screenshot AND the image is a local file
+    //   recording  — astralis's own "Recording saved/failed"
+    //   shell      — any other astralis notification
+    //   system     — no app name (notify-send, GNotification via Ghostty),
+    //                or Hyprland
+    //   media      — a music/video player (cover art in the image hint)
+    //   message    — any other app that ships an image (avatar, favicon)
+    //   default    — everything else
+
+    readonly property var mediaRe: /spotify|ncspot|mpd|rhythmbox|elisa|amberol|lollypop|strawberry|cmus|clementine|quodlibet|audacious|deadbeef|tidal|deezer|music|mpv|vlc|celluloid|tauon|feishin|sonixd/
+    readonly property var shotAppRe: /hyprshot|screenshot|grim|flameshot|spectacle|satty|swappy|ksnip/
+
+    /** Raw sender name; notify-send's default "notify-send" counts as none. */
+    function rawApp(n) {
+        var a = String((n && n.appName) || "").trim();
+        return a.toLowerCase() === "notify-send" ? "" : a;
+    }
+
+    function baseName(p) {
+        var str = String(p || "");
+        return str.substring(str.lastIndexOf("/") + 1);
+    }
+
+    /** A local raster file path (no scheme) or "". */
+    function filePathOf(v) {
+        var p = String(v || "");
+        if (p.indexOf("file://") === 0) {
+            p = p.substring(7);
+            try { p = decodeURIComponent(p); } catch (err) {}
+        }
+        return (p.indexOf("/") === 0 && /\.(png|jpe?g|webp|bmp|gif|avif|jxl)$/i.test(p)) ? p : "";
+    }
+
+    /** Percent-encoded file:// URL (bare paths would resolve against qrc:, `#` would cut). */
+    function fileUrl(p) {
+        return p && p.length ? "file://" + p.split("/").map(encodeURIComponent).join("/") : "";
+    }
+
     // Bare paths (hyprshot's `-i /home/…png`) resolve against the QML file's
     // own qrc: URL inside IconImage/Image, so they need an explicit scheme.
     function asUrl(p) {
-        return p.indexOf("/") === 0 ? "file://" + p : p;
+        return p.indexOf("/") === 0 ? root.fileUrl(p) : p;
     }
 
-    function iconFor(n) {
+    /** The local image file a notification carries (image hint, image-path, or a path app icon). */
+    function localImage(n) {
         if (!n) return "";
-        var img = n.image || "";
-        var names = [];
-        if (img.indexOf("image://icon/") === 0) {
-            names.push(img.substring(13));
-        } else if (img.length && !/\.svg$/i.test(img)) {
-            return root.asUrl(img);
+        if (n.img !== undefined) return n.img;
+        var hp = (n.hints && n.hints["image-path"]) || "";
+        return root.filePathOf(n.image) || root.filePathOf(hp) || root.filePathOf(n.appIcon);
+    }
+
+    function kindOf(n) {
+        if (!n) return "default";
+        if (n.kind !== undefined) return n.kind;
+        var app = root.rawApp(n).toLowerCase();
+        var sum = String(n.summary || "").toLowerCase();
+        if (root.localImage(n).length && (/screen ?shot|hyprshot/.test(sum) || root.shotAppRe.test(app)))
+            return "screenshot";
+        if (app === "astralis")
+            return /^recording\b/.test(sum) ? "recording" : "shell";
+        if (!app.length || app === "hyprland")
+            return "system";
+        if (root.mediaRe.test(app + " " + String(n.desktopEntry || "").toLowerCase()))
+            return "media";
+        return root.avatarFor(n).length ? "message" : "default";
+    }
+
+    function isFailure(n) {
+        return !!n && root.kindOf(n) === "recording"
+            && (/fail|error/i.test(String(n.summary || "")) || n.urgency === NotificationUrgency.Critical);
+    }
+
+    /** "Backup is running…" / "Build Bot: done" → "Backup" / "Build Bot". */
+    function senderOf(text) {
+        var m = /^([A-Z][\w.+-]*(?: [A-Z][\w.+-]*){0,2})(?::\s| is | has | wants | needs | says | finished| completed| requires)/
+            .exec(root.plainBody(String(text || "")).trim());
+        return m ? m[1] : "";
+    }
+
+    /**
+     * Who a notification is FROM, as the eyebrow/group label. A nameless
+     * sender is only "System" when nothing better exists: the sender named in
+     * the text (Backup), else the desktop-entry hint's app name (Ghostty).
+     */
+    function sourceLabel(n) {
+        if (!n) return "";
+        if (n.label !== undefined) return n.label;
+        var k = root.kindOf(n);
+        if (k === "screenshot") return "Screenshot";
+        if (k === "shell" || k === "recording") return "astralis";
+        var app = root.rawApp(n);
+        if (k !== "system") return app;
+        if (app.toLowerCase() === "hyprland") return "Hyprland";
+        var who = root.senderOf(n.summary) || root.senderOf(n.body);
+        if (who.length) return who;
+        var e = root.entryFor(n.desktopEntry);
+        return (e && e.name) ? e.name : "System";
+    }
+
+    /** The headline. Screenshots lead with where they came from. */
+    function titleFor(n) {
+        if (!n) return "";
+        if (root.kindOf(n) === "screenshot") {
+            var w = root.shotWhere(n);
+            return w.length ? w : "Captured";
         }
-        names.push(n.appIcon, n.desktopEntry, (n.appName || n.app || "").toLowerCase());
+        return String(n.summary || "");
+    }
+
+    /** The secondary line (plain text). */
+    function captionFor(n) {
+        if (!n) return "";
+        var k = root.kindOf(n);
+        var b = root.plainBody(n.body).trim();
+        if (k === "screenshot") {
+            var copied = /clipboard/i.test(b) || root.rawApp(n).length === 0;
+            return (copied ? "Copied to clipboard · " : "") + root.baseName(root.localImage(n));
+        }
+        if (k === "recording" && !root.isFailure(n))
+            return root.baseName(root.recordingPath(n));
+        return b;
+    }
+
+    /** The file a notification's shell actions act on (screenshot / saved recording), else "". */
+    function fileOf(n) {
+        if (!n) return "";
+        if (n.file !== undefined) return n.file;
+        var k = root.kindOf(n);
+        if (k === "screenshot") return root.localImage(n);
+        if (k === "recording" && !root.isFailure(n)) return root.recordingPath(n);
+        return "";
+    }
+
+    /** ScreenRec's toast body is the basename: resolve it back to the take on disk. */
+    function recordingPath(n) {
+        var b = root.plainBody(n.body).trim();
+        if (b.indexOf("/") === 0) return b;
+        var lf = ScreenRec.lastFile;
+        if (!b.length || (lf.length && root.baseName(lf) === b)) return lf;
+        return ScreenRec.dir + "/" + b;
+    }
+
+    // ── screenshot geometry: region / monitor / all monitors ────────────────
+    // Hyprshot never says which mode it ran in, so the PNG header (bytes
+    // 16..23: big-endian width, height) is read once per shot and matched
+    // against the monitors' pixel modes.
+    property var shotDims: ({})    // path → [w, h] ([0, 0] when unreadable)
+    property var dimQueue: []
+
+    function probeShot(p) {
+        if (!p || !p.length || root.shotDims[p] !== undefined || root.dimQueue.indexOf(p) !== -1) return;
+        root.dimQueue = root.dimQueue.concat([p]);
+        if (!dimProc.running) root.nextProbe();
+    }
+
+    function nextProbe() {
+        if (dimProc.running) return;
+        root.dimQueue = root.dimQueue.filter(function(q) { return root.shotDims[q] === undefined; });
+        if (root.dimQueue.length === 0) return;
+        dimProc.path = root.dimQueue[0];
+        dimProc.command = ["od", "-An", "-tu1", "-j16", "-N8", "--", dimProc.path];
+        dimProc.running = true;
+    }
+
+    Process {
+        id: dimProc
+        property string path: ""
+        // The next probe can only start once this one has fully exited.
+        onRunningChanged: if (!running) Qt.callLater(root.nextProbe)
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var b = text.trim().split(/\s+/).map(Number);
+                var d = Object.assign({}, root.shotDims);
+                d[dimProc.path] = b.length === 8
+                    ? [((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]) >>> 0,
+                       ((b[4] << 24) | (b[5] << 16) | (b[6] << 8) | b[7]) >>> 0]
+                    : [0, 0];
+                root.shotDims = d;
+                root.dimQueue = root.dimQueue.filter(function(q) { return q !== dimProc.path; });
+            }
+        }
+    }
+
+    function shotWhere(n) {
+        // The Print bind says it outright ("All monitors").
+        var b = root.plainBody(n.body).trim();
+        if (b.length && b.length <= 28 && !/[\/<]|clipboard|saved/i.test(b))
+            return b.charAt(0).toUpperCase() + b.slice(1);
+        var d = root.shotDims[root.localImage(n)];
+        if (!d || !(d[0] > 0)) return "";
+        var ms = Hyprland.monitors.values;
+        var maxW = 0, maxH = 0;
+        for (var i = 0; i < ms.length; i++) {
+            var m = ms[i];
+            var o = m.lastIpcObject || {};
+            var w = o.width || m.width, h = o.height || m.height;
+            maxW = Math.max(maxW, w, h);
+            maxH = Math.max(maxH, w, h);
+            if ((w === d[0] && h === d[1]) || (w === d[1] && h === d[0]))
+                return ms.length > 1 ? "Monitor · " + m.name : "Full screen";
+        }
+        if (ms.length > 1 && (d[0] > maxW || d[1] > maxH)) return "All monitors";
+        return "Region";
+    }
+
+    // ── icons ───────────────────────────────────────────────────────────────
+
+    /** Desktop entry by id / wm class / name, or null. */
+    function entryFor(token) {
+        var t = String(token || "").trim();
+        if (!t.length) return null;
+        var e = DesktopEntries.heuristicLookup(t);
+        if (e) return e;
+        var lt = t.toLowerCase();
+        var apps = DesktopEntries.applications.values;
+        for (var j = 0; j < apps.length; j++) {
+            var a = apps[j];
+            if (!a) continue;
+            var eid = (a.id || "").toLowerCase();
+            var wm = (a.startupClass || "").toLowerCase();
+            var nm = (a.name || "").toLowerCase();
+            if (wm === lt || nm === lt || (eid.length >= 3 && (eid.indexOf(lt) === 0 || (eid.length >= 4 && lt.indexOf(eid) === 0))))
+                return a;
+        }
+        return null;
+    }
+
+    /**
+     * The APP's icon (never the content image): a theme icon named by the
+     * image hint (image://icon/…, how GNotification senders like Ghostty pass
+     * their app icon), the app_icon field, the desktop-entry hint, the app
+     * name, then a desktop-entry lookup (spotify ↔ spotify-launcher, "Proton
+     * VPN" ↔ proton.vpn.app.gtk) — and for nameless senders, the sender named
+     * in the text. A raster path in app_icon is an app icon only when the
+     * notification isn't using it as its content (screenshot, avatar).
+     * Returns "" when nothing resolves; the views fall back to a glyph.
+     */
+    function appIconFor(n) {
+        if (!n) return "";
+        var k = root.kindOf(n);
+        var img = String(n.image || "");
+        var names = [];
+        if (img.indexOf("image://icon/") === 0) names.push(img.substring(13));
+        var ai = String(n.appIcon || "");
+        if (ai.length) {
+            if (root.filePathOf(ai).length) {
+                if (k !== "screenshot" && k !== "message" && k !== "media") return root.asUrl(root.filePathOf(ai));
+            } else if (ai.indexOf("/") === 0 || ai.indexOf("file://") === 0) {
+                return root.asUrl(ai);
+            } else {
+                names.push(ai);
+            }
+        }
+        var app = root.rawApp(n);
+        names.push(n.desktopEntry, app.toLowerCase());
         for (var i = 0; i < names.length; i++) {
-            var nm = names[i];
-            if (!nm || !nm.length) continue;
-            if (nm.indexOf("/") === 0 || nm.indexOf("file://") === 0) return root.asUrl(nm);
+            // An image://icon/ payload (or a Players-built icon url) can carry
+            // a "?fallback=…" query; looked up whole, "spotify?fallback=…"
+            // matches no icon and the tile came out blank.
+            var nm = String(names[i] || "").replace(/^image:\/\/icon\//, "").split("?")[0];
+            if (!nm.length) continue;
             var p = Quickshell.iconPath(nm, true);
             if (p.length) return p;
         }
-        // Fuzzy desktop-entry fallback for launcher-wrapped apps that report one
-        // name but install another (MPRIS/notify "spotify" ↔ spotify-launcher
-        // .desktop, StartupWMClass spotify). Match a shared id prefix or the
-        // entry's startup window class.
-        var token = String(n.desktopEntry && n.desktopEntry.length ? n.desktopEntry : (n.appName || n.app || "")).toLowerCase();
-        if (token.length) {
-            var apps = DesktopEntries.applications.values;
-            for (var j = 0; j < apps.length; j++) {
-                var e = apps[j];
-                if (!e || !e.icon) continue;
-                var eid = (e.id || "").toLowerCase();
-                var wm = (e.startupClass || "").toLowerCase();
-                if (wm === token || (eid.length && (eid.indexOf(token) === 0 || token.indexOf(eid) === 0))) {
-                    var ip = Quickshell.iconPath(e.icon, true);
-                    if (ip.length) return ip;
-                }
+        var tokens = [n.desktopEntry, app];
+        if (k === "system") tokens.push(root.senderOf(n.summary) || root.senderOf(n.body));
+        for (var t = 0; t < tokens.length; t++) {
+            var e = root.entryFor(tokens[t]);
+            if (e && e.icon) {
+                var ip = Quickshell.iconPath(e.icon, true);
+                if (ip.length) return ip;
             }
         }
         return "";
+    }
+
+    /** Content image (avatar, cover, site icon) as a URL, or "" — never a theme icon. */
+    function avatarFor(n) {
+        if (!n) return "";
+        var img = String(n.image || "");
+        if (img.length && img.indexOf("image://icon/") !== 0 && !/\.svg$/i.test(img))
+            return root.filePathOf(img).length ? root.fileUrl(root.filePathOf(img)) : img;
+        var f = root.localImage(n);
+        return f.length ? root.fileUrl(f) : "";
+    }
+
+    /** Neutral glyph (pill/lib/glyphs.js) when no icon resolves. */
+    function glyphFor(n) {
+        var k = root.kindOf(n);
+        if (k === "screenshot") return "image";
+        if (k === "recording") return "record";
+        if (k === "shell") return "sparkles";
+        if (k === "media") return "music";
+        if (k === "system") return root.rawApp(n).toLowerCase() === "hyprland" ? "app-window" : "cog";
+        return "inbox";
+    }
+
+    /**
+     * Legacy single-source icon (Pill/Dashboard/Link glances): the content
+     * image when there is one, else the app icon.
+     */
+    function iconFor(n) {
+        var a = root.avatarFor(n);
+        return a.length ? a : root.appIconFor(n);
+    }
+
+    // ── shell-run actions (each path its own argv element, never spliced) ───
+
+    function openFile(p) {
+        if (p && p.length) Quickshell.execDetached(["xdg-open", p]);
+    }
+
+    function copyImage(p) {
+        if (!p || !p.length) return;
+        var mime = /\.jpe?g$/i.test(p) ? "image/jpeg" : /\.webp$/i.test(p) ? "image/webp" : "image/png";
+        Quickshell.execDetached(["sh", "-c", "wl-copy --type \"$2\" < \"$1\"", "sh", p, mime]);
+    }
+
+    /** Ask a FileManager1 service to select the file; else open its folder. */
+    function showInFolder(p) {
+        if (!p || p.indexOf("/") !== 0) return;
+        var dir = p.substring(0, p.lastIndexOf("/")) || "/";
+        var uri = root.fileUrl(p).replace(/'/g, "%27");
+        Quickshell.execDetached(["sh", "-c",
+            "gdbus call --session --dest org.freedesktop.FileManager1 --object-path /org/freedesktop/FileManager1 --method org.freedesktop.FileManager1.ShowItems \"['$1']\" '' >/dev/null 2>&1 || xdg-open \"$2\"",
+            "sh", uri, dir]);
+    }
+
+    /** Move one regular file to the trash (rm only if there's no trash). */
+    function trashFile(p) {
+        if (!p || p.indexOf("/") !== 0) return;
+        Quickshell.execDetached(["sh", "-c",
+            "[ -f \"$1\" ] || exit 0; gio trash -- \"$1\" 2>/dev/null || rm -f -- \"$1\"", "sh", p]);
+    }
+
+    /** Dismiss one notification (live or history snapshot) without re-listing it. */
+    function dismissNotif(n) {
+        if (!n) return;
+        root.removePopup(n);
+        if (typeof n.dismiss === "function") {
+            var d = Object.assign({}, root.userDismissed);
+            d[n.id] = true;
+            root.userDismissed = d;
+            n.dismiss();
+        } else {
+            root.history = root.history.filter(function(h) { return h.id !== n.id; });
+        }
     }
 
     /**
@@ -238,6 +561,13 @@ Singleton {
     function activateNotif(n) {
         if (!n) return;
         var acts = n.actions || [];
+        // A screenshot or saved take with no sender action opens its file.
+        var own = root.fileOf(n);
+        if (own.length && acts.length === 0) {
+            root.openFile(own);
+            if (typeof n.expire === "function") n.expire();
+            return;
+        }
         var invoked = false;
         for (var i = 0; i < acts.length; i++) {
             if (acts[i].identifier === "default") {
@@ -292,7 +622,7 @@ Singleton {
     /** Clear one app's group: live notifications and history rows both. */
     function dismissApp(app) {
         var doomed = tracked.filter(function(n) {
-            return ((n.appName && n.appName.length) ? n.appName : "System") === app;
+            return root.sourceLabel(n) === app;
         });
         var d = Object.assign({}, userDismissed);
         for (var i = 0; i < doomed.length; i++) d[doomed[i].id] = true;
@@ -338,6 +668,9 @@ Singleton {
      * leaving only the live instance's handler (no accumulation, no double-fire).
      */
     function hookClosed(n) {
+        // Also reached for notifications re-emitted after a hot reload.
+        if (root.kindOf(n) === "screenshot")
+            root.probeShot(root.localImage(n));
         if (root.hookedIds[n.id])
             return;
         var hooked = Object.assign({}, root.hookedIds);
@@ -346,7 +679,12 @@ Singleton {
         n.closed.connect(root, function(reason) {
             if (!root.userDismissed[n.id])
                 root.history = [{
-                    app: (n.appName && n.appName.length) ? n.appName : "System",
+                    app: root.sourceLabel(n),
+                    label: root.sourceLabel(n),
+                    kind: root.kindOf(n),
+                    img: root.localImage(n),
+                    file: root.fileOf(n),
+                    appName: n.appName,
                     summary: n.summary,
                     body: n.body,
                     appIcon: n.appIcon,

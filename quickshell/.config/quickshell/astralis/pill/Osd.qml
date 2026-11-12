@@ -170,7 +170,7 @@ Item {
         id: hideTimer
         interval: 1800
         onTriggered: {
-            if (root.kind === "track" && cover.status !== Image.Ready && root.liveArt.length > 0 && root.holdExtends < 5) {
+            if (root.kind === "track" && coverBox.loading && root.liveArt.length > 0 && root.holdExtends < 5) {
                 root.holdExtends++;
                 hideTimer.interval = 350;
                 hideTimer.restart();
@@ -263,6 +263,7 @@ Item {
             name: root.muted ? "speaker-off" : "speaker"
             color: root.muted ? Qt.alpha(Colors.on_surface_variant, 0.8) : Colors.on_surface_variant
             stroke: 1.7
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
 
         Text {
@@ -277,6 +278,7 @@ Item {
             font.pixelSize: 11 * root.s
             font.weight: Font.DemiBold
             font.features: ({ "tnum": 1 })
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
 
         Rectangle {
@@ -332,29 +334,117 @@ Item {
             radius: 9 * root.s
             color: Colors.surface_container_low
 
-            Image {
-                id: cover
+            /**
+             * Double-buffered cover art. A new url loads into the hidden layer
+             * and is promoted (fades in on top) only once it is Ready, so the
+             * old cover stays fully shown until the new one covers it, and a
+             * late-arriving cover fades in over the placeholder glyph instead
+             * of snapping.
+             */
+            component ArtLayer: Image {
+                id: layer
+                property bool lit: false
+                property bool pending: false
                 anchors.fill: parent
-                source: root.liveArt
                 sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 cache: String(source).indexOf("file:") !== 0
-                opacity: status === Image.Ready ? 1 : 0
+                opacity: lit && status === Image.Ready ? 1 : 0
+                Behavior on opacity {
+                    NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve }
+                }
+                onStatusChanged: coverBox.layerStatus(layer)
+            }
+            ArtLayer { id: artA }
+            ArtLayer { id: artB }
+
+            /** The layer currently shown (null = placeholder). */
+            property Image front: null
+            readonly property bool loading: artA.pending || artB.pending
+
+            function load(u) {
+                if (u.length === 0) {
+                    artA.pending = false;
+                    artB.pending = false;
+                    artA.lit = false;
+                    artB.lit = false;
+                    front = null;
+                    retireTimer.restart();
+                    return;
+                }
+                if (front && String(front.source) === u) {
+                    // Back to the art already on show: abandon any in-flight swap.
+                    (front === artA ? artB : artA).pending = false;
+                    return;
+                }
+                var tgt = front === artA ? artB : artA;
+                tgt.lit = false;
+                tgt.pending = true;
+                tgt.source = u;
+                if (tgt.pending && tgt.status === Image.Ready)
+                    promote(tgt);
+            }
+            function promote(l) {
+                var old = l === artA ? artB : artA;
+                l.pending = false;
+                l.z = 1;
+                old.z = 0;
+                l.lit = true;
+                front = l;
+                retireTimer.restart();
                 /** Art that arrives late still earns a moment on screen, so a cover
                  *  decoded near the end of the flash is actually seen. */
-                onStatusChanged: if (status === Image.Ready && root.flashing && root.kind === "track") {
+                if (root.flashing && root.kind === "track") {
                     hideTimer.interval = 1300;
                     hideTimer.restart();
                 }
             }
+            function layerStatus(l) {
+                if (!l.pending)
+                    return;
+                if (l.status === Image.Ready) {
+                    promote(l);
+                } else if (l.status === Image.Error) {
+                    // Dead url: don't leave the previous track's cover up.
+                    l.pending = false;
+                    if (front)
+                        front.lit = false;
+                    front = null;
+                    retireTimer.restart();
+                }
+            }
+            /** Once the incoming art covers the old (or the placeholder is back), free the hidden layer. */
+            Timer {
+                id: retireTimer
+                interval: Motion.standard + 40
+                onTriggered: {
+                    var layers = [artA, artB];
+                    for (var i = 0; i < layers.length; i++) {
+                        if (layers[i] !== coverBox.front && !layers[i].pending) {
+                            layers[i].lit = false;
+                            layers[i].source = "";
+                        }
+                    }
+                }
+            }
+            Connections {
+                target: root
+                function onLiveArtChanged() { coverBox.load(root.liveArt); }
+            }
+            Component.onCompleted: load(root.liveArt)
+
             GlyphIcon {
                 anchors.centerIn: parent
                 width: parent.width * 0.42
                 height: width
                 name: "music"
                 color: Colors.on_surface_variant
-                visible: cover.status !== Image.Ready
+                // Crossfades with the art (opacity, not visible: gate on opacity).
+                opacity: coverBox.front && coverBox.front.lit ? 0 : 1
+                Behavior on opacity {
+                    NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve }
+                }
             }
 
             /** The source's own app icon, sat as a small badge on the art corner. */
@@ -406,7 +496,8 @@ Item {
                 }
             }
 
-            readonly property color ink: root.subjectPlaying ? Colors.on_primary_container : Colors.on_surface_variant
+            property color ink: root.subjectPlaying ? Colors.on_primary_container : Colors.on_surface_variant
+            Behavior on ink { ColorAnimation { duration: Motion.fast } }
 
             Text {
                 anchors.centerIn: parent
@@ -635,6 +726,7 @@ Item {
             name: root.micMuted ? "mic-off" : "mic"
             color: root.micMuted ? Qt.alpha(Colors.on_surface_variant, 0.8) : Colors.primary
             stroke: 1.7
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
 
         Text {
@@ -668,6 +760,7 @@ Item {
             name: "video"
             color: root.cameraOn ? Colors.primary : Qt.alpha(Colors.on_surface_variant, 0.8)
             stroke: 1.7
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
 
         // No baked video-off glyph; a diagonal strike over the dimmed camera
@@ -713,9 +806,16 @@ Item {
         readonly property bool failed: !root.recordStarted && ScreenRec.error.length > 0
         readonly property bool live: root.recordStarted && root.kind === "record"
 
+        // Both ends sit concentric with the pill's rounded caps (the bar is
+        // 44·s tall, so each cap is a 22·s-radius half-circle): the dot's
+        // 28·s disc centres in the left cap and the 20·s REC badge in the
+        // right one. Pinned at the content box's 18·s inset instead, the disc
+        // sat 10·s in from its cap and the badge 6·s, so the two ends read as
+        // two different paddings.
         Item {
             id: recGlyph
             anchors.left: parent.left
+            anchors.leftMargin: -10 * root.s
             anchors.verticalCenter: parent.verticalCenter
             width: 28 * root.s
             height: width
@@ -755,7 +855,8 @@ Item {
 
             // Live: a round dot. Stopped: it squares off into the stop mark.
             Rectangle {
-                anchors.centerIn: parent
+                x: (parent.width - width) / 2
+                y: (parent.height - height) / 2
                 width: (root.recordStarted ? 11 : 9) * root.s
                 height: width
                 radius: root.recordStarted ? width / 2 : 2.5 * root.s
@@ -806,6 +907,7 @@ Item {
             id: recBadge
             visible: root.recordStarted
             anchors.right: parent.right
+            anchors.rightMargin: -6 * root.s
             anchors.verticalCenter: parent.verticalCenter
             width: recBadgeText.implicitWidth + 16 * root.s
             height: 20 * root.s

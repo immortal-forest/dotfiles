@@ -21,6 +21,7 @@ Item {
         centerInk: false
         name: "wifi-4"
         color: Qt.alpha(sig.color, 0.3)
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
     }
     GlyphIcon {
         anchors.fill: parent

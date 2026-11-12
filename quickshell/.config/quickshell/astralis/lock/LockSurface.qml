@@ -125,6 +125,15 @@ Item {
     readonly property string artSrc: {
         if (!surface.hasMedia)
             return "";
+        // The cover the now-playing widget shows — TrackInfo honours an edition
+        // the user picked — through the local copy TrackInfo downloads while
+        // unlocked (paletteMap: web url → file). Local only, never fetched here.
+        var shown = TrackInfo.art;
+        if (shown.length > 0) {
+            var loc = shown.indexOf("file:") === 0 ? shown : (TrackInfo.paletteMap[shown] || "");
+            if (loc.length > 0)
+                return loc + "#" + np.trackKey;
+        }
         // ArtCache downloads a track's cover the moment it starts playing —
         // while unlocked, as part of the always-running shell, never as
         // something the lock screen itself triggers — and keys its result by
@@ -189,6 +198,123 @@ Item {
     // Qt counts h 1–12 only when the format has AP; the suffix is cut.
     readonly property string hourStr: Qt.formatDateTime(clock.date, Flags.time12h ? "h AP" : "HH").split(" ")[0]
     readonly property string minStr: Qt.formatDateTime(clock.date, "mm")
+
+    /** One buffer of ArtSwap: an image that fades in once it has loaded. */
+    component ArtLayer: Item {
+        id: lay
+        property string src: ""
+        property size srcSize: Qt.size(0, 0)
+        property bool on: false
+        property bool pending: false
+        readonly property bool ready: img.status === Image.Ready
+        signal promote()
+        signal failed()
+        anchors.fill: parent
+        opacity: lay.on && lay.ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve } }
+        // a layer that has faded out lets go of its pixmap
+        onOpacityChanged: if (opacity === 0 && !on && !pending && src !== "") src = ""
+        Image {
+            id: img
+            anchors.fill: parent
+            source: lay.src
+            sourceSize: lay.srcSize
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            cache: String(source).indexOf("file:") !== 0
+        }
+        Connections {
+            target: img
+            function onStatusChanged() {
+                if (!lay.pending)
+                    return;
+                if (img.status === Image.Ready) {
+                    lay.pending = false;
+                    lay.promote();
+                } else if (img.status === Image.Error) {
+                    lay.pending = false;
+                    lay.failed();
+                }
+            }
+        }
+    }
+
+    /**
+     * Cover art that never snaps. A new URL loads into the hidden buffer and
+     * fades in on top once Ready; the old buffer is dropped only after the new
+     * one is fully opaque, so coverage never dips mid-fade. `coverage` (0..1)
+     * is how much art is showing, for a placeholder to fade against.
+     * Visual only: the source URL is whatever the caller already decided.
+     */
+    component ArtSwap: Item {
+        id: sw
+        property string source: ""
+        property size srcSize: Qt.size(0, 0)
+        readonly property real coverage: Math.max(slotA.opacity, slotB.opacity)
+        property Item front: null
+        property int zc: 0
+        readonly property real frontOpacity: sw.front ? sw.front.opacity : 0
+
+        function backSlot() { return sw.front === slotA ? slotB : slotA; }
+        function promoteSlot(l) {
+            sw.front = l;
+            sw.zc += 1;
+            l.z = sw.zc;
+            l.on = true;
+        }
+        function clearAll() {
+            slotA.pending = false;
+            slotB.pending = false;
+            slotA.on = false;
+            slotB.on = false;
+            sw.front = null;
+        }
+        function load() {
+            var b = sw.backSlot();
+            if (sw.source === "") {
+                sw.clearAll();
+                return;
+            }
+            if (sw.front && sw.front.src === sw.source) {
+                // back to what is already showing: abandon any load in flight
+                if (b.pending) {
+                    b.pending = false;
+                    if (!b.on) b.src = "";
+                }
+                return;
+            }
+            if (b.pending && b.src === sw.source)
+                return;
+            var same = b.src === sw.source;
+            b.on = false;
+            b.pending = true;
+            b.src = sw.source;
+            if (same && b.ready) {
+                b.pending = false;
+                sw.promoteSlot(b);
+            }
+        }
+        // the buffers below exist only once the component has completed
+        property bool up: false
+        onSourceChanged: if (sw.up) sw.load()
+        Component.onCompleted: { sw.up = true; sw.load(); }
+        // the old buffer goes once the new one covers it
+        onFrontOpacityChanged: if (sw.frontOpacity >= 1 && sw.front) sw.backSlot().on = false
+
+        ArtLayer {
+            id: slotA
+            srcSize: sw.srcSize
+            onPromote: sw.promoteSlot(slotA)
+            // art that failed to load: let the old cover go rather than keep a stale one
+            onFailed: if (slotA.src === sw.source) sw.clearAll()
+        }
+        ArtLayer {
+            id: slotB
+            srcSize: sw.srcSize
+            onPromote: sw.promoteSlot(slotB)
+            onFailed: if (slotB.src === sw.source) sw.clearAll()
+        }
+    }
 
     /** Small kanji transport button (media surface's 前/次 language). */
     component KanjiButton: Item {
@@ -896,7 +1022,7 @@ Item {
             width: surface.measure
             height: cardCol.implicitHeight
 
-            transform: Enter { delay: 120 }
+            transform: Enter { id: mediaEnter; delay: 120 }
 
             visible: opacity > 0.01
             opacity: surface.isMain && surface.hasMedia ? (surface.authMode ? 0.34 : 1) : 0
@@ -911,7 +1037,11 @@ Item {
                 Column {
                     id: cardCol
                     width: parent.width
-                    spacing: 14 * surface.s
+                    // 0: each gap below belongs to the item under it (waveRow's
+                    // top inset, the live chip's topPadding), so waveRow can
+                    // collapse to nothing — and take its gap with it — while
+                    // staying visible for its fade.
+                    spacing: 0
 
                     Row {
                         spacing: 14 * surface.s
@@ -933,26 +1063,19 @@ Item {
                                 radius: Appearance.rounding.medium * surface.s
                                 color: Qt.alpha(Colors.surface_container_highest, 0.9)
 
-                                Image {
+                                // The cover fades up as it decodes rather than
+                                // replacing the placeholder in one frame, and a
+                                // track change crossfades old → new — it should
+                                // not punch.
+                                ArtSwap {
+                                    id: coverArt
                                     anchors.fill: parent
                                     source: surface.artSrc
-                                    sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    retainWhileLoading: true
-                                    cache: String(source).indexOf("file:") !== 0
-                                    visible: status === Image.Ready
-                                    // The cover fades up as it decodes rather
-                                    // than replacing the placeholder in one
-                                    // frame — a track change should not punch.
-                                    opacity: status === Image.Ready ? 1 : 0
-                                    Behavior on opacity {
-                                        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
-                                    }
+                                    srcSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
                                 }
                                 Text {
                                     anchors.centerIn: parent
-                                    visible: surface.artSrc.length === 0
+                                    opacity: 1 - coverArt.coverage
                                     text: "音"
                                     color: Qt.alpha(Colors.primary, 0.75)
                                     font.family: Appearance.font.jp
@@ -972,13 +1095,49 @@ Item {
                         // transports leave, so a long title elides instead of
                         // pushing the transports off the measure.
                         Column {
+                            id: textCol
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - artBox.width - transport.width - 28 * surface.s
                             spacing: 4 * surface.s
 
+                            // A track change fades the old text out, swaps it
+                            // while invisible, and fades the new in. The shown
+                            // strings trail np.* by the out-fade.
+                            property string shownTitle: np.title
+                            property string shownArtist: np.artist
+                            property real txtOp: 1
+                            opacity: textCol.txtOp
+                            readonly property string wanted: np.title + "\u0001" + np.artist
+                            onWantedChanged: {
+                                // media going away: keep the old text while the
+                                // whole panel fades out, and don't animate the
+                                // very first fill
+                                if (np.title.length === 0 || textCol.shownTitle.length === 0) {
+                                    swapAnim.stop();
+                                    if (np.title.length > 0) {
+                                        textCol.shownTitle = np.title;
+                                        textCol.shownArtist = np.artist;
+                                    }
+                                    textCol.txtOp = 1;
+                                    return;
+                                }
+                                swapAnim.restart();
+                            }
+                            SequentialAnimation {
+                                id: swapAnim
+                                NumberAnimation { target: textCol; property: "txtOp"; to: 0; duration: Motion.fast; easing.type: Motion.easeStandard }
+                                ScriptAction {
+                                    script: {
+                                        textCol.shownTitle = np.title;
+                                        textCol.shownArtist = np.artist;
+                                    }
+                                }
+                                NumberAnimation { target: textCol; property: "txtOp"; to: 1; duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve }
+                            }
+
                             Text {
                                 width: parent.width
-                                text: np.title
+                                text: textCol.shownTitle
                                 color: Colors.on_surface
                                 font.family: Appearance.font.family
                                 font.pixelSize: 14 * surface.s
@@ -994,8 +1153,8 @@ Item {
                             }
                             Text {
                                 width: parent.width
-                                visible: np.artist.length > 0
-                                text: np.artist
+                                visible: textCol.shownArtist.length > 0
+                                text: textCol.shownArtist
                                 color: Colors.on_surface_variant
                                 font.family: Appearance.font.family
                                 font.pixelSize: 11.5 * surface.s
@@ -1105,12 +1264,24 @@ Item {
                     Item {
                         id: waveRow
                         width: parent.width
-                        height: 18 * surface.s
-                        visible: surface.hasTimeline
+                        // The 14 gap under the art row is part of this item.
+                        // It fades on opacity (never a visible flip: a Column
+                        // stops laying out hidden children) and its height
+                        // eases to 0 so the strip doesn't jump.
+                        readonly property real inset: 14 * surface.s
+                        height: surface.hasTimeline ? waveRow.inset + 18 * surface.s : 0
+                        opacity: surface.hasTimeline ? 1 : 0
+                        Behavior on height {
+                            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve }
+                        }
+                        Behavior on opacity {
+                            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                        }
 
                         Text {
                             id: elapsed
                             anchors.verticalCenter: parent.verticalCenter
+                            anchors.verticalCenterOffset: waveRow.inset / 2
                             anchors.left: parent.left
                             text: surface.fmt(surface.posSec)
                             color: Colors.on_surface_variant
@@ -1121,6 +1292,7 @@ Item {
                         Text {
                             id: total
                             anchors.verticalCenter: parent.verticalCenter
+                            anchors.verticalCenterOffset: waveRow.inset / 2
                             anchors.right: parent.right
                             text: surface.fmt(surface.lenSec)
                             color: Colors.on_surface_variant
@@ -1138,6 +1310,7 @@ Item {
                             anchors.leftMargin: 12 * surface.s
                             anchors.rightMargin: 12 * surface.s
                             anchors.verticalCenter: parent.verticalCenter
+                            anchors.verticalCenterOffset: waveRow.inset / 2
                             height: 16 * surface.s
                             s: surface.s
                             frac: surface.playFrac
@@ -1150,6 +1323,7 @@ Item {
                     // "live" chip for endless streams (no trustworthy timeline).
                     Row {
                         anchors.horizontalCenter: parent.horizontalCenter
+                        topPadding: 14 * surface.s
                         visible: np.live && surface.hasMedia
                         spacing: 7 * surface.s
                         Rectangle {
@@ -1397,6 +1571,7 @@ Item {
                 SequentialAnimation on scale {
                     running: surface.busy && surface.animate
                     loops: Animation.Infinite
+                    alwaysRunToEnd: true
                     NumberAnimation { to: 0.94; duration: Math.round(560 * Motion.mult); easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1.0;  duration: Math.round(560 * Motion.mult); easing.type: Easing.InOutSine }
                 }
@@ -1456,6 +1631,7 @@ Item {
                         NumberAnimation {
                             id: fadeAnim
                             target: dot; property: "a"; to: 0; duration: Motion.fast
+                            easing.type: Motion.easeStandard
                         }
 
                         Rectangle {
@@ -1567,6 +1743,8 @@ Item {
             wake: Qt.point(width / 2, height / 2)
             opacity: surface.isMain ? (surface.ready ? 1 : 0) : 0
             Behavior on opacity { NumberAnimation { duration: Motion.largeDur; easing.type: Motion.easeStandard } }
+            // Rides the capsule's own entrance rise so the two stay level.
+            transform: Enter { delay: 180 }
         }
 
         // ── Caps-Lock warning, under the capsule ────────────────────────────
@@ -1632,6 +1810,7 @@ Item {
                 void wave.width;
                 void mediaPanel.x;
                 void mediaPanel.y;
+                void mediaEnter.y;
                 void surface.playFrac;
                 return wave.mapToItem(mediaAme, wave.headX, wave.headY);
             }

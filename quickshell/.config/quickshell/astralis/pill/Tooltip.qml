@@ -31,6 +31,27 @@ Item {
 
     property bool armed: false
 
+    // Bubble width cap; a longer title elides, a longer description wraps.
+    readonly property real maxBubbleW: 260 * s
+    readonly property real textMaxW: maxBubbleW - 22 * s
+    // Natural single-line widths (a Text with a width set may report its
+    // wrapped width as implicitWidth, so measure separately).
+    TextMetrics {
+        id: titleMetrics
+        text: root.title
+        font.family: Appearance.font.family
+        font.pixelSize: 11 * root.s
+        font.weight: Font.Bold
+    }
+    TextMetrics {
+        id: descMetrics
+        text: root.desc
+        font.family: Appearance.font.family
+        font.pixelSize: 10 * root.s
+    }
+    readonly property real textW: Math.min(textMaxW,
+        Math.max(titleMetrics.width, root.desc.length > 0 ? descMetrics.width : 0))
+
     width: bubble.width
     height: bubble.height + pointerH
     z: 20
@@ -63,7 +84,7 @@ Item {
         id: bubble
         x: Math.round((root.width - width) / 2)
         y: root.below ? root.pointerH : 0
-        width: Math.max(titleText.implicitWidth, descText.implicitWidth) + 22 * root.s
+        width: root.textW + 22 * root.s
         height: column.implicitHeight + 14 * root.s
         radius: 9 * root.s
         border.width: 1
@@ -90,6 +111,9 @@ Item {
         Text {
             id: titleText
             anchors.horizontalCenter: parent.horizontalCenter
+            width: root.textW
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
             text: root.title
             color: Colors.on_surface
             font.family: Appearance.font.family
@@ -99,6 +123,9 @@ Item {
         Text {
             id: descText
             anchors.horizontalCenter: parent.horizontalCenter
+            width: root.textW
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
             visible: root.desc.length > 0
             text: root.desc
             color: Colors.on_surface_variant

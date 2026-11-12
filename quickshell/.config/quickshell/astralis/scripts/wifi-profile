@@ -1,0 +1,32 @@
+#!/bin/sh
+# astralis — ground truth for the Link surface's per-network settings page.
+# Usage: wifi-profile <ssid>
+#
+# Matches saved profiles on their 802-11-wireless.ssid, not their name: a
+# profile can be called "Hmmm 1" or differ in case from the SSID it joins.
+# Output, one record per line, tab-separated (multiline -t output from nmcli
+# leaves values unescaped; `dev wifi list` rows stay terse-escaped):
+#   P <uuid> <key>:<value>   saved-profile fields
+#   X <uuid>                 the profile currently up on the Wi-Fi device
+#   I <key>:<value>          live addressing for that device
+#   A <terse row>            IN-USE:SIGNAL:BSSID:CHAN:FREQ:RATE:SECURITY:SSID
+ssid="$1"
+dev=$(nmcli -t -f DEVICE,TYPE dev | awk -F: '$2=="wifi"{print $1; exit}')
+act=""
+[ -n "$dev" ] && act=$(nmcli -g GENERAL.CON-UUID dev show "$dev" 2>/dev/null)
+
+nmcli -g UUID,TYPE connection show | while IFS=: read -r u t; do
+    [ "$t" = 802-11-wireless ] || continue
+    s=$(nmcli -t -f 802-11-wireless.ssid connection show "$u")
+    [ "${s#*:}" = "$ssid" ] || continue
+    nmcli -t -f connection.id,connection.autoconnect,connection.metered connection show "$u" \
+        | while IFS= read -r l; do printf 'P\t%s\t%s\n' "$u" "$l"; done
+    if [ -n "$act" ] && [ "$u" = "$act" ]; then
+        printf 'X\t%s\n' "$u"
+        nmcli -t -f IP4.ADDRESS,IP4.GATEWAY,IP4.DNS,IP6.ADDRESS,GENERAL.HWADDR dev show "$dev" \
+            | while IFS= read -r l; do printf 'I\t%s\n' "$l"; done
+    fi
+done
+
+nmcli -t -f IN-USE,SIGNAL,BSSID,CHAN,FREQ,RATE,SECURITY,SSID dev wifi list --rescan no \
+    | while IFS= read -r l; do printf 'A\t%s\n' "$l"; done

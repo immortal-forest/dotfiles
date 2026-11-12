@@ -68,9 +68,14 @@ Singleton {
     readonly property string localArt: (currentKey.length > 0 && root.cached[currentKey])
         ? "file://" + root.cached[currentKey] : ""
 
-    onCurrentUrlChanged: root.maybeFetch()
-    onCurrentKeyChanged: root.maybeFetch()
-    Component.onCompleted: root.maybeFetch()
+    // Coalesced: a track change lands as several metadata signals (title,
+    // then art url), and the key and url bindings re-evaluate in no fixed
+    // order. Fetching straight off either change read a half-updated pair —
+    // the new key with the previous song's url — and, one attempt per key,
+    // pinned the previous cover to the new track for good.
+    onCurrentUrlChanged: Qt.callLater(root.maybeFetch)
+    onCurrentKeyChanged: Qt.callLater(root.maybeFetch)
+    Component.onCompleted: Qt.callLater(root.maybeFetch)
 
     /**
      * One attempt per key, ever. A key already in `cached` needs nothing; a
@@ -79,17 +84,21 @@ Singleton {
      * every re-evaluation of this binding.
      */
     function maybeFetch() {
-        if (!root.currentIsRemote || root.currentKey.length === 0)
+        // Key and url from ONE read of the player, so they can't disagree.
+        var player = Players.has ? Players.active : null;
+        var key = player ? Players.keyFor(player) : "";
+        var url = player ? Players.artUrlFor(player) : "";
+        if (key.length === 0 || !(url.indexOf("http:") === 0 || url.indexOf("https:") === 0))
             return;
-        if (root.attempted[root.currentKey])
+        if (root.attempted[key])
             return;
         var a = Object.assign({}, root.attempted);
-        a[root.currentKey] = true;
+        a[key] = true;
         root.attempted = a;
 
-        var key = root.currentKey;
-        var url = root.currentUrl;
-        var out = root.dir + "/" + root.safeKey(key) + ".img";
+        // Named by the url it was fetched from, not the track key: the file's
+        // name then always says which picture is inside it.
+        var out = root.dir + "/url-" + Qt.md5(url) + ".img";
 
         // A fresh Process per fetch (rather than one reused instance) so an
         // overlapping track change never has to queue behind or clobber a

@@ -494,7 +494,10 @@ SettingsPage {
                 anchors.right: parent.right
                 anchors.leftMargin: 12 * root.s
                 anchors.rightMargin: 12 * root.s
-                spacing: 12 * root.s
+                // 0, not 12: a zero-height child still gets Column spacing, so the
+                // gap above the card and the note is folded into each one's own
+                // animated height (SettingsCollapse) and collapses with it.
+                spacing: 0
 
                 Item {
                     id: mapBox
@@ -600,353 +603,397 @@ SettingsPage {
                     }
                 }
 
-                Rectangle {
-                    id: card
-                    visible: root.selMon !== null
-                    width: parent.width
-                    radius: Motion.rTile * root.s
-                    color: Colors.surface_container_high
-                    border.width: 1
-                    border.color: card.pending ? Qt.alpha(Colors.tertiary, 0.55) : Qt.alpha(Colors.on_surface, 0.06)
-                    implicitHeight: cardCol.implicitHeight + 22 * root.s
-                    Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+                // Fades + folds open with the selected monitor (the 12px gap that
+                // used to be Column spacing rides inside the animated height, so the
+                // note below glides instead of jumping).
+                SettingsCollapse {
+                    shown: root.selMon !== null
+                    surface: root
 
-                    property int resIndex: 0
-                    property int rateIndex: 0
-                    property real pickScale: 1
-                    property int pickTransform: 0
+                    Item {
+                        width: parent.width
+                        height: card.height + 12 * root.s
 
-                    readonly property var resolutions: root.selMon ? root.resolutionsFor(root.selMon) : []
-                    readonly property var rates: resolutions.length > 0 ? resolutions[Math.min(resIndex, resolutions.length - 1)].rates : []
-                    readonly property bool pending: root.selMon !== null && root.pendingOut === root.selMon.name
-
-                    /** Anything apply would change: mode, scale, transform or a dragged move. */
-                    readonly property bool dirty: {
-                        var mon = root.selMon;
-                        if (!mon || card.resolutions.length === 0)
-                            return false;
-                        var res = card.resolutions[Math.min(card.resIndex, card.resolutions.length - 1)];
-                        var hz = res.rates[Math.min(card.rateIndex, res.rates.length - 1)];
-                        if (res.w !== mon.width || res.h !== mon.height || hz !== mon.refresh)
-                            return true;
-                        if (card.pickScale !== mon.scale)
-                            return true;
-                        if (card.pickTransform !== mon.transform)
-                            return true;
-                        var p = root.pendingXY(mon);
-                        return p !== null && (p.x !== mon.x || p.y !== mon.y);
-                    }
-
-                    /**
-                     * Seeds from locally computed lists, never from
-                     * `card.rates`: inside onSelMonChanged the dependent
-                     * bindings can still hold the previous monitor's values
-                     * (handler order vs binding invalidation), which would
-                     * seed one output's rate index against another's list.
-                     */
-                    function syncToCurrent() {
-                        var mon = root.selMon;
-                        if (!mon)
-                            return;
-                        var resos = root.resolutionsFor(mon);
-                        var ri = 0;
-                        for (var i = 0; i < resos.length; i++) {
-                            if (resos[i].w === mon.width && resos[i].h === mon.height) {
-                                ri = i;
-                                break;
-                            }
-                        }
-                        card.resIndex = ri;
-                        card.rateIndex = card.nearestIn(resos.length > 0 ? resos[ri].rates : [], mon.refresh);
-                        card.pickScale = mon.scale;
-                        card.pickTransform = mon.transform;
-                        if (root.pendingMove)
-                            root.pendingMove = null;
-                        root.openPicker = "";
-                    }
-
-                    function nearestIn(rates, hz) {
-                        var best = 0;
-                        var bestDiff = 1e9;
-                        for (var i = 0; i < rates.length; i++) {
-                            var d = Math.abs(rates[i] - hz);
-                            if (d < bestDiff) { bestDiff = d; best = i; }
-                        }
-                        return best;
-                    }
-
-                    function nearestRateIndex(hz) {
-                        return nearestIn(card.rates, hz);
-                    }
-
-                    function bumpRes(d) {
-                        var i = Math.max(0, Math.min(card.resolutions.length - 1, card.resIndex + d));
-                        if (i === card.resIndex)
-                            return;
-                        card.resIndex = i;
-                        card.rateIndex = card.nearestRateIndex(card.rates.length > 0 ? card.rates[0] : 60);
-                    }
-
-                    function bumpRate(d) {
-                        var cur = Math.min(card.rateIndex, Math.max(0, card.rates.length - 1));
-                        card.rateIndex = Math.max(0, Math.min(card.rates.length - 1, cur + d));
-                    }
-
-                    Column {
-                        id: cardCol
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.leftMargin: 13 * root.s
-                        anchors.rightMargin: 13 * root.s
-                        anchors.topMargin: 11 * root.s
-                        spacing: 9 * root.s
-
-                        Text {
-                            text: root.selMon ? root.selMon.name : ""
-                            color: Colors.on_surface
-                            font.family: Appearance.font.family
-                            font.pixelSize: 12.5 * root.s
-                            font.weight: Font.Bold
-                            font.letterSpacing: 0.3 * root.s
-                        }
-
-                        CardRow {
-                            id: resRow
-                            icon: "monitor"
-                            accessibleName: "Resolution"
-                            // Float above the rows below while the dropdown is open
-                            // so its overlay panel paints over (and catches clicks
-                            // for) Refresh/Scale/Rotation instead of pushing them down.
-                            z: resPick.showing ? 20 : 0
-
-                            DisplayPicker {
-                                id: resPick
-                                width: parent.width
-                                s: root.s
-                                label: "Resolution"
-                                options: card.resolutions.map(function (r, i) { return { label: r.w + "×" + r.h, value: i }; })
-                                value: card.resIndex
-                                open: root.openPicker === root.selName + ":res"
-                                onRequestToggle: root.openPicker = (root.openPicker === root.selName + ":res" ? "" : root.selName + ":res")
-                                onPicked: (v) => {
-                                    card.resIndex = v;
-                                    card.rateIndex = card.nearestRateIndex(card.rates.length > 0 ? card.rates[0] : 60);
-                                    root.openPicker = "";
-                                }
-                            }
-                        }
-
-                        CardRow {
-                            id: rateRow
-                            icon: "reboot"
-                            accessibleName: "Refresh rate"
-                            z: ratePick.showing ? 20 : 0
-
-                            DisplayPicker {
-                                id: ratePick
-                                width: parent.width
-                                s: root.s
-                                label: "Refresh"
-                                options: card.rates.map(function (hz, i) { return { label: hz + "Hz", value: i }; })
-                                value: Math.min(card.rateIndex, Math.max(0, card.rates.length - 1))
-                                open: root.openPicker === root.selName + ":rate"
-                                onRequestToggle: root.openPicker = (root.openPicker === root.selName + ":rate" ? "" : root.selName + ":rate")
-                                onPicked: (v) => {
-                                    card.rateIndex = v;
-                                    root.openPicker = "";
-                                }
-                            }
-                        }
-
-                        CardRow {
-                            id: scaleRow
-                            icon: "scaling"
-                            accessibleName: "Display scale"
-
-                            Row {
-                                width: parent.width
-                                spacing: 8 * root.s
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 64 * root.s
-                                    text: "Scale"
-                                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                                    font.family: Appearance.font.family
-                                    font.pixelSize: 10.5 * root.s
-                                    font.weight: Font.Medium
-                                }
-
-                                SettingsSeg {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    s: root.s
-                                    options: root.scaleOptions
-                                    value: card.pickScale
-                                    onPicked: (v) => card.pickScale = v
-                                }
-                            }
-                        }
-
-                        CardRow {
-                            id: transformRow
-                            icon: "record"
-                            accessibleName: "Screen rotation"
-
-                            Row {
-                                width: parent.width
-                                spacing: 8 * root.s
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 64 * root.s
-                                    text: "Rotation"
-                                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                                    font.family: Appearance.font.family
-                                    font.pixelSize: 10.5 * root.s
-                                    font.weight: Font.Medium
-                                }
-
-                                SettingsSeg {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    s: root.s
-                                    options: root.transformOptions
-                                    value: card.pickTransform
-                                    onPicked: (v) => card.pickTransform = v
-                                }
-                            }
-                        }
-
-                        Item {
+                        Rectangle {
+                            id: card
+                            y: 12 * root.s
                             width: parent.width
-                            height: 30 * root.s
+                            radius: Motion.rTile * root.s
+                            color: Colors.surface_container_high
+                            border.width: 1
+                            border.color: card.pending ? Qt.alpha(Colors.tertiary, 0.55) : Qt.alpha(Colors.on_surface, 0.06)
+                            implicitHeight: cardCol.implicitHeight + 22 * root.s
+                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
-                            Rectangle {
-                                id: applyBtn
-                                anchors.left: parent.left
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: !card.pending && root.pendingOut.length === 0
-                                width: applyLabel.implicitWidth + 28 * root.s
-                                height: 28 * root.s
-                                radius: 9 * root.s
-                                color: !card.dirty ? Qt.alpha(Colors.primary, 0.10)
-                                    : (applyArea.containsMouse ? Qt.alpha(Colors.primary, 0.34) : Qt.alpha(Colors.primary, 0.20))
-                                border.width: 1
-                                border.color: Qt.alpha(Colors.primary, !card.dirty ? 0.22 : (applyArea.containsMouse ? 0.6 : 0.4))
-                                Behavior on color { ColorAnimation { duration: Motion.fast } }
-                                Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+                            property int resIndex: 0
+                            property int rateIndex: 0
+                            property real pickScale: 1
+                            property int pickTransform: 0
 
-                                // Dip only when the click would actually do something —
-                                // matches the onClicked guard below.
-                                scale: (card.dirty && applyArea.pressed) ? 0.96 : 1
-                                Behavior on scale {
-                                    NumberAnimation {
-                                        duration: Motion.glide
-                                        easing.type: Motion.easeBezier
-                                        easing.bezierCurve: Motion.expressiveFastSpatial
+                            readonly property var resolutions: root.selMon ? root.resolutionsFor(root.selMon) : []
+                            readonly property var rates: resolutions.length > 0 ? resolutions[Math.min(resIndex, resolutions.length - 1)].rates : []
+                            readonly property bool pending: root.selMon !== null && root.pendingOut === root.selMon.name
+
+                            /** Anything apply would change: mode, scale, transform or a dragged move. */
+                            readonly property bool dirty: {
+                                var mon = root.selMon;
+                                if (!mon || card.resolutions.length === 0)
+                                    return false;
+                                var res = card.resolutions[Math.min(card.resIndex, card.resolutions.length - 1)];
+                                var hz = res.rates[Math.min(card.rateIndex, res.rates.length - 1)];
+                                if (res.w !== mon.width || res.h !== mon.height || hz !== mon.refresh)
+                                    return true;
+                                if (card.pickScale !== mon.scale)
+                                    return true;
+                                if (card.pickTransform !== mon.transform)
+                                    return true;
+                                var p = root.pendingXY(mon);
+                                return p !== null && (p.x !== mon.x || p.y !== mon.y);
+                            }
+
+                            /**
+                             * Seeds from locally computed lists, never from
+                             * `card.rates`: inside onSelMonChanged the dependent
+                             * bindings can still hold the previous monitor's values
+                             * (handler order vs binding invalidation), which would
+                             * seed one output's rate index against another's list.
+                             */
+                            function syncToCurrent() {
+                                var mon = root.selMon;
+                                if (!mon)
+                                    return;
+                                var resos = root.resolutionsFor(mon);
+                                var ri = 0;
+                                for (var i = 0; i < resos.length; i++) {
+                                    if (resos[i].w === mon.width && resos[i].h === mon.height) {
+                                        ri = i;
+                                        break;
                                     }
                                 }
+                                card.resIndex = ri;
+                                card.rateIndex = card.nearestIn(resos.length > 0 ? resos[ri].rates : [], mon.refresh);
+                                card.pickScale = mon.scale;
+                                card.pickTransform = mon.transform;
+                                if (root.pendingMove)
+                                    root.pendingMove = null;
+                                root.openPicker = "";
+                            }
 
-                                Accessible.role: Accessible.Button
-                                Accessible.name: "Apply"
-                                Accessible.description: "Applies the pending resolution, refresh rate, scale or rotation live for 12 seconds before reverting"
-                                Accessible.focusable: card.dirty
-                                Accessible.onPressAction: applyArea.clicked(null)
+                            function nearestIn(rates, hz) {
+                                var best = 0;
+                                var bestDiff = 1e9;
+                                for (var i = 0; i < rates.length; i++) {
+                                    var d = Math.abs(rates[i] - hz);
+                                    if (d < bestDiff) { bestDiff = d; best = i; }
+                                }
+                                return best;
+                            }
+
+                            function nearestRateIndex(hz) {
+                                return nearestIn(card.rates, hz);
+                            }
+
+                            function bumpRes(d) {
+                                var i = Math.max(0, Math.min(card.resolutions.length - 1, card.resIndex + d));
+                                if (i === card.resIndex)
+                                    return;
+                                card.resIndex = i;
+                                card.rateIndex = card.nearestRateIndex(card.rates.length > 0 ? card.rates[0] : 60);
+                            }
+
+                            function bumpRate(d) {
+                                var cur = Math.min(card.rateIndex, Math.max(0, card.rates.length - 1));
+                                card.rateIndex = Math.max(0, Math.min(card.rates.length - 1, cur + d));
+                            }
+
+                            Column {
+                                id: cardCol
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.leftMargin: 13 * root.s
+                                anchors.rightMargin: 13 * root.s
+                                anchors.topMargin: 11 * root.s
+                                spacing: 9 * root.s
 
                                 Text {
-                                    id: applyLabel
-                                    anchors.centerIn: parent
-                                    text: "Apply"
-                                    color: card.dirty ? Colors.on_surface : Qt.alpha(Colors.on_surface_variant, 0.65)
+                                    text: root.selMon ? root.selMon.name : ""
+                                    color: Colors.on_surface
                                     font.family: Appearance.font.family
-                                    font.pixelSize: 10.5 * root.s
-                                    font.weight: Font.DemiBold
+                                    font.pixelSize: 12.5 * root.s
+                                    font.weight: Font.Bold
                                     font.letterSpacing: 0.3 * root.s
                                 }
 
-                                MouseArea {
-                                    id: applyArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: card.dirty ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                    onClicked: if (card.dirty) root.apply()
+                                CardRow {
+                                    id: resRow
+                                    icon: "monitor"
+                                    accessibleName: "Resolution"
+                                    // Float above the rows below while the dropdown is open
+                                    // so its overlay panel paints over (and catches clicks
+                                    // for) Refresh/Scale/Rotation instead of pushing them down.
+                                    z: resPick.showing ? 20 : 0
+
+                                    DisplayPicker {
+                                        id: resPick
+                                        width: parent.width
+                                        s: root.s
+                                        label: "Resolution"
+                                        options: card.resolutions.map(function (r, i) { return { label: r.w + "×" + r.h, value: i }; })
+                                        value: card.resIndex
+                                        open: root.openPicker === root.selName + ":res"
+                                        onRequestToggle: root.openPicker = (root.openPicker === root.selName + ":res" ? "" : root.selName + ":res")
+                                        onPicked: (v) => {
+                                            card.resIndex = v;
+                                            card.rateIndex = card.nearestRateIndex(card.rates.length > 0 ? card.rates[0] : 60);
+                                            root.openPicker = "";
+                                        }
+                                    }
                                 }
-                            }
 
-                            Row {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: card.pending
-                                spacing: 9 * root.s
+                                CardRow {
+                                    id: rateRow
+                                    icon: "reboot"
+                                    accessibleName: "Refresh rate"
+                                    z: ratePick.showing ? 20 : 0
 
-                                Rectangle {
-                                    id: keepBtn
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: keepLabel.implicitWidth + 28 * root.s
-                                    height: 28 * root.s
-                                    radius: 9 * root.s
-                                    color: keepArea.containsMouse ? Colors.tertiary : Qt.alpha(Colors.tertiary, 0.75)
-                                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                                    DisplayPicker {
+                                        id: ratePick
+                                        width: parent.width
+                                        s: root.s
+                                        label: "Refresh"
+                                        options: card.rates.map(function (hz, i) { return { label: hz + "Hz", value: i }; })
+                                        value: Math.min(card.rateIndex, Math.max(0, card.rates.length - 1))
+                                        open: root.openPicker === root.selName + ":rate"
+                                        onRequestToggle: root.openPicker = (root.openPicker === root.selName + ":rate" ? "" : root.selName + ":rate")
+                                        onPicked: (v) => {
+                                            card.rateIndex = v;
+                                            root.openPicker = "";
+                                        }
+                                    }
+                                }
 
-                                    scale: keepArea.pressed ? 0.96 : 1
-                                    Behavior on scale {
-                                        NumberAnimation {
-                                            duration: Motion.glide
-                                            easing.type: Motion.easeBezier
-                                            easing.bezierCurve: Motion.expressiveFastSpatial
+                                CardRow {
+                                    id: scaleRow
+                                    icon: "scaling"
+                                    accessibleName: "Display scale"
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 8 * root.s
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 64 * root.s
+                                            text: "Scale"
+                                            color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                                            font.family: Appearance.font.family
+                                            font.pixelSize: 10.5 * root.s
+                                            font.weight: Font.Medium
+                                        }
+
+                                        SettingsSeg {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            s: root.s
+                                            options: root.scaleOptions
+                                            value: card.pickScale
+                                            onPicked: (v) => card.pickScale = v
+                                        }
+                                    }
+                                }
+
+                                CardRow {
+                                    id: transformRow
+                                    icon: "record"
+                                    accessibleName: "Screen rotation"
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 8 * root.s
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 64 * root.s
+                                            text: "Rotation"
+                                            color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                                            font.family: Appearance.font.family
+                                            font.pixelSize: 10.5 * root.s
+                                            font.weight: Font.Medium
+                                        }
+
+                                        SettingsSeg {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            s: root.s
+                                            options: root.transformOptions
+                                            value: card.pickTransform
+                                            onPicked: (v) => card.pickTransform = v
+                                        }
+                                    }
+                                }
+
+                                Item {
+                                    width: parent.width
+                                    height: 30 * root.s
+
+                                    Rectangle {
+                                        id: applyBtn
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        readonly property bool showing: !card.pending && root.pendingOut.length === 0
+                                        enabled: applyBtn.showing
+                                        opacity: applyBtn.showing ? 1 : 0
+                                        visible: opacity > 0.01
+                                        Behavior on opacity {
+                                            enabled: root.hoverArmed
+                                            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                                        }
+                                        width: applyLabel.implicitWidth + 28 * root.s
+                                        height: 28 * root.s
+                                        radius: 9 * root.s
+                                        color: !card.dirty ? Qt.alpha(Colors.primary, 0.10)
+                                            : (applyArea.containsMouse ? Qt.alpha(Colors.primary, 0.34) : Qt.alpha(Colors.primary, 0.20))
+                                        border.width: 1
+                                        border.color: Qt.alpha(Colors.primary, !card.dirty ? 0.22 : (applyArea.containsMouse ? 0.6 : 0.4))
+                                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                                        // Dip only when the click would actually do something —
+                                        // matches the onClicked guard below.
+                                        scale: (card.dirty && applyArea.pressed) ? 0.96 : 1
+                                        Behavior on scale {
+                                            NumberAnimation {
+                                                duration: Motion.glide
+                                                easing.type: Motion.easeBezier
+                                                easing.bezierCurve: Motion.expressiveFastSpatial
+                                            }
+                                        }
+
+                                        Accessible.role: Accessible.Button
+                                        Accessible.name: "Apply"
+                                        Accessible.description: "Applies the pending resolution, refresh rate, scale or rotation live for 12 seconds before reverting"
+                                        Accessible.focusable: card.dirty
+                                        Accessible.onPressAction: applyArea.clicked(null)
+
+                                        Text {
+                                            id: applyLabel
+                                            anchors.centerIn: parent
+                                            text: "Apply"
+                                            color: card.dirty ? Colors.on_surface : Qt.alpha(Colors.on_surface_variant, 0.65)
+                                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+                                            font.family: Appearance.font.family
+                                            font.pixelSize: 10.5 * root.s
+                                            font.weight: Font.DemiBold
+                                            font.letterSpacing: 0.3 * root.s
+                                        }
+
+                                        MouseArea {
+                                            id: applyArea
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: card.dirty ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                            onClicked: if (card.dirty) root.apply()
                                         }
                                     }
 
-                                    Accessible.role: Accessible.Button
-                                    Accessible.name: "Keep"
-                                    Accessible.description: "Confirms the display change; " + root.countdown + " seconds left before it reverts automatically"
-                                    Accessible.focusable: true
-                                    Accessible.onPressAction: keepArea.clicked(null)
+                                    Row {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        enabled: card.pending
+                                        opacity: card.pending ? 1 : 0
+                                        visible: opacity > 0.01
+                                        Behavior on opacity {
+                                            enabled: root.hoverArmed
+                                            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                                        }
+                                        spacing: 9 * root.s
 
-                                    Text {
-                                        id: keepLabel
-                                        anchors.centerIn: parent
-                                        text: "Keep (" + root.countdown + ")"
-                                        color: Colors.on_tertiary
-                                        font.family: Appearance.font.family
-                                        font.pixelSize: 10.5 * root.s
-                                        font.weight: Font.Bold
-                                        font.letterSpacing: 0.3 * root.s
+                                        Rectangle {
+                                            id: keepBtn
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: keepLabel.implicitWidth + 28 * root.s
+                                            height: 28 * root.s
+                                            radius: 9 * root.s
+                                            color: keepArea.containsMouse ? Colors.tertiary : Qt.alpha(Colors.tertiary, 0.75)
+                                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+                                            scale: keepArea.pressed ? 0.96 : 1
+                                            Behavior on scale {
+                                                NumberAnimation {
+                                                    duration: Motion.glide
+                                                    easing.type: Motion.easeBezier
+                                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                                }
+                                            }
+
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: "Keep"
+                                            Accessible.description: "Confirms the display change; " + root.countdown + " seconds left before it reverts automatically"
+                                            Accessible.focusable: true
+                                            Accessible.onPressAction: keepArea.clicked(null)
+
+                                            Text {
+                                                id: keepLabel
+                                                anchors.centerIn: parent
+                                                text: "Keep (" + root.countdown + ")"
+                                                color: Colors.on_tertiary
+                                                font.family: Appearance.font.family
+                                                font.pixelSize: 10.5 * root.s
+                                                font.weight: Font.Bold
+                                                font.letterSpacing: 0.3 * root.s
+                                            }
+
+                                            MouseArea {
+                                                id: keepArea
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.keep()
+                                            }
+                                        }
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: "reverts automatically if not kept"
+                                            color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                                            font.family: Appearance.font.family
+                                            font.pixelSize: 9.5 * root.s
+                                            font.weight: Font.Medium
+                                        }
                                     }
-
-                                    MouseArea {
-                                        id: keepArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.keep()
-                                    }
-                                }
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: "reverts automatically if not kept"
-                                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                                    font.family: Appearance.font.family
-                                    font.pixelSize: 9.5 * root.s
-                                    font.weight: Font.Medium
                                 }
                             }
                         }
                     }
                 }
 
-                Text {
-                    width: parent.width
-                    visible: root.note.length > 0
-                    text: root.note
-                    color: Colors.on_surface_variant
-                    font.family: Appearance.font.family
-                    font.pixelSize: 10 * root.s
-                    font.weight: Font.Medium
-                    wrapMode: Text.WordWrap
-                    lineHeight: 1.25
+                SettingsCollapse {
+                    shown: root.note.length > 0
+                    surface: root
+
+                    Text {
+                        id: noteText
+                        width: parent.width
+                        topPadding: 12 * root.s
+                        // Holds the last non-empty note so the text stays put
+                        // while the block fades/folds shut.
+                        property string held: ""
+                        text: noteText.held
+                        Component.onCompleted: noteText.held = root.note
+                        Connections {
+                            target: root
+                            function onNoteChanged() {
+                                if (root.note.length > 0)
+                                    noteText.held = root.note;
+                            }
+                        }
+                        color: Colors.on_surface_variant
+                        font.family: Appearance.font.family
+                        font.pixelSize: 10 * root.s
+                        font.weight: Font.Medium
+                        wrapMode: Text.WordWrap
+                        lineHeight: 1.25
+                    }
                 }
             }
 

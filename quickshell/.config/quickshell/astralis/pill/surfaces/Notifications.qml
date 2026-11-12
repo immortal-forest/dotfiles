@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import Quickshell
 import ".."
 import "../../colors"
@@ -29,12 +30,15 @@ PillSurface {
     mBottom: 14
 
     ameForm: "dock"
+    // The soul bead docks at the bottom centre: the list stops this far above
+    // the edge so the bead never sits on the last row or its hover wash.
+    readonly property real beadClear: 18 * s
     amePoint: Qt.point(width / 2, height - 6 * s)
     // Hug the backlog: header + rule + list (floored for the 静 empty state),
     // capped by Pill.qml's fixed 460.
     desiredH: hairline.y + 1 + 8 * s
         + Math.max(Services.Notifications.count === 0 ? 96 * s : 40 * s, notifCol.implicitHeight)
-        + 12 * s
+        + 12 * s + beadClear
 
     // Opening the center counts as reading: after a beat, mark all seen.
     onOpenChanged: open ? seenTimer.restart() : seenTimer.stop()
@@ -86,44 +90,111 @@ PillSurface {
     }
 
     /**
-     * Single entry row: icon tile (or accent diamond), body text, ×N coalesce
-     * badge, age label that cross-fades into a dismiss glyph on hover, and —
-     * when the notification actually shipped any — a row of real action
-     * pills underneath (View, Reply, whatever the sender named them).
-     *
-     * Was a single 26·s line with no actions surfaced at all: the panel
-     * itself is a full 460·s surface, and a two-row backlog of 26px lines
-     * read as mostly empty chrome around a couple of hairline-thin strips.
-     * 44·s plus a conditional action row gives each entry real visual
-     * weight, and the actions are the same `n.actions` Toast.qml already
-     * renders for the popup — they just vanished once a notification moved
-     * into the backlog, with only a whole-row click (`activate()`, which
-     * silently no-opped for anything without a literal "default" action —
-     * see Notifications.qml service) standing in for them.
-     *
-     * Critical entries gain an error left hairline and full-contrast text.
+     * One row geometry for everything in the list (entry rows and group
+     * heads alike): 8·s inset, a 34·s lead (Toast.KindTile — or a screenshot
+     * thumbnail in the same tile-size slot), two text lines, meta on the right.
+     * Rows sit on the same full-width hover wash as before; criticals keep
+     * that geometry and only add a faint error-container wash and an
+     * error-coloured title.
+     */
+    readonly property real rowPad: 7 * s
+    readonly property real tileSize: 34 * s
+
+    /** Right-hand meta: age that cross-fades into a dismiss × on hover. */
+    component AgeOrX: Item {
+        id: aox
+        property string age: ""
+        property bool hovered: false
+        property string what: ""
+        signal dismissed()
+
+        width: Math.max(aoxAge.implicitWidth, aoxX.width)
+        height: Math.max(aoxAge.implicitHeight, aoxX.height)
+
+        Text {
+            id: aoxAge
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            opacity: aox.hovered ? 0 : 1
+            text: aox.age
+            color: Qt.alpha(Colors.on_surface_variant, 0.6)
+            font.family: Appearance.font.family
+            font.pixelSize: 9.5 * root.s
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+        }
+
+        GlyphIcon {
+            id: aoxX
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            // 13·s, not 11 — below that a stroked glyph's line can't
+            // rasterize thin enough to stay crisp (see Toast.qml's dismiss).
+            width: 13 * root.s
+            height: 13 * root.s
+            opacity: aox.hovered ? 1 : 0
+            name: "close"
+            color: aoxArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
+            stroke: 1.9
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+            scale: aoxArea.pressed ? 0.92 : 1
+            Behavior on scale {
+                NumberAnimation { duration: Motion.glide; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveFastSpatial }
+            }
+
+            Accessible.role: Accessible.Button
+            Accessible.name: "Dismiss " + aox.what
+            Accessible.focusable: true
+            Accessible.onPressAction: aox.dismissed()
+
+            MouseArea {
+                id: aoxArea
+                anchors.fill: parent
+                anchors.margins: -6 * root.s
+                enabled: aox.hovered
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: aox.dismissed()
+            }
+        }
+    }
+
+    /**
+     * Entry row. `standalone` = the only item of its group, so there is no
+     * group head above it: the second line then leads with the source
+     * ("Firefox · disk full") instead of a head repeating the same item.
      */
     component NotifRow: Rectangle {
         id: nrow
 
         required property var entry
         property bool critical: false
+        property bool standalone: false
+        property string label: ""
         readonly property var n: entry.n
+        readonly property string kind: Services.Notifications.kindOf(nrow.n)
+        readonly property bool shot: nrow.kind === "screenshot"
+        readonly property bool failed: Services.Notifications.isFailure(nrow.n)
+        readonly property string caption: Services.Notifications.captionFor(nrow.n)
+        readonly property string line2: nrow.standalone
+            ? nrow.label + (nrow.caption.length ? "  ·  " + nrow.caption : "")
+            : nrow.caption
         readonly property var acts: (n.actions || []).filter(function (a) {
             return a && a.text && a.text.length > 0;
         })
+        readonly property bool hasActs: fileActs.shown || nrow.acts.length > 0
 
         width: parent ? parent.width : 0
-        height: mainRow.height + 10 * root.s
-            + (nrow.acts.length > 0 ? 6 * root.s + actRow.height : 0)
-        radius: 9 * root.s
-        color: nrowHover.hovered ? Colors.surface_container_highest : "transparent"
+        height: rowCol.implicitHeight + 2 * root.rowPad
+        radius: 10 * root.s
+        color: nrow.critical ? Qt.alpha(Colors.error_container, nrowHover.hovered ? 0.3 : 0.2)
+            : nrowHover.hovered ? Colors.surface_container_highest : "transparent"
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
 
-        // Summary as the name, body as the description — the same split the
-        // row's own text draws (body falls back to summary when there is none).
         Accessible.role: Accessible.Notification
-        Accessible.name: nrow.n.summary
-        Accessible.description: nrow.n.body
+        Accessible.name: Services.Notifications.titleFor(nrow.n)
+        Accessible.description: nrow.line2
         Accessible.focusable: true
         Accessible.onPressAction: nrow.activate()
 
@@ -133,17 +204,10 @@ PillSurface {
             root.requestClose();
         }
 
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-        // Wide row: the shallow "very wide full-width rows" dip, same depth
-        // as a settings row or a notification body.
+        // Wide row: the shallow full-width dip.
         scale: nrowArea.pressed ? 0.98 : 1
         Behavior on scale {
-            NumberAnimation {
-                duration: Motion.glide
-                easing.type: Motion.easeBezier
-                easing.bezierCurve: Motion.expressiveFastSpatial
-            }
+            NumberAnimation { duration: Motion.glide; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveFastSpatial }
         }
 
         HoverHandler {
@@ -157,218 +221,149 @@ PillSurface {
             onClicked: nrow.activate()
         }
 
-        Rectangle {
-            visible: nrow.critical
-            anchors.left: parent.left
-            anchors.leftMargin: 1 * root.s
-            anchors.top: parent.top
-            anchors.topMargin: 5 * root.s
-            width: 2 * root.s
-            height: mainRow.height
-            radius: Appearance.rounding.full
-            color: Colors.error
-        }
-
-        Row {
-            id: mainRow
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: 8 * root.s
-            spacing: 10 * root.s
-
-            Rectangle {
-                id: nrowTile
-                anchors.verticalCenter: parent.verticalCenter
-                width: 24 * root.s
-                height: 24 * root.s
-                radius: 7 * root.s
-                color: Colors.surface_container_high
-                border.width: 1
-                border.color: Qt.alpha(Colors.outline_variant, 0.6)
-
-                Image {
-                    id: nrowImg
-                    anchors.fill: parent
-                    anchors.margins: nrow.n.image ? 0 : 3 * root.s
-                    source: Services.Notifications.iconFor(nrow.n)
-                    sourceSize.width: 48
-                    sourceSize.height: 48
-                    fillMode: Image.PreserveAspectCrop
-                    smooth: true
-                    visible: status === Image.Ready
-                }
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    visible: !nrowImg.visible
-                    width: 6 * root.s
-                    height: 6 * root.s
-                    radius: 2 * root.s
-                    rotation: 45
-                    color: nrow.critical ? Colors.error : Colors.primary
-                }
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - nrowTile.width - nrowRight.width - 2 * parent.spacing
-                text: nrow.n.body.length > 0 ? Services.Notifications.plainBody(nrow.n.body) : nrow.n.summary
-                color: nrow.critical ? Colors.on_surface : Colors.on_surface_variant
-                font.family: Appearance.font.family
-                font.pixelSize: 11.5 * root.s
-                font.weight: nrow.critical ? Font.DemiBold : Font.Medium
-                elide: Text.ElideRight
-                maximumLineCount: 1
-                textFormat: Text.PlainText
-            }
-
-            Row {
-                id: nrowRight
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 6 * root.s
-
-                Text {
-                    visible: nrow.entry.count > 1
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "×" + nrow.entry.count
-                    color: nrow.critical ? Colors.error : Qt.alpha(Colors.error, 0.75)
-                    font.family: Appearance.font.family
-                    font.pixelSize: 9 * root.s
-                    font.weight: Font.Bold
-                }
-
-                Item {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(nrowAge.implicitWidth, nrowX.implicitWidth)
-                    height: Math.max(nrowAge.implicitHeight, nrowX.implicitHeight)
-
-                    Text {
-                        id: nrowAge
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        opacity: nrowHover.hovered ? 0 : 1
-                        text: Services.Notifications.ageLabel(nrow.n)
-                        color: Qt.alpha(Colors.on_surface_variant, 0.6)
-                        font.family: Appearance.font.family
-                        font.pixelSize: 9 * root.s
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-                    }
-
-                    GlyphIcon {
-                        id: nrowX
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        // 13·s, not 11 — below that a stroked glyph's line
-                        // can't rasterize thin enough to stay crisp; see
-                        // Toast.qml's dismiss icon for the full note.
-                        width: 13 * root.s
-                        height: 13 * root.s
-                        opacity: nrowHover.hovered ? 1 : 0
-                        name: "close"
-                        color: nrowXArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
-                        stroke: 1.9
-                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                        // Small round target: the shell's deep dip.
-                        scale: nrowXArea.pressed ? 0.92 : 1
-                        Behavior on scale {
-                            NumberAnimation {
-                                duration: Motion.glide
-                                easing.type: Motion.easeBezier
-                                easing.bezierCurve: Motion.expressiveFastSpatial
-                            }
-                        }
-
-                        // Names WHICH notification this dismisses — a bare "Dismiss"
-                        // is meaningless once a screen reader has tabbed past ten of them.
-                        Accessible.role: Accessible.Button
-                        Accessible.name: "Dismiss " + nrow.n.summary
-                        Accessible.focusable: true
-                        Accessible.onPressAction: Services.Notifications.dismissEntry(nrow.entry)
-
-                        MouseArea {
-                            id: nrowXArea
-                            anchors.fill: parent
-                            anchors.margins: -6 * root.s
-                            enabled: nrowHover.hovered
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: Services.Notifications.dismissEntry(nrow.entry)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Real per-notification actions — "View", "Reply", whatever the
-        // sender named them (n.actions, the same source Toast.qml's popup
-        // pills already read). These used to only exist while a notification
-        // was still a toast; once it landed here the ONLY way to trigger one
-        // was clicking the whole row, which only ever ran an action literally
-        // identified "default" — most senders (hyprshot's "View" included)
-        // don't ship one, so the row silently did nothing. Explicit pills
-        // fix both: the action is visible, and it invokes the SPECIFIC
-        // action pressed rather than guessing at the row's intent.
-        Row {
-            id: actRow
-            visible: nrow.acts.length > 0
-            anchors.left: mainRow.left
-            anchors.leftMargin: nrowTile.width + mainRow.spacing
-            anchors.top: mainRow.bottom
-            anchors.topMargin: 6 * root.s
+        Column {
+            id: rowCol
+            x: 8 * root.s
+            y: root.rowPad
+            width: parent.width - 16 * root.s
             spacing: 6 * root.s
 
-            Repeater {
-                model: nrow.acts
+            Item {
+                id: mainRow
+                width: parent.width
+                height: Math.max(root.tileSize, textCol.implicitHeight)
 
-                Rectangle {
-                    id: actPill
-                    required property var modelData
-                    required property int index
+                Item {
+                    id: lead
+                    anchors.verticalCenter: parent.verticalCenter
+                    // One lead column for every row, screenshots included, so all
+                    // titles share a left edge (the popup keeps the big preview).
+                    width: root.tileSize
+                    height: root.tileSize
 
-                    height: 20 * root.s
-                    width: actText.implicitWidth + 18 * root.s
-                    radius: Appearance.rounding.full
-                    color: actPill.index === 0 ? Qt.alpha(Colors.primary, 0.14) : Colors.surface_container_high
-                    border.width: 1
-                    border.color: actPill.index === 0 ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-                    Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+                    Toast.KindTile {
+                        visible: !nrow.shot
+                        n: nrow.n
+                        s: root.s
+                        size: root.tileSize
+                    }
 
-                    scale: actArea.pressed ? 0.92 : 1
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Motion.glide
-                            easing.type: Motion.easeBezier
-                            easing.bezierCurve: Motion.expressiveFastSpatial
+                    Toast.ShotThumb {
+                        visible: nrow.shot
+                        anchors.verticalCenter: parent.verticalCenter
+                        s: root.s
+                        path: nrow.shot ? Services.Notifications.fileOf(nrow.n) : ""
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        maxW: root.tileSize
+                        maxH: root.tileSize
+                        onActivated: {
+                            Services.Notifications.openFile(Services.Notifications.fileOf(nrow.n));
+                            root.requestClose();
                         }
                     }
+                }
 
-                    Accessible.role: Accessible.Button
-                    Accessible.name: actPill.modelData.text
-                    Accessible.focusable: true
-                    Accessible.onPressAction: actArea.clicked(null)
+                Column {
+                    id: textCol
+                    anchors.left: lead.right
+                    anchors.leftMargin: 10 * root.s
+                    anchors.right: meta.left
+                    anchors.rightMargin: 8 * root.s
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2 * root.s
 
                     Text {
-                        id: actText
-                        anchors.centerIn: parent
-                        text: actPill.modelData.text
-                        color: actPill.index === 0 ? Colors.primary : Colors.on_surface_variant
+                        width: parent.width
+                        text: Services.Notifications.titleFor(nrow.n)
+                        color: nrow.critical || nrow.failed ? Colors.error : Colors.on_surface
                         font.family: Appearance.font.family
-                        font.pixelSize: 9.5 * root.s
+                        font.pixelSize: 12.5 * root.s
                         font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                        textFormat: Text.PlainText
                     }
 
-                    MouseArea {
-                        id: actArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            actPill.modelData.invoke();
-                            root.requestClose();
+                    Text {
+                        width: parent.width
+                        visible: nrow.line2.length > 0
+                        text: nrow.line2
+                        color: Colors.on_surface_variant
+                        font.family: Appearance.font.family
+                        font.pixelSize: 11 * root.s
+                        wrapMode: nrow.failed ? Text.Wrap : Text.NoWrap
+                        maximumLineCount: nrow.failed ? 2 : 1
+                        elide: nrow.shot ? Text.ElideMiddle : Text.ElideRight
+                        textFormat: Text.PlainText
+                    }
+                }
+
+                Row {
+                    id: meta
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6 * root.s
+
+                    Text {
+                        visible: nrow.entry.count > 1
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "×" + nrow.entry.count
+                        color: Qt.alpha(Colors.on_surface_variant, 0.75)
+                        font.family: Appearance.font.family
+                        font.pixelSize: 9.5 * root.s
+                        font.weight: Font.Bold
+                    }
+
+                    AgeOrX {
+                        anchors.verticalCenter: parent.verticalCenter
+                        age: Services.Notifications.ageLabel(nrow.n)
+                        hovered: nrowHover.hovered
+                        what: Services.Notifications.titleFor(nrow.n)
+                        onDismissed: Services.Notifications.dismissEntry(nrow.entry)
+                    }
+                }
+            }
+
+            // Actions, aligned under the text: the shell's own file actions
+            // first (screenshot / saved recording), then the sender's own
+            // (n.actions — "View", "Reply"…), each invoking exactly the
+            // action pressed.
+            Column {
+                visible: nrow.hasActs
+                x: lead.width + 10 * root.s
+                width: parent.width - x
+                spacing: 6 * root.s
+
+                Toast.FileActs {
+                    id: fileActs
+                    visible: fileActs.shown
+                    width: parent.width
+                    n: nrow.n
+                    s: root.s
+                    onOpened: root.requestClose()
+                    onDeleted: Services.Notifications.dismissEntry(nrow.entry)
+                }
+
+                Flow {
+                    visible: nrow.acts.length > 0
+                    width: parent.width
+                    spacing: 6 * root.s
+
+                    Repeater {
+                        model: nrow.acts
+
+                        Toast.ActChip {
+                            id: actPill
+                            required property var modelData
+                            required property int index
+
+                            s: root.s
+                            label: actPill.modelData.text
+                            primary: actPill.index === 0 && !fileActs.shown
+                            onTapped: {
+                                actPill.modelData.invoke();
+                                root.requestClose();
+                            }
                         }
                     }
                 }
@@ -417,7 +412,7 @@ PillSurface {
                 // A closed surface has nothing to breathe at: the loop used to
                 // run forever behind a hidden panel.
                 SequentialAnimation on opacity {
-                    running: unreadRow.shown && root.open && !Motion.reduceMotion
+                    running: unreadRow.shown && root.settled && !Motion.reduceMotion
                     loops: Animation.Infinite
                     NumberAnimation { to: 0.55; duration: Motion.pulse; easing.type: Motion.easeStandard }
                     NumberAnimation { to: 1;    duration: Motion.pulse; easing.type: Motion.easeStandard }
@@ -528,15 +523,29 @@ PillSurface {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.beadClear
         contentHeight: notifCol.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         onContentHeightChanged: returnToBounds()
 
+        // Overflow dissolves instead of cutting a row in half above the
+        // docked bead: the list is drawn through an alpha ramp over its last
+        // fadeH while there is more below (layer only while it overflows).
+        readonly property real fadeH: 22 * root.s
+        readonly property bool moreBelow: contentHeight - contentY - height > 1
+        layer.enabled: contentHeight > height + 1
+        layer.effect: MultiEffect {
+            maskEnabled: true
+            maskSource: listFadeMask
+            maskThresholdMin: 0
+            maskSpreadAtMin: 1
+        }
+
         Column {
             id: notifCol
             width: notifFlick.width
-            spacing: 6 * root.s
+            spacing: 2 * root.s
 
             Repeater {
                 model: groupModel
@@ -544,43 +553,44 @@ PillSurface {
                 Column {
                     id: group
                     required property var modelData
-                    readonly property bool expanded: Services.Notifications.expandedApps[modelData.app] === true
+                    /** Criticals lead their own group; every item appears exactly once. */
+                    readonly property var rows: modelData.criticals.concat(modelData.entries)
+                    readonly property bool single: rows.length === 1
+                    readonly property bool hasCrit: modelData.criticals.length > 0
+                    readonly property bool expanded: !single && Services.Notifications.expandedApps[modelData.app] === true
                     width: notifCol.width
-                    spacing: 2 * root.s
+                    spacing: 0
 
-                    // Criticals surface above the group head, always visible.
-                    Repeater {
-                        model: group.modelData.criticals
+                    /**
+                     * Rows stay ALIVE through the collapse animation: the
+                     * Repeater model only empties once the height has eased to
+                     * 0 (see rowsClip). Set on expand, cleared on collapse end.
+                     */
+                    property bool rowsAlive: false
+                    onExpandedChanged: if (expanded) rowsAlive = true
+                    Component.onCompleted: rowsAlive = expanded
 
-                        NotifRow {
-                            required property var modelData
-                            entry: modelData
-                            critical: true
-                        }
+                    // A one-item group IS its item: no head repeating it.
+                    NotifRow {
+                        visible: group.single
+                        entry: group.rows[0]
+                        critical: group.hasCrit
+                        standalone: true
+                        label: group.modelData.app
                     }
 
                     Rectangle {
                         id: groupHead
+                        visible: !group.single
                         width: parent.width
-                        // Matched to NotifRow's new weight (see its own doc)
-                        // rather than left thin beside it — a collapsed group
-                        // head sits directly above its own expanded rows in
-                        // the same list and reads as one rhythm, not two.
-                        height: 40 * root.s
-                        radius: 9 * root.s
+                        height: Math.max(root.tileSize, headText.implicitHeight) + 2 * root.rowPad
+                        radius: 10 * root.s
                         color: headHover.hovered ? Colors.surface_container_highest : "transparent"
-
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
 
-                        // Same full-width-row depth as a NotifRow — this header sits
-                        // directly above one in the same list.
                         scale: headArea.pressed ? 0.98 : 1
                         Behavior on scale {
-                            NumberAnimation {
-                                duration: Motion.glide
-                                easing.type: Motion.easeBezier
-                                easing.bezierCurve: Motion.expressiveFastSpatial
-                            }
+                            NumberAnimation { duration: Motion.glide; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveFastSpatial }
                         }
 
                         Accessible.role: Accessible.Button
@@ -601,168 +611,170 @@ PillSurface {
                             onClicked: Services.Notifications.toggleExpanded(group.modelData.app)
                         }
 
-                        Rectangle {
+                        // The group's identity: app icon / seal / glyph —
+                        // never one item's content image.
+                        Toast.KindTile {
                             id: headTile
-                            anchors.left: parent.left
-                            anchors.leftMargin: 8 * root.s
+                            x: 8 * root.s
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 24 * root.s
-                            height: 24 * root.s
-                            radius: 7 * root.s
-                            color: Colors.surface_container_high
-                            border.width: 1
-                            border.color: Qt.alpha(Colors.outline_variant, 0.6)
-
-                            Image {
-                                id: headImg
-                                anchors.fill: parent
-                                anchors.margins: group.modelData.newest.image ? 0 : 3 * root.s
-                                source: Services.Notifications.iconFor(group.modelData.newest)
-                                sourceSize.width: 40
-                                sourceSize.height: 40
-                                fillMode: Image.PreserveAspectCrop
-                                smooth: true
-                                visible: status === Image.Ready
-                            }
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                visible: !headImg.visible
-                                width: 6 * root.s
-                                height: 6 * root.s
-                                radius: 2 * root.s
-                                rotation: 45
-                                color: Colors.primary
-                            }
+                            n: group.modelData.newest
+                            s: root.s
+                            size: root.tileSize
+                            avatar: false
                         }
 
-                        Text {
-                            id: headName
+                        Column {
+                            id: headText
                             anchors.left: headTile.right
-                            anchors.leftMargin: 8 * root.s
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, 110 * root.s)
-                            text: group.modelData.app
-                            color: Colors.on_surface_variant
-                            font.family: Appearance.font.family
-                            font.pixelSize: 9.5 * root.s
-                            font.weight: Font.Bold
-                            font.capitalization: Font.AllUppercase
-                            font.letterSpacing: 1.2 * root.s
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            id: headCount
-                            anchors.left: headName.right
-                            anchors.leftMargin: 5 * root.s
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "· " + group.modelData.count
-                            color: Qt.alpha(Colors.on_surface_variant, 0.6)
-                            font.family: Appearance.font.family
-                            font.pixelSize: 9.5 * root.s
-                        }
-
-                        Text {
-                            anchors.left: headCount.right
-                            anchors.leftMargin: 8 * root.s
-                            anchors.right: headX.left
+                            anchors.leftMargin: 10 * root.s
+                            anchors.right: headMeta.left
                             anchors.rightMargin: 8 * root.s
                             anchors.verticalCenter: parent.verticalCenter
-                            text: group.modelData.preview.body.length > 0
-                                ? Services.Notifications.plainBody(group.modelData.preview.body)
-                                : group.modelData.preview.summary
-                            color: Qt.alpha(Colors.on_surface_variant, 0.8)
-                            font.family: Appearance.font.family
-                            font.pixelSize: 10.5 * root.s
-                            elide: Text.ElideRight
-                            maximumLineCount: 1
-                            textFormat: Text.PlainText
+                            spacing: 2 * root.s
+
+                            Row {
+                                width: parent.width
+                                spacing: 6 * root.s
+
+                                Text {
+                                    id: headName
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Math.min(implicitWidth, parent.width - headBadge.width - parent.spacing)
+                                    text: group.modelData.app
+                                    color: Colors.on_surface
+                                    font.family: Appearance.font.family
+                                    font.pixelSize: 12.5 * root.s
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+
+                                // Count badge; error-tinted while a critical
+                                // sits inside the (collapsed) group.
+                                Rectangle {
+                                    id: headBadge
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: 16 * root.s
+                                    width: Math.max(height, headCount.implicitWidth + 10 * root.s)
+                                    radius: height / 2
+                                    color: group.hasCrit ? Qt.alpha(Colors.error_container, 0.6) : Colors.surface_container_highest
+
+                                    Text {
+                                        id: headCount
+                                        anchors.centerIn: parent
+                                        text: group.modelData.count
+                                        color: group.hasCrit ? Colors.error : Colors.on_surface_variant
+                                        font.family: Appearance.font.family
+                                        font.pixelSize: 9.5 * root.s
+                                        font.weight: Font.DemiBold
+                                    }
+                                }
+                            }
+
+                            Text {
+                                width: parent.width
+                                readonly property var latest: group.rows[0].n
+                                readonly property string cap: Services.Notifications.captionFor(latest)
+                                text: Services.Notifications.titleFor(latest) + (cap.length ? "  ·  " + cap : "")
+                                color: Colors.on_surface_variant
+                                font.family: Appearance.font.family
+                                font.pixelSize: 11 * root.s
+                                elide: Text.ElideRight
+                                maximumLineCount: 1
+                                textFormat: Text.PlainText
+                            }
                         }
 
-                        GlyphIcon {
-                            id: headChev
+                        Row {
+                            id: headMeta
                             anchors.right: parent.right
                             anchors.rightMargin: 8 * root.s
                             anchors.verticalCenter: parent.verticalCenter
-                            // 13·s — see Toast.qml's dismiss icon note.
-                            width: 13 * root.s
-                            height: 13 * root.s
-                            // One glyph that turns rather than two that
-                            // swap: the rotation IS the expand, so the
-                            // affordance animates on the state change instead
-                            // of blinking between two pictograms.
-                            name: "chevron-right"
-                            rotation: group.expanded ? 90 : 0
-                            color: Qt.alpha(Colors.on_surface_variant, 0.6)
-                            stroke: 2
-                            Behavior on rotation {
-                                NumberAnimation {
-                                    duration: Motion.glide
-                                    easing.type: Motion.easeBezier
-                                    easing.bezierCurve: Motion.expressiveFastSpatial
-                                }
-                            }
-                        }
+                            spacing: 6 * root.s
 
-                        GlyphIcon {
-                            id: headX
-                            anchors.right: headChev.left
-                            anchors.rightMargin: 7 * root.s
-                            anchors.verticalCenter: parent.verticalCenter
-                            // 13·s — see Toast.qml's dismiss icon note.
-                            width: 13 * root.s
-                            height: 13 * root.s
-                            opacity: headHover.hovered ? 1 : 0
-                            name: "close"
-                            color: headXArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
-                            stroke: 1.9
-                            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-                            Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                            // Small round target: the shell's deep dip.
-                            scale: headXArea.pressed ? 0.92 : 1
-                            Behavior on scale {
-                                NumberAnimation {
-                                    duration: Motion.glide
-                                    easing.type: Motion.easeBezier
-                                    easing.bezierCurve: Motion.expressiveFastSpatial
-                                }
+                            AgeOrX {
+                                anchors.verticalCenter: parent.verticalCenter
+                                age: Services.Notifications.ageLabel(group.modelData.newest)
+                                hovered: headHover.hovered
+                                what: "all from " + group.modelData.app
+                                onDismissed: Services.Notifications.dismissApp(group.modelData.app)
                             }
 
-                            Accessible.role: Accessible.Button
-                            Accessible.name: "Dismiss all from " + group.modelData.app
-                            Accessible.focusable: true
-                            Accessible.onPressAction: Services.Notifications.dismissApp(group.modelData.app)
-
-                            MouseArea {
-                                id: headXArea
-                                anchors.fill: parent
-                                anchors.margins: -6 * root.s
-                                enabled: headHover.hovered
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: Services.Notifications.dismissApp(group.modelData.app)
+                            GlyphIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 13 * root.s
+                                height: 13 * root.s
+                                // One glyph that turns: the rotation IS the expand.
+                                name: "chevron-right"
+                                rotation: group.expanded ? 90 : 0
+                                color: Qt.alpha(Colors.on_surface_variant, 0.45)
+                                stroke: 1.8
+                                Behavior on rotation {
+                                    NumberAnimation { duration: Motion.glide; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveFastSpatial }
+                                }
                             }
                         }
                     }
 
-                    Column {
-                        visible: group.expanded
+                    /**
+                     * Row area: height eases (and the rows fade) on expand and
+                     * collapse. Visibility rides rowsAlive, not the animated
+                     * height, so the inner Column keeps computing its size.
+                     */
+                    Item {
+                        id: rowsClip
                         width: parent.width
-                        spacing: 2 * root.s
+                        height: group.expanded ? rowsCol.implicitHeight : 0
+                        opacity: group.expanded ? 1 : 0
+                        visible: group.rowsAlive && !group.single
+                        clip: true
+                        Behavior on opacity {
+                            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                        }
+                        Behavior on height {
+                            NumberAnimation {
+                                duration: Motion.standard
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.morphCurve
+                                onRunningChanged: if (!running && !group.expanded) group.rowsAlive = false
+                            }
+                        }
 
-                        Repeater {
-                            model: group.expanded ? group.modelData.entries : []
+                        Column {
+                            id: rowsCol
+                            width: parent.width
+                            spacing: 2 * root.s
+                            topPadding: 2 * root.s
 
-                            NotifRow {
-                                required property var modelData
-                                entry: modelData
+                            Repeater {
+                                model: group.rowsAlive && !group.single ? group.rows : []
+
+                                NotifRow {
+                                    required property var modelData
+                                    required property int index
+                                    entry: modelData
+                                    critical: index < group.modelData.criticals.length
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    // Alpha ramp for the list's bottom dissolve (read by alpha only).
+    Rectangle {
+        id: listFadeMask
+        width: notifFlick.width
+        height: notifFlick.height
+        visible: false
+        layer.enabled: true
+        readonly property real cut: notifFlick.moreBelow
+            ? Math.max(0, 1 - notifFlick.fadeH / Math.max(1, notifFlick.height)) : 1
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 1) }
+            GradientStop { position: listFadeMask.cut; color: Qt.rgba(1, 1, 1, 1) }
+            GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, notifFlick.moreBelow ? 0 : 1) }
         }
     }
 

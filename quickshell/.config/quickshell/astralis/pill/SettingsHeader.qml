@@ -18,6 +18,8 @@ Item {
     property string glyph: ""
     property string title: ""
     property bool showBack: false
+    /** false drops the trailing × / back glyph entirely (the sidebar header: the page header's × is the only close). */
+    property bool showAction: true
 
     signal back()
 
@@ -51,6 +53,7 @@ Item {
     }
 
     GlyphIcon {
+        visible: head.showAction
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         width: 16 * head.s

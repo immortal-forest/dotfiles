@@ -31,10 +31,14 @@ PillSurface {
     mBottom: 12
 
     ameForm: "dock"
-    // Dock on the column boundary nearest centre: a column's centre is where
-    // its icon + label sit, so with an odd fader count width/2 landed on a label.
-    amePoint: Qt.point(faderCount > 1 ? width * Math.round(faderCount / 2) / faderCount
-        : width - 16 * s, height - 8 * s)
+    // Docked centred, in the strip BELOW the column labels: the labels end ~8·s
+    // above this surface's bottom edge and a column's icon + label sit on the
+    // centre line for an odd fader count, so the bead rests just past the
+    // content box (4·s below it, i.e. 8·s above the pill's bottom edge, inside
+    // the 12·s bottom margin) instead of on any column or boundary.
+    // 226·s tall (Pill.qml) leaves a strip under the labels: the bead docks
+    // in it, clear of the labels above and the rim below.
+    amePoint: Qt.point(width / 2, height - 6 * s)
 
     readonly property var sink: Pipewire.defaultAudioSink
     readonly property var source: Pipewire.defaultAudioSource
@@ -751,6 +755,7 @@ PillSurface {
                 radius: height / 2
                 color: trackArea.activeColor
                 Behavior on width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+                Behavior on height { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
 
@@ -784,6 +789,7 @@ PillSurface {
             font.pixelSize: 9 * root.s
             font.weight: Font.DemiBold
             font.features: ({ "tnum": 1 })
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
             Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
         }
 
@@ -800,6 +806,7 @@ PillSurface {
                 source: fader.iconSource
                 visible: fader.iconSource.length > 0
                 opacity: fader.muted ? 0.45 : 1
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
             GlyphIcon {
                 anchors.fill: parent
@@ -808,6 +815,7 @@ PillSurface {
                 color: fader.muted ? Qt.alpha(Colors.on_surface_variant, 0.65)
                     : (fader.lit ? Colors.on_surface : Colors.on_surface_variant)
                 stroke: 1.7
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
         }
 
@@ -826,6 +834,7 @@ PillSurface {
             font.pixelSize: 9 * root.s
             font.weight: Font.DemiBold
             font.letterSpacing: 0.3 * root.s
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
         }
 
         // Icon/label tap toggles mute (Ricelin mic-fader affordance).

@@ -98,9 +98,30 @@ Item {
         border.color: Colors.outline
         opacity: sw.enabled ? 1 : M3.disabledContainerOpacity
 
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
-        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
-        Behavior on border.width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+        // Fill and outline change on the thumb spring's clock (350 ms): on
+        // `fast` they finished in 140 ms while the thumb was still travelling,
+        // so every toggle in the shell read as a colour flash under a slide.
+        Behavior on color {
+            ColorAnimation {
+                duration: Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveEffects
+            }
+        }
+        Behavior on border.color {
+            ColorAnimation {
+                duration: Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveEffects
+            }
+        }
+        Behavior on border.width {
+            NumberAnimation {
+                duration: Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveEffects
+            }
+        }
         Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
     }
 
@@ -116,7 +137,13 @@ Item {
         // child below inherits it for free via QtQuick's opacity multiply.
         opacity: sw.enabled ? 1 : M3.disabledContentOpacity
 
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
+        Behavior on color {
+            ColorAnimation {
+                duration: Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveEffects
+            }
+        }
         Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
         // Cross-faded on opacity, never `visible`-flipped — a flip would pop

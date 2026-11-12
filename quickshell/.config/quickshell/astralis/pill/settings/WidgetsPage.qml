@@ -152,7 +152,7 @@ SettingsPage {
                 sub: "Percent of screen width — or drag its corner in Edit layout"
                 captionOnFocus: true
                 icon: "scaling"
-                visible: Widgets.cover.on
+                shown: Widgets.cover.on
 
                 ScrubValue {
                     id: coverSizeScrub
@@ -171,7 +171,7 @@ SettingsPage {
                 surface: root
                 name: "Corners"
                 icon: "app-window"
-                visible: Widgets.cover.on
+                shown: Widgets.cover.on
 
                 SettingsSeg {
                     s: root.s
@@ -187,7 +187,7 @@ SettingsPage {
                 sub: "The cover's own colour, blurred out behind it"
                 captionOnFocus: true
                 icon: "sparkles"
-                visible: Widgets.cover.on
+                shown: Widgets.cover.on
 
                 LinkToggle {
                     s: root.s
@@ -202,7 +202,7 @@ SettingsPage {
                 sub: "Source, album and dots, shown on hover"
                 captionOnFocus: true
                 icon: "type"
-                visible: Widgets.cover.on
+                shown: Widgets.cover.on
 
                 LinkToggle {
                     s: root.s
@@ -216,7 +216,7 @@ SettingsPage {
                 name: "Song info font"
                 icon: "type"
                 sub: Widgets.cover.infoFont.length > 0 ? Widgets.cover.infoFont : "Shell font (" + Appearance.font.family + ")"
-                visible: Widgets.cover.on && Widgets.cover.info !== "off"
+                shown: Widgets.cover.on && Widgets.cover.info !== "off"
                 last: true
 
                 GlyphIcon {
@@ -252,7 +252,7 @@ SettingsPage {
                 sub: "Percent of screen width — or drag its corner in Edit layout"
                 captionOnFocus: true
                 icon: "scaling"
-                visible: Widgets.lyrics.on
+                shown: Widgets.lyrics.on
 
                 ScrubValue {
                     id: lyrWScrub
@@ -271,7 +271,7 @@ SettingsPage {
                 surface: root
                 name: "Height"
                 icon: "scaling"
-                visible: Widgets.lyrics.on
+                shown: Widgets.lyrics.on
 
                 ScrubValue {
                     id: lyrHScrub
@@ -292,7 +292,7 @@ SettingsPage {
                 sub: "A cover-tinted panel behind the lyrics for busy wallpapers"
                 captionOnFocus: true
                 icon: "palette"
-                visible: Widgets.lyrics.on
+                shown: Widgets.lyrics.on
 
                 SettingsSeg {
                     s: root.s
@@ -306,7 +306,7 @@ SettingsPage {
                 surface: root
                 name: "Text size"
                 icon: "type"
-                visible: Widgets.lyrics.on
+                shown: Widgets.lyrics.on
 
                 ScrubValue {
                     id: sizeScrub
@@ -325,7 +325,7 @@ SettingsPage {
                 surface: root
                 name: "Alignment"
                 icon: "app-window"
-                visible: Widgets.lyrics.on
+                shown: Widgets.lyrics.on
 
                 SettingsSeg {
                     s: root.s
@@ -341,7 +341,7 @@ SettingsPage {
                 sub: "The sung line glows in the cover's colour"
                 captionOnFocus: true
                 icon: "sparkles"
-                visible: Widgets.lyrics.on
+                shown: Widgets.lyrics.on
 
                 LinkToggle {
                     s: root.s
@@ -356,7 +356,7 @@ SettingsPage {
                 sub: "Blur lines by distance from the sung one"
                 captionOnFocus: true
                 icon: "waves"
-                visible: Widgets.lyrics.on
+                shown: Widgets.lyrics.on
                 last: true
 
                 LinkToggle {
@@ -392,7 +392,7 @@ SettingsPage {
                    : "Near objects in the wallpaper pass in front of the clock"
                 captionOnFocus: WallpaperDepth.status === "idle"
                 icon: "eye"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 LinkToggle {
                     s: root.s
@@ -407,7 +407,7 @@ SettingsPage {
                 sub: "Lower brings more of the scene in front of the clock"
                 captionOnFocus: true
                 icon: "waves"
-                visible: Widgets.depth.on && Widgets.depth.cut
+                shown: Widgets.depth.on && Widgets.depth.cut
 
                 ScrubValue {
                     id: cutoffScrub
@@ -426,7 +426,7 @@ SettingsPage {
                 surface: root
                 name: "Edge softness"
                 icon: "sparkles"
-                visible: Widgets.depth.on && Widgets.depth.cut
+                shown: Widgets.depth.on && Widgets.depth.cut
 
                 ScrubValue {
                     id: featherScrub
@@ -447,7 +447,7 @@ SettingsPage {
                 sub: "Stacked puts hours over minutes"
                 captionOnFocus: true
                 icon: "app-window"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 SettingsSeg {
                     s: root.s
@@ -462,7 +462,7 @@ SettingsPage {
                 name: "Font"
                 icon: "type"
                 sub: Widgets.depth.font.length > 0 ? Widgets.depth.font : "Shell font (" + Appearance.font.family + ")"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 GlyphIcon {
                     width: 16 * root.s
@@ -478,7 +478,7 @@ SettingsPage {
                 surface: root
                 name: "Fill"
                 icon: "sparkles"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 SettingsSeg {
                     s: root.s
@@ -492,7 +492,7 @@ SettingsPage {
                 surface: root
                 name: "Colour"
                 icon: "palette"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 SettingsSeg {
                     s: root.s
@@ -506,7 +506,7 @@ SettingsPage {
                 surface: root
                 name: "Weight"
                 icon: "type"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 SettingsSeg {
                     s: root.s
@@ -520,7 +520,7 @@ SettingsPage {
                 surface: root
                 name: "Gradient end"
                 icon: "palette"
-                visible: Widgets.depth.on && Widgets.depth.fill === "gradient"
+                shown: Widgets.depth.on && Widgets.depth.fill === "gradient"
 
                 SettingsSeg {
                     s: root.s
@@ -536,7 +536,7 @@ SettingsPage {
                 sub: "Negative pulls the numerals together"
                 captionOnFocus: true
                 icon: "type"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 ScrubValue {
                     id: clockTrackScrub
@@ -557,7 +557,7 @@ SettingsPage {
                 sub: "Within its box"
                 captionOnFocus: true
                 icon: "app-window"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 SettingsSeg {
                     s: root.s
@@ -571,7 +571,7 @@ SettingsPage {
                 surface: root
                 name: "Date"
                 icon: "clock"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 SettingsSeg {
                     s: root.s
@@ -585,7 +585,7 @@ SettingsPage {
                 surface: root
                 name: "Date colour"
                 icon: "palette"
-                visible: Widgets.depth.on && Widgets.depth.dateFormat !== "off"
+                shown: Widgets.depth.on && Widgets.depth.dateFormat !== "off"
 
                 SettingsSeg {
                     s: root.s
@@ -601,7 +601,7 @@ SettingsPage {
                 sub: "Relative to the time"
                 captionOnFocus: true
                 icon: "type"
-                visible: Widgets.depth.on && Widgets.depth.dateFormat !== "off"
+                shown: Widgets.depth.on && Widgets.depth.dateFormat !== "off"
 
                 ScrubValue {
                     id: clockDateSizeScrub
@@ -622,7 +622,7 @@ SettingsPage {
                 sub: "Auto follows the shell's 12/24 h setting"
                 captionOnFocus: true
                 icon: "clock"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 SettingsSeg {
                     s: root.s
@@ -638,7 +638,7 @@ SettingsPage {
                 sub: "Lifts the numerals off bright wallpapers"
                 captionOnFocus: true
                 icon: "sparkles"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
 
                 LinkToggle {
                     s: root.s
@@ -651,7 +651,7 @@ SettingsPage {
                 surface: root
                 name: "Opacity"
                 icon: "eye"
-                visible: Widgets.depth.on
+                shown: Widgets.depth.on
                 last: true
 
                 ScrubValue {

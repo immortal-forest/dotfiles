@@ -181,7 +181,7 @@ SettingsPage {
                 sub: "Recolor the shell itself, not just apps"
                 captionOnFocus: true
                 icon: "monitor"
-                visible: Flags.paletteMode !== "material"
+                shown: Flags.paletteMode !== "material"
 
                 LinkToggle {
                     s: root.s

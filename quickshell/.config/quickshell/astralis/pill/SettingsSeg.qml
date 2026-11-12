@@ -133,9 +133,11 @@ Rectangle {
         width: seg.selW
         height: pills.height
 
-        Behavior on x { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        // Snap the first placement (selX/selW arrive before hasSel flips) so the
+        // pill doesn't glide in from x=0 / width=0 when a page is first built.
+        Behavior on x { enabled: seg.hasSel; NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
         Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-        Behavior on width { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        Behavior on width { enabled: seg.hasSel; NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
         Behavior on height { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
     }
 

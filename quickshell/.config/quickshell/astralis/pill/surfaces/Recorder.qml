@@ -113,6 +113,8 @@ PillSurface {
     amePoint: soulPoint
 
     implicitHeight: content.implicitHeight
+    // Hug the content: Pill.qml's fitSize caps the surface at this plus margins.
+    desiredH: content.implicitHeight
 
     // ── one settings line: label on the left, control on the right ──────────
     component OptionRow: Item {
@@ -165,14 +167,21 @@ PillSurface {
 
         readonly property color ink: ct.on ? Colors.on_primary_container : Colors.on_surface_variant
 
+        // Unsupported is expressed as a blend toward the surface, never as
+        // whole-tile opacity: the pill is translucent glass over compositor
+        // blur, so a faded fill shows the grainy backdrop through it.
+        property real dim: ct.supported ? 0 : 1
+        property color baseFill: ct.on ? Colors.primary_container
+            : (ctArea.containsMouse ? Colors.surface_container_highest : Colors.surface_container_high)
+
         height: 52 * root.s
         radius: (ctArea.pressed ? 12 : (ct.on ? 16 : 26)) * root.s
-        color: ct.on ? Colors.primary_container
-            : (ctArea.containsMouse ? Colors.surface_container_highest : Colors.surface_container_high)
-        opacity: ct.supported ? 1 : 0.32
+        color: Qt.tint(ct.baseFill, Qt.alpha(Colors.surface_container, 0.68 * ct.dim))
         enabled: ct.supported
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
-        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        // Fill and ink ride the radius morph's clock (glide) so a toggle reads
+        // as one change, not a quick flash under a slower shape shift.
+        Behavior on baseFill { ColorAnimation { duration: Motion.glide } }
+        Behavior on dim { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
         Behavior on radius {
             NumberAnimation {
                 duration: Motion.glide
@@ -193,6 +202,7 @@ PillSurface {
             anchors.leftMargin: 14 * root.s
             anchors.verticalCenter: parent.verticalCenter
             spacing: 10 * root.s
+            opacity: 1 - 0.68 * ct.dim
 
             GlyphIcon {
                 anchors.verticalCenter: parent.verticalCenter
@@ -201,6 +211,7 @@ PillSurface {
                 name: ct.on ? ct.icon : ct.offIcon
                 color: ct.ink
                 stroke: 1.8
+                Behavior on color { ColorAnimation { duration: Motion.glide } }
             }
 
             Column {
@@ -213,6 +224,7 @@ PillSurface {
                     font.family: Appearance.font.family
                     font.pixelSize: 11 * root.s
                     font.weight: Font.Bold
+                    Behavior on color { ColorAnimation { duration: Motion.glide } }
                 }
                 Text {
                     text: !ct.supported ? "N/A" : (ct.on ? "On" : "Off")
@@ -220,6 +232,7 @@ PillSurface {
                     font.family: Appearance.font.family
                     font.pixelSize: 9 * root.s
                     font.weight: Font.DemiBold
+                    Behavior on color { ColorAnimation { duration: Motion.glide } }
                 }
             }
         }
@@ -230,6 +243,49 @@ PillSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: ct.toggled()
+        }
+    }
+
+    /**
+     * Quiet outlined text chip: one size and type for the arming CANCEL and
+     * the failure DISMISS / RE-SCAN (same role, previously two near sizes).
+     */
+    component GhostChip: Rectangle {
+        id: ghostChip
+        property string label: ""
+        property string accessibleName: ""
+        signal activated()
+
+        width: gcText.implicitWidth + 20 * root.s
+        height: 22 * root.s
+        radius: 8 * root.s
+        color: gcArea.containsMouse ? Colors.surface_container_highest : "transparent"
+        border.width: 1
+        border.color: Qt.alpha(Colors.on_surface, 0.08)
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+        Accessible.role: Accessible.Button
+        Accessible.name: ghostChip.accessibleName
+        Accessible.focusable: true
+        Accessible.onPressAction: ghostChip.activated()
+
+        Text {
+            id: gcText
+            anchors.centerIn: parent
+            text: ghostChip.label
+            color: Colors.on_surface_variant
+            font.family: Appearance.font.family
+            font.pixelSize: 9.5 * root.s
+            font.weight: Font.Bold
+            font.letterSpacing: 1 * root.s
+        }
+
+        MouseArea {
+            id: gcArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: ghostChip.activated()
         }
     }
 
@@ -270,6 +326,7 @@ PillSurface {
                 name: ac.icon
                 color: acArea.containsMouse ? Colors.primary : Colors.on_surface_variant
                 stroke: 1.8
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -353,7 +410,7 @@ PillSurface {
             Row {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 9 * root.s
+                spacing: 8 * root.s
 
                 Text {
                     id: kanji
@@ -374,7 +431,7 @@ PillSurface {
                     font.pixelSize: 10 * root.s
                     font.weight: Font.DemiBold
                     font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1.8 * root.s
+                    font.letterSpacing: 1.6 * root.s
                 }
             }
 
@@ -506,7 +563,13 @@ PillSurface {
                             anchors.centerIn: parent
                             spacing: 5 * root.s
                             scale: segArea.pressed ? 0.94 : 1
-                            Behavior on scale { NumberAnimation { duration: Motion.fast } }
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
 
                             GlyphIcon {
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -539,10 +602,12 @@ PillSurface {
                 }
             }
 
-            // Arming — the countdown before the encoder opens.
-            Column {
+            // Arming — the countdown before the encoder opens. Laid out side
+            // by side (number | caption over Cancel): stacked, the 40px
+            // numeral + caption + chip ran ~95px inside this 64px panel.
+            Row {
                 anchors.centerIn: parent
-                spacing: 6 * root.s
+                spacing: 16 * root.s
                 opacity: root.arming ? 1 : 0
                 visible: opacity > 0.01
                 enabled: root.arming
@@ -550,7 +615,10 @@ PillSurface {
 
                 Text {
                     id: countText
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    // Fixed floor so a 10 -> 9 tick does not shift the caption.
+                    width: Math.max(implicitWidth, 52 * root.s)
+                    horizontalAlignment: Text.AlignHCenter
                     text: "" + ScreenRec.countdown
                     color: Colors.primary
                     font.family: Appearance.font.family
@@ -568,47 +636,22 @@ PillSurface {
                     }
                 }
 
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Recording " + ScreenRec.source + " in…"
-                    color: Colors.on_surface_variant
-                    font.family: Appearance.font.family
-                    font.pixelSize: 10.5 * root.s
-                    font.weight: Font.DemiBold
-                }
-
-                Rectangle {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: cancelText.implicitWidth + 20 * root.s
-                    height: 22 * root.s
-                    radius: 8 * root.s
-                    color: cancelArea.containsMouse ? Colors.surface_container_highest : "transparent"
-                    border.width: 1
-                    border.color: Qt.alpha(Colors.on_surface, 0.08)
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                    Accessible.role: Accessible.Button
-                    Accessible.name: "Cancel recording"
-                    Accessible.focusable: true
-                    Accessible.onPressAction: ScreenRec.cancel()
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6 * root.s
 
                     Text {
-                        id: cancelText
-                        anchors.centerIn: parent
-                        text: "CANCEL"
+                        text: "Recording " + ScreenRec.source + " in…"
                         color: Colors.on_surface_variant
                         font.family: Appearance.font.family
-                        font.pixelSize: 9.5 * root.s
-                        font.weight: Font.Bold
-                        font.letterSpacing: 1 * root.s
+                        font.pixelSize: 10.5 * root.s
+                        font.weight: Font.DemiBold
                     }
 
-                    MouseArea {
-                        id: cancelArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: ScreenRec.cancel()
+                    GhostChip {
+                        label: "CANCEL"
+                        accessibleName: "Cancel recording"
+                        onActivated: ScreenRec.cancel()
                     }
                 }
             }
@@ -641,7 +684,8 @@ PillSurface {
                         // Ripple off the dot while live; gone while paused.
                         Rectangle {
                             id: halo
-                            anchors.centerIn: parent
+                            x: (parent.width - width) / 2
+                            y: (parent.height - height) / 2
                             width: parent.width
                             height: width
                             radius: width / 2
@@ -650,8 +694,11 @@ PillSurface {
                             border.color: Colors.error
                             opacity: 0
                             ParallelAnimation {
-                                running: root.recording && !ScreenRec.paused && root.open && !Motion.reduceMotion
+                                running: root.recording && !ScreenRec.paused && root.settled && !Motion.reduceMotion
                                 loops: Animation.Infinite
+                                // A stopped animation leaves the ring frozen mid-ripple
+                                // (paused / closed); put it back to invisible.
+                                onStopped: halo.opacity = 0
                                 NumberAnimation {
                                     target: halo; property: "scale"; from: 0.45; to: 1.15
                                     duration: Motion.pulse * 3
@@ -667,7 +714,8 @@ PillSurface {
 
                         Rectangle {
                             id: recDot
-                            anchors.centerIn: parent
+                            x: (parent.width - width) / 2
+                            y: (parent.height - height) / 2
                             width: 14 * root.s
                             height: width
                             // Paused: the dot squares off into a held state.
@@ -787,14 +835,40 @@ PillSurface {
                     anchors.leftMargin: 16 * root.s
                     anchors.rightMargin: 16 * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 6 * root.s
+                    spacing: 4 * root.s
 
-                    Text {
-                        text: root.noBackend ? "No recorder installed" : "Recording failed"
-                        color: Colors.error
-                        font.family: Appearance.font.family
-                        font.pixelSize: 11 * root.s
-                        font.weight: Font.Bold
+                    // Title and action share one row and the message is held to
+                    // two lines: stacked (title · 3 lines · chip) it ran ~85 px
+                    // in this 64 px panel and spilled past its border.
+                    Item {
+                        width: parent.width
+                        height: errChip.height
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.right: errChip.left
+                            anchors.rightMargin: 8 * root.s
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.noBackend ? "No recorder installed" : "Recording failed"
+                            color: Colors.error
+                            font.family: Appearance.font.family
+                            font.pixelSize: 11 * root.s
+                            font.weight: Font.Bold
+                            elide: Text.ElideRight
+                        }
+
+                        GhostChip {
+                            id: errChip
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            label: root.noBackend ? "RE-SCAN" : "DISMISS"
+                            accessibleName: root.noBackend ? "Re-scan for a recorder" : "Dismiss error"
+                            onActivated: {
+                                if (!ScreenRec.available)
+                                    ScreenRec.rescan();
+                                ScreenRec.error = "";
+                            }
+                        }
                     }
 
                     Text {
@@ -805,49 +879,7 @@ PillSurface {
                         font.pixelSize: root.noBackend ? 10 * root.s : 9 * root.s
                         wrapMode: Text.Wrap
                         elide: Text.ElideRight
-                        maximumLineCount: 3
-                    }
-
-                    Rectangle {
-                        width: dismissText.implicitWidth + 20 * root.s
-                        height: 20 * root.s
-                        radius: 8 * root.s
-                        color: dismissArea.containsMouse ? Colors.surface_container_highest : "transparent"
-                        border.width: 1
-                        border.color: Qt.alpha(Colors.on_surface, 0.08)
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                        Accessible.role: Accessible.Button
-                        Accessible.name: root.noBackend ? "Re-scan for a recorder" : "Dismiss error"
-                        Accessible.focusable: true
-                        Accessible.onPressAction: {
-                            if (!ScreenRec.available)
-                                ScreenRec.rescan();
-                            ScreenRec.error = "";
-                        }
-
-                        Text {
-                            id: dismissText
-                            anchors.centerIn: parent
-                            text: root.noBackend ? "RE-SCAN" : "DISMISS"
-                            color: Colors.on_surface_variant
-                            font.family: Appearance.font.family
-                            font.pixelSize: 9 * root.s
-                            font.weight: Font.Bold
-                            font.letterSpacing: 1 * root.s
-                        }
-
-                        MouseArea {
-                            id: dismissArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (!ScreenRec.available)
-                                    ScreenRec.rescan();
-                                ScreenRec.error = "";
-                            }
-                        }
+                        maximumLineCount: 2
                     }
                 }
             }
@@ -997,10 +1029,18 @@ PillSurface {
                 width: actRow.width - countChip.width - saveChip.width - 2 * actRow.spacing
                 height: 52 * root.s
                 radius: recArea.pressed ? 16 * root.s : height / 2
-                color: recArea.containsMouse && recBtn.usable ? Qt.lighter(Colors.error, 1.08) : Colors.error
-                opacity: recBtn.live ? (ScreenRec.available ? 1 : 0.38) : 0.38
-                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                // Disabled = blend, not opacity: a 38%-opaque fill over the
+                // pill's blurred glass shows the backdrop's grain through it.
+                // The container stays fully opaque; `dim` (0..1) lerps it
+                // toward error-over-surface and fades the content on its own.
+                readonly property bool dimmed: !recBtn.live || !ScreenRec.available
+                property real dim: recBtn.dimmed ? 1 : 0
+                property color baseFill: recArea.containsMouse && recBtn.usable
+                    ? Qt.lighter(Colors.error, 1.08) : Colors.error
+                readonly property color dimFill: Qt.tint(Colors.surface_container_high, Qt.alpha(Colors.error, 0.38))
+                color: Qt.tint(recBtn.baseFill, Qt.alpha(recBtn.dimFill, recBtn.dim))
+                Behavior on dim { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                Behavior on baseFill { ColorAnimation { duration: Motion.fast } }
                 Behavior on radius {
                     NumberAnimation {
                         duration: Motion.glide
@@ -1024,6 +1064,7 @@ PillSurface {
                 Row {
                     anchors.centerIn: parent
                     spacing: 10 * root.s
+                    opacity: 1 - 0.62 * recBtn.dim
 
                     // Record mark: a ring around a dot that swells on hover.
                     Item {
@@ -1039,7 +1080,12 @@ PillSurface {
                             border.color: Colors.on_error
                         }
                         Rectangle {
-                            anchors.centerIn: parent
+                            // Exact centre, not anchors.centerIn: centerIn snaps
+                            // the offset to whole pixels (alignWhenCentered), and
+                            // at fractional scale the 8/10·s dot and the 18·s
+                            // ring rounded apart — the dot sat ~1px high-left.
+                            x: (parent.width - width) / 2
+                            y: (parent.height - height) / 2
                             width: (recArea.containsMouse && recBtn.usable ? 10 : 8) * root.s
                             height: width
                             radius: width / 2

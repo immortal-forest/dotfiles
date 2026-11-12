@@ -106,6 +106,7 @@ Item {
             width: item.leading ? Math.max(childrenRect.width, M3.iconButtonIconSize * item.s) : 0
             height: item.leading ? Math.max(childrenRect.height, M3.iconButtonIconSize * item.s) : 0
             opacity: item.enabled ? 1 : M3.disabledContentOpacity
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
             Loader {
                 anchors.centerIn: parent
@@ -121,6 +122,7 @@ Item {
             width: item.trailing ? childrenRect.width : 0
             height: item.trailing ? childrenRect.height : 0
             opacity: item.enabled ? 1 : M3.disabledContentOpacity
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
             Loader {
                 anchors.centerIn: parent

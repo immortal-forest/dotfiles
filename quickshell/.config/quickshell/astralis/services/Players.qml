@@ -224,7 +224,7 @@ Singleton {
         for (i = 0; i < apps.length; i++) {
             e = apps[i];
             if (e && e.id && e.id.toLowerCase() === lid && e.icon)
-                return Quickshell.iconPath(e.icon, "application-x-executable");
+                return (Quickshell.iconPath(e.icon, true) || Quickshell.iconPath("application-x-executable", true));
         }
         // Fuzzy: a launcher-wrapped app reports one entry name but installs
         // another (MPRIS "spotify" ↔ spotify-launcher.desktop, WMClass spotify).
@@ -236,9 +236,9 @@ Singleton {
             var eid = (e.id || "").toLowerCase();
             var wm = (e.startupClass || "").toLowerCase();
             if (wm === lid || (eid.length && (eid.indexOf(lid) === 0 || lid.indexOf(eid) === 0)))
-                return Quickshell.iconPath(e.icon, "application-x-executable");
+                return (Quickshell.iconPath(e.icon, true) || Quickshell.iconPath("application-x-executable", true));
         }
-        return Quickshell.iconPath(lid, "application-x-executable");
+        return (Quickshell.iconPath(lid, true) || Quickshell.iconPath("application-x-executable", true));
     }
 
     function artUrlFor(p) {

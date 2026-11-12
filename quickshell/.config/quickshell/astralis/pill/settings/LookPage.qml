@@ -162,6 +162,7 @@ SettingsPage {
                 scale: (dotMA.containsMouse ? 1.15 : 1) * (dotMA.pressed ? 0.96 : 1)
                 Behavior on scale { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                 Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+                Behavior on border.width { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
                 // A colour strip is a radio GROUP, exactly like SettingsSeg —
                 // one swatch is the stored border colour and picking another
@@ -384,7 +385,7 @@ SettingsPage {
                 sub: "Blur radius"
                 captionOnFocus: true
                 icon: "waves"
-                visible: root.blurOn
+                shown: root.blurOn
 
                 ScrubValue {
                     id: blSizeScrub
@@ -406,7 +407,7 @@ SettingsPage {
                 sub: "More passes, smoother blur"
                 captionOnFocus: true
                 icon: "reboot"
-                visible: root.blurOn
+                shown: root.blurOn
                 last: true
 
                 ScrubValue {

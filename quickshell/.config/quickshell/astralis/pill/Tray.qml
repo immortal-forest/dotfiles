@@ -174,8 +174,8 @@ Item {
             anchors.fill: parent
             anchors.leftMargin: mrow.indent
             radius: 8 * tray.s
-            color: mrowArea.containsMouse && mrow.entryData.enabled
-                ? Qt.alpha(Colors.on_surface, 0.055) : "transparent"
+            color: Qt.alpha(Colors.on_surface, mrowArea.containsMouse && mrow.entryData.enabled ? 0.055 : 0)
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
 
             Rectangle {
                 anchors.left: parent.left
@@ -241,6 +241,7 @@ Item {
                 text: mrow.entryData.text
                 color: !mrow.entryData.enabled ? Qt.alpha(Colors.on_surface_variant, 0.8)
                     : (mrowArea.containsMouse ? Colors.on_surface : Qt.alpha(Colors.on_surface, 0.82))
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
                 font.family: Appearance.font.family
                 font.pixelSize: 13 * tray.s
                 // Pinned, NOT hover-driven. A weight swap re-measures the
@@ -283,26 +284,45 @@ Item {
         property bool open: false
         property real anchorX: 0
 
-        onOpenChanged: {
-            if (!open) {
+        // 0..1 entrance/exit progress of the card. In: standard length with the
+        // emphasized-decel settle; out: the shorter effects length. The window
+        // stays mapped until it has faded (visible below), and the menu model is
+        // only released then, so the rows don't vanish mid-fade.
+        property real prog: open ? 1 : 0
+        Behavior on prog {
+            NumberAnimation {
+                duration: menu.open ? Motion.standard : Motion.expressiveEffectsDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: menu.open ? Motion.emphasizedDecel : Motion.standardCurve
+            }
+        }
+
+        onVisibleChanged: {
+            if (!visible) {
                 card.expandedIdx = -1;
                 opener.menu = null;
             }
         }
 
         screen: tray.barWindow ? tray.barWindow.screen : null
-        visible: open
+        visible: open || prog > 0.01
         color: "transparent"
+
+        // Fading out: click-through, so nothing can land on a dying menu.
+        mask: open ? fullMask : closedMask
+        Region { id: closedMask }
+        Region { id: fullMask; x: 0; y: 0; width: menu.width; height: menu.height }
 
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
+        WlrLayershell.keyboardFocus: menu.open ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         WlrLayershell.namespace: "astralis-tray"
 
         anchors { top: true; left: true; right: true; bottom: true }
 
         MouseArea {
             anchors.fill: parent
+            enabled: menu.open
             onClicked: menu.open = false
         }
 
@@ -316,7 +336,16 @@ Item {
                 id: card
 
                 x: Math.max(8 * tray.s, Math.min(menu.anchorX - width / 2, menu.width - width - 8 * tray.s))
-                y: 50 * tray.s
+                // Rises into place from the bar it opens under, scaling out from the
+                // tray icon's x; fades with it.
+                y: 50 * tray.s - (1 - menu.prog) * 8 * tray.s
+                opacity: menu.prog
+                transform: Scale {
+                    origin.x: Math.max(0, Math.min(card.width, menu.anchorX - card.x))
+                    origin.y: 0
+                    xScale: 0.94 + 0.06 * menu.prog
+                    yScale: 0.94 + 0.06 * menu.prog
+                }
                 width: 220 * tray.s
                 radius: 12 * tray.s
                 clip: true
@@ -352,7 +381,7 @@ Item {
                     shadowVerticalOffset: 4 * tray.s
                 }
 
-                MouseArea { anchors.fill: parent }
+                MouseArea { anchors.fill: parent; enabled: menu.open }
 
                 Column {
                     id: col

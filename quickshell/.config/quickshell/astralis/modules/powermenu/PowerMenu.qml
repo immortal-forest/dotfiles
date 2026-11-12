@@ -224,6 +224,9 @@ PanelWindow {
         Rectangle {
             anchors.fill: parent
             color: Qt.alpha(Colors.scrim, 0.22)
+            // fades with the content (same clock) instead of snapping with the window
+            opacity: root.open ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
             MouseArea {
                 anchors.fill: parent
@@ -313,9 +316,9 @@ PanelWindow {
                         scale: (mouseArea.pressed ? 0.94 : 1) * (tile.kbFocus ? 1.04 : 1.0)
                         Behavior on scale {
                             NumberAnimation {
-                                duration: Motion.expressiveDefaultSpatialDur
+                                duration: Motion.glide
                                 easing.type: Motion.easeBezier
-                                easing.bezierCurve: Motion.expressiveDefaultSpatial
+                                easing.bezierCurve: Motion.expressiveFastSpatial
                             }
                         }
 
@@ -443,7 +446,12 @@ PanelWindow {
 
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    visible: tile.modelData.confirm
+                                    // Holds its line on EVERY tile (just unseen
+                                    // where there's nothing to confirm): with a
+                                    // visible flip, the confirm tiles' centred
+                                    // columns ran one line taller, so their
+                                    // icons and labels sat ~7px above the rest.
+                                    opacity: tile.modelData.confirm ? 1 : 0
                                     text: "hold to confirm"
                                     color: Qt.alpha(Colors.error, 0.85)
                                     font.family: Appearance.font.family

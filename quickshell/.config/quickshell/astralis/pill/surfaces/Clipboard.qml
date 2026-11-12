@@ -312,7 +312,11 @@ PillSurface {
 
     Text {
         anchors.centerIn: list
-        visible: root.results.length === 0
+        // Cross-faded like Launcher's empty state: it appears as the query
+        // narrows and while the list is still loading, and a bare flip flickers.
+        opacity: root.results.length === 0 ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
         text: root.unavailable ? "cliphist unavailable"
             : (root.query.length ? "No matches" : "History empty")
         color: Qt.alpha(Colors.on_surface_variant, 0.65)
@@ -365,13 +369,26 @@ PillSurface {
                 }
             }
 
+            // Cross-fades like Launcher's selection container instead of flipping.
             Rectangle {
                 anchors.fill: parent
                 radius: 9 * root.s
-                visible: row.selected || rowHover.hovered
+                opacity: row.selected || rowHover.hovered ? 1 : 0
+                visible: opacity > 0.01
                 color: row.selected ? Colors.surface_container_highest : Qt.alpha(Colors.on_surface, 0.03)
                 border.width: row.selected ? 1 : 0
                 border.color: Qt.alpha(Colors.outline_variant, 0.9)
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            }
+
+            // Press dip, the same 0.96 launcher-result tier as Launcher's rows.
+            scale: rowArea.pressed ? 0.96 : 1
+            Behavior on scale {
+                NumberAnimation {
+                    duration: Motion.glide
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveFastSpatial
+                }
             }
 
             MouseArea {
@@ -415,10 +432,27 @@ PillSurface {
                     }
                 }
 
+                // Text entries keep the thumbnail column too (a dim type mark
+                // centred in the same 52·s slot), so every label starts on one
+                // left edge instead of text rows hugging the inset while image
+                // labels start a thumbnail further in.
+                GlyphIcon {
+                    id: textMark
+                    visible: !thumbTile.visible
+                    x: (52 * root.s - width) / 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 14 * root.s
+                    height: width
+                    name: "type"
+                    stroke: 1.7
+                    color: row.selected ? Colors.on_surface_variant : Qt.alpha(Colors.on_surface_variant, 0.5)
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                }
+
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.left: thumbTile.visible ? thumbTile.right : parent.left
-                    anchors.leftMargin: thumbTile.visible ? 9 * root.s : 0
+                    anchors.left: parent.left
+                    anchors.leftMargin: (52 + 9) * root.s
                     anchors.right: sizeTag.left
                     anchors.rightMargin: 8 * root.s
                     text: row.entry === undefined ? "" : (row.entry.isImage ? row.entry.label : row.entry.preview)
@@ -427,7 +461,10 @@ PillSurface {
                         : (row.selected ? Colors.on_surface : Colors.on_surface_variant)
                     font.family: Appearance.font.family
                     font.pixelSize: 11.5 * root.s
-                    font.weight: row.selected ? Font.DemiBold : Font.Medium
+                    // Pinned, as in Launcher: hover moves the selection, and a weight
+                    // change under the cursor reflows the text and can't be animated.
+                    font.weight: Font.Medium
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
                     elide: Text.ElideRight
                     maximumLineCount: 1
                     textFormat: Text.PlainText

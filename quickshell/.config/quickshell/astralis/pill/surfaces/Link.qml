@@ -12,6 +12,7 @@ import "../../services"
 import "../../services" as Services // Notifications singleton — the sibling
                                     // surface type shadows the bare name
 import "../../config"
+import "../settings" as SettingsUi
 
 /**
  * astralis — 繋 LINK surface (Ricelin Link.qml layout): connectivity rows
@@ -24,6 +25,12 @@ import "../../config"
  * from nmcli (Ricelin LinkWifi.qml); tapping a secured unknown network expands
  * an inline password row that connects through `nmcli --ask dev wifi connect`.
  * All adapter reads are guarded so missing hardware degrades to a hint.
+ *
+ * A cog on each saved network / paired device drills one level deeper into
+ * that item's own settings page ("wifiItem" / "btItem"): connect, forget,
+ * auto-connect, metered, saved password and live addressing for a network
+ * (nmcli, via scripts/wifi-profile); rename, trust, block, wake and details
+ * for a device (the writable Quickshell BluetoothDevice properties).
  */
 PillSurface {
     id: root
@@ -37,6 +44,13 @@ PillSurface {
 
     ameForm: "dock"
     amePoint: Qt.point(width / 2, height - 8 * s)
+    /**
+     * Strip the docked bead owns at the bottom. The main view's desiredH
+     * already reserves it; the drill-in lists and item pages run to the
+     * bottom edge, so they stop this far above it — otherwise the bead sat
+     * on top of the last row (and its hover highlight).
+     */
+    readonly property real beadClear: 18 * s
     // Main view hugs its rows (+ the 静 block when empty, + the bead's dock);
     // the Wi-Fi / Bluetooth drill-ins keep the full fixed height for lists.
     desiredH: subview === "main"
@@ -48,6 +62,10 @@ PillSurface {
      * returns false so the caller closes the surface instead.
      */
     function back() {
+        if (subview === "wifiItem" || subview === "btItem") {
+            subview = subview === "wifiItem" ? "wifi" : "bt";
+            return true;
+        }
         if (subview !== "main") {
             subview = "main";
             return true;
@@ -485,7 +503,16 @@ PillSurface {
             btAdapter.discovering = false;
     }
 
-    onSubviewChanged: if (subview !== "bt") btLeave()
+    onSubviewChanged: {
+        if (subview !== "bt")
+            btLeave();
+        itemForgetArmed = false;
+        // The saved password only lives in memory while its page is up.
+        if (subview !== "wifiItem") {
+            itemPsk = "";
+            itemPskShown = false;
+        }
+    }
 
     Timer {
         id: btScanStop
@@ -524,6 +551,428 @@ PillSurface {
         values: root.btDevices
     }
 
+    // ── per-item settings (one saved network / one paired device) ───────────
+    /**
+     * Both item pages key on the SSID / MAC rather than holding the Quickshell
+     * object: a rescan can swap the object out from under the page, so the
+     * live object is re-resolved from the current list instead.
+     */
+    property string itemSsid: ""
+    readonly property var itemNet: {
+        if (!itemSsid.length)
+            return null;
+        for (var i = 0; i < nets.length; i++)
+            if (nets[i].name === itemSsid)
+                return nets[i];
+        return null;
+    }
+    readonly property bool itemNetConnected: itemNet !== null && itemNet.connected === true
+    /** Saved profiles whose SSID matches, the live one first: [{ uuid, id, autoconnect, metered, active }]. */
+    property var itemProfiles: []
+    /** Live addressing while this network is the link: { ip4, gw, dns, ip6, mac }. */
+    property var itemIp: ({})
+    /** The in-use (else strongest) access point: { signal, bssid, chan, freq, rate, security }. */
+    property var itemAp: ({})
+    property bool itemLoaded: false
+    property bool itemQueued: false
+    property string itemPsk: ""
+    property bool itemPskShown: false
+    property bool itemPskMissing: false
+    property bool itemPskCopyAfter: false
+    property bool itemForgetArmed: false
+    /** Label of the detail row that just copied its value (flashes "Copied"). */
+    property string itemCopied: ""
+    /** nmcli writes waiting their turn: [[key, value], …]. */
+    property var itemModQueue: []
+
+    readonly property var itemPrimary: itemProfiles.length > 0 ? itemProfiles[0] : null
+    readonly property bool itemAutoconnect: itemPrimary !== null && itemPrimary.autoconnect === true
+    readonly property bool itemMetered: itemPrimary !== null && itemPrimary.metered === "yes"
+    readonly property bool itemSecured: (itemAp.security || "").length > 0 || isSecured(itemSsid)
+    readonly property string itemStatusText: itemNetConnected ? "Connected"
+        : (itemNet && itemNet.stateChanging === true) ? "Connecting…"
+        : (itemNet ? "Saved · in range" : "Saved · out of range")
+
+    function itemUuids() {
+        var out = [];
+        for (var i = 0; i < itemProfiles.length; i++)
+            out.push(itemProfiles[i].uuid);
+        return out;
+    }
+
+    function openWifiItem(ssid) {
+        if (!ssid || !ssid.length)
+            return;
+        itemSsid = ssid;
+        itemProfiles = [];
+        itemIp = ({});
+        itemAp = ({});
+        itemLoaded = false;
+        itemPsk = "";
+        itemPskShown = false;
+        itemPskMissing = false;
+        expandedSsid = "";
+        subview = "wifiItem";
+        refreshWifiItem();
+    }
+
+    function refreshWifiItem() {
+        if (!itemSsid.length)
+            return;
+        if (wifiItemProc.running) {
+            itemQueued = true;
+            return;
+        }
+        wifiItemProc.command = ["sh", Quickshell.shellDir + "/scripts/wifi-profile", itemSsid];
+        wifiItemProc.running = true;
+    }
+
+    /** Splits a terse nmcli row on every unescaped colon, unescaping each field. */
+    function splitTerseAll(line) {
+        var out = [];
+        var cur = "";
+        for (var k = 0; k < line.length; k++) {
+            var c = line[k];
+            if (c === "\\" && k + 1 < line.length) {
+                cur += line[++k];
+            } else if (c === ":") {
+                out.push(cur);
+                cur = "";
+            } else {
+                cur += c;
+            }
+        }
+        out.push(cur);
+        return out;
+    }
+
+    /** Folds scripts/wifi-profile output (see its header) into the item state. */
+    function parseWifiItem(text) {
+        var profs = {};
+        var order = [];
+        var active = "";
+        var ip = {};
+        var best = null;
+        var lines = text.split("\n");
+        for (var i = 0; i < lines.length; i++) {
+            var f = lines[i].split("\t");
+            var rest = f.slice(f[0] === "P" ? 2 : 1).join("\t");
+            var c = rest.indexOf(":");
+            var key = c < 0 ? "" : rest.slice(0, c).replace(/\[\d+\]$/, "");
+            var val = c < 0 ? "" : rest.slice(c + 1).trim();
+            if (f[0] === "P" && f.length >= 3) {
+                var u = f[1];
+                if (!profs[u]) {
+                    profs[u] = { uuid: u, id: "", autoconnect: true, metered: "unknown", active: false };
+                    order.push(u);
+                }
+                if (key === "connection.id")
+                    profs[u].id = val;
+                else if (key === "connection.autoconnect")
+                    profs[u].autoconnect = val === "yes";
+                else if (key === "connection.metered")
+                    profs[u].metered = val;
+            } else if (f[0] === "X" && f.length >= 2) {
+                active = f[1];
+            } else if (f[0] === "I" && val.length && val !== "--") {
+                if (key === "IP4.ADDRESS" && !ip.ip4)
+                    ip.ip4 = val.split("/")[0];
+                else if (key === "IP4.GATEWAY")
+                    ip.gw = val;
+                else if (key === "IP4.DNS")
+                    ip.dns = ip.dns ? ip.dns + ", " + val : val;
+                else if (key === "IP6.ADDRESS" && !ip.ip6 && val.indexOf("fe80") !== 0)
+                    ip.ip6 = val.split("/")[0];
+                else if (key === "GENERAL.HWADDR")
+                    ip.mac = val;
+            } else if (f[0] === "A" && f.length >= 2) {
+                var a = splitTerseAll(rest);
+                if (a.length < 8 || a[7] !== itemSsid)
+                    continue;
+                var ap = {
+                    inUse: a[0] === "*",
+                    signal: parseInt(a[1]) || 0,
+                    bssid: a[2],
+                    chan: a[3],
+                    freq: a[4],
+                    rate: a[5],
+                    security: a[6] === "--" ? "" : a[6]
+                };
+                if (!best || (ap.inUse && !best.inUse) || (ap.inUse === best.inUse && ap.signal > best.signal))
+                    best = ap;
+            }
+        }
+        var list = [];
+        for (var j = 0; j < order.length; j++) {
+            profs[order[j]].active = order[j] === active;
+            list.push(profs[order[j]]);
+        }
+        list.sort((x, y) => (y.active === true) - (x.active === true));
+        itemProfiles = list;
+        itemIp = active.length ? ip : ({});
+        itemAp = best || ({});
+        itemLoaded = true;
+    }
+
+    function bandText(freq) {
+        var mhz = parseInt(freq) || 0;
+        if (mhz <= 0)
+            return "";
+        return mhz < 3000 ? "2.4 GHz" : (mhz < 5925 ? "5 GHz" : "6 GHz");
+    }
+
+    /**
+     * Writes one connection setting to EVERY saved profile for the SSID, so a
+     * duplicate ("Hmmm 1") can't keep auto-joining behind the switch. The row
+     * flips at once; the re-read after nmcli exits settles it.
+     */
+    function setWifiItemProp(key, value) {
+        if (!itemProfiles.length)
+            return;
+        var list = [];
+        for (var i = 0; i < itemProfiles.length; i++) {
+            var p = Object.assign({}, itemProfiles[i]);
+            if (key === "connection.autoconnect")
+                p.autoconnect = value === "yes";
+            else if (key === "connection.metered")
+                p.metered = value;
+            list.push(p);
+        }
+        itemProfiles = list;
+        itemModQueue = itemModQueue.concat([[key, value]]);
+        runWifiMod();
+    }
+
+    function runWifiMod() {
+        if (wifiModProc.running || !itemModQueue.length)
+            return;
+        var next = itemModQueue[0];
+        itemModQueue = itemModQueue.slice(1);
+        wifiModProc.command = ["sh", "-c",
+            'k="$1"; v="$2"; shift 2; for u; do nmcli connection modify uuid "$u" "$k" "$v" || exit 1; done',
+            "sh", next[0], next[1]].concat(itemUuids());
+        wifiModProc.running = true;
+    }
+
+    /** Two taps: the first arms the button for 3 s, the second deletes every profile. */
+    function forgetWifiItem() {
+        if (!itemForgetArmed) {
+            itemForgetArmed = true;
+            forgetDisarm.restart();
+            return;
+        }
+        itemForgetArmed = false;
+        var uuids = itemUuids();
+        if (uuids.length) {
+            var cmd = ["nmcli", "connection", "delete"];
+            for (var i = 0; i < uuids.length; i++)
+                cmd.push("uuid", uuids[i]);
+            wifiForgetProc.command = cmd;
+            wifiForgetProc.running = true;
+        } else if (itemNet && typeof itemNet.forget === "function") {
+            itemNet.forget();
+        }
+        subview = "wifi";
+    }
+
+    /** Reads the saved secret on demand (never on page open). */
+    function fetchWifiItemPsk(thenCopy) {
+        if (!itemPrimary || pskProc.running)
+            return;
+        itemPskCopyAfter = thenCopy === true;
+        pskProc.command = ["nmcli", "-s", "-t", "-f", "802-11-wireless-security.psk",
+            "connection", "show", "uuid", itemPrimary.uuid];
+        pskProc.running = true;
+    }
+
+    function toggleWifiItemPsk() {
+        if (itemPskShown)
+            itemPskShown = false;
+        else if (itemPsk.length)
+            itemPskShown = true;
+        else
+            fetchWifiItemPsk(false);
+    }
+
+    function copyWifiItemPsk() {
+        if (itemPsk.length)
+            copyText("Password", itemPsk, true);
+        else
+            fetchWifiItemPsk(true);
+    }
+
+    /**
+     * Clipboard write. The text rides in the environment, not argv: argv is
+     * world-readable in /proc while environ is owner-only, and wl-copy keeps
+     * serving (so keeps living) after the copy. Secrets get `--sensitive` so
+     * the cliphist watcher skips them.
+     */
+    function copyText(label, text, sensitive) {
+        if (!text || !text.length || copyProc.running)
+            return;
+        copyProc.environment = ({ ASTRALIS_CLIP: text });
+        copyProc.command = ["sh", "-c",
+            sensitive ? 'printf "%s" "$ASTRALIS_CLIP" | wl-copy --sensitive'
+                      : 'printf "%s" "$ASTRALIS_CLIP" | wl-copy'];
+        copyProc.running = true;
+        itemCopied = label;
+        copiedClear.restart();
+    }
+
+    // Association / DHCP land after the switch flips: re-read once settled.
+    onItemNetConnectedChanged: if (subview === "wifiItem") itemSettle.restart()
+
+    Timer {
+        id: itemSettle
+        interval: 1500
+        onTriggered: root.refreshWifiItem()
+    }
+
+    Timer {
+        id: forgetDisarm
+        interval: 3000
+        onTriggered: root.itemForgetArmed = false
+    }
+
+    Timer {
+        id: copiedClear
+        interval: 1400
+        onTriggered: root.itemCopied = ""
+    }
+
+    Process {
+        id: wifiItemProc
+        stdout: StdioCollector { onStreamFinished: root.parseWifiItem(this.text) }
+        stderr: StdioCollector {}
+        onExited: {
+            if (root.itemQueued) {
+                root.itemQueued = false;
+                root.refreshWifiItem();
+            }
+        }
+    }
+
+    Process {
+        id: wifiModProc
+        stdout: StdioCollector {}
+        stderr: StdioCollector {}
+        onExited: {
+            if (root.itemModQueue.length)
+                root.runWifiMod();
+            else
+                root.refreshWifiItem();
+        }
+    }
+
+    Process {
+        id: wifiForgetProc
+        stdout: StdioCollector {}
+        stderr: StdioCollector {}
+        onExited: root.refreshWifiMeta()
+    }
+
+    Process {
+        id: pskProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var t = this.text.replace(/\n$/, "");
+                var c = t.indexOf(":");
+                var pw = c < 0 ? "" : t.slice(c + 1);
+                root.itemPsk = pw;
+                root.itemPskMissing = pw.length === 0;
+                if (!pw.length)
+                    return;
+                if (root.itemPskCopyAfter)
+                    root.copyText("Password", pw, true);
+                else
+                    root.itemPskShown = true;
+            }
+        }
+        stderr: StdioCollector {}
+    }
+
+    Process {
+        id: copyProc
+        stdout: StdioCollector {}
+        stderr: StdioCollector {}
+    }
+
+    // Bluetooth device page.
+    property string itemBtAddress: ""
+    readonly property var itemDev: {
+        if (!itemBtAddress.length)
+            return null;
+        var all = (typeof Bluetooth !== "undefined" && Bluetooth && Bluetooth.devices)
+            ? Bluetooth.devices.values : [];
+        for (var i = 0; i < all.length; i++)
+            if (all[i] && all[i].address === itemBtAddress)
+                return all[i];
+        return null;
+    }
+    readonly property string itemDevName: itemDev
+        ? (itemDev.name || itemDev.deviceName || itemBtAddress) : itemBtAddress
+    readonly property bool itemDevInput: itemDev !== null && String(itemDev.icon || "").indexOf("input") === 0
+    readonly property string itemDevStatus: {
+        if (!itemDev)
+            return "Unavailable";
+        if (!btOn)
+            return "Bluetooth is off";
+        var parts = [itemDev.connected ? "Connected" : (itemDev.blocked ? "Blocked" : "Paired")];
+        var b = btBatteryText(itemDev);
+        if (itemDev.connected && b.length)
+            parts.push(b);
+        return parts.join(" · ");
+    }
+
+    function openBtItem(d) {
+        if (!d || !d.address)
+            return;
+        itemBtAddress = d.address;
+        btExpandedAddress = "";
+        btNameField.text = d.name || "";
+        subview = "btItem";
+    }
+
+    /** BlueZ's icon hint as a word. */
+    function btKindText(icon) {
+        var map = {
+            "audio-headphones": "Headphones",
+            "audio-headset": "Headset",
+            "audio-card": "Speaker",
+            "input-keyboard": "Keyboard",
+            "input-mouse": "Mouse",
+            "input-tablet": "Tablet",
+            "input-gaming": "Game controller",
+            "phone": "Phone",
+            "computer": "Computer",
+            "camera-video": "Camera",
+            "camera-photo": "Camera",
+            "printer": "Printer",
+            "modem": "Modem",
+            "network-wireless": "Network"
+        };
+        return map[icon] || (icon && icon.length ? "Device" : "");
+    }
+
+    /** Writes the BlueZ Alias; an empty name hands back the device's own. */
+    function btRename(d, text) {
+        if (!d)
+            return;
+        d.name = String(text || "").trim();
+    }
+
+    function forgetBtItem() {
+        if (!itemForgetArmed) {
+            itemForgetArmed = true;
+            forgetDisarm.restart();
+            return;
+        }
+        itemForgetArmed = false;
+        var d = itemDev;
+        subview = "bt";
+        btForget(d);
+    }
+
     onOpenChanged: {
         if (open) {
             subview = "main";
@@ -534,6 +983,8 @@ PillSurface {
             connecting = false;   // clear the spinner so a reopen isn't stale
             pwDraft = "";
             btLeave();
+            itemPsk = "";
+            itemPskShown = false;
         }
     }
 
@@ -610,6 +1061,7 @@ PillSurface {
         property string title: ""
         property string status: ""
         property bool statusLit: false
+        property string backHint: "Return to the connectivity list"
         default property alias rightContent: subRight.data
 
         width: parent ? parent.width : 0
@@ -628,7 +1080,7 @@ PillSurface {
             // other clue to depth a screen reader gets.
             Accessible.role: Accessible.Button
             Accessible.name: "Back"
-            Accessible.description: "Return to the connectivity list"
+            Accessible.description: subHead.backHint
             Accessible.focusable: true
             Accessible.onPressAction: root.back()
 
@@ -854,6 +1306,278 @@ PillSurface {
         }
     }
 
+    /** The per-row way into an item's settings page. */
+    component ItemCog: Item {
+        id: cog
+
+        property string itemName: ""
+        signal clicked()
+
+        width: 24 * root.s
+        height: 24 * root.s
+
+        Accessible.role: Accessible.Button
+        Accessible.name: "Settings"
+        Accessible.description: cog.itemName
+        Accessible.focusable: true
+        Accessible.onPressAction: cog.clicked()
+
+        scale: cogArea.pressed ? 0.9 : 1
+        Behavior on scale {
+            NumberAnimation {
+                duration: Motion.glide
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveFastSpatial
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: width / 2
+            color: cogArea.containsMouse ? Qt.alpha(Colors.on_surface, 0.08) : "transparent"
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+        }
+
+        GlyphIcon {
+            anchors.centerIn: parent
+            width: 13 * root.s
+            height: 13 * root.s
+            name: "cog"
+            stroke: 1.7
+            color: cogArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+        }
+
+        MouseArea {
+            id: cogArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: cog.clicked()
+        }
+    }
+
+    /** One switch on an item page: name over a dim caption, the whole row toggles. */
+    component ItemSwitch: Rectangle {
+        id: isw
+
+        property string label: ""
+        property string sub: ""
+        property bool on: false
+        signal toggled()
+
+        width: parent ? parent.width : 0
+        height: (sub.length > 0 ? 42 : 34) * root.s
+        radius: 9 * root.s
+        color: iswHover.hovered ? Colors.surface_container_highest : "transparent"
+        opacity: enabled ? 1 : 0.4
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: isw.label
+        Accessible.description: isw.sub
+        Accessible.checkable: true
+        Accessible.checked: isw.on
+        Accessible.focusable: true
+        Accessible.onToggleAction: isw.toggled()
+        Accessible.onPressAction: isw.toggled()
+
+        HoverHandler {
+            id: iswHover
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: isw.toggled()
+        }
+
+        Column {
+            anchors.left: parent.left
+            anchors.leftMargin: 10 * root.s
+            anchors.right: iswToggle.left
+            anchors.rightMargin: 10 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 2 * root.s
+
+            Text {
+                width: parent.width
+                text: isw.label
+                color: Colors.on_surface
+                font.family: Appearance.font.family
+                font.pixelSize: 11.5 * root.s
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Text {
+                width: parent.width
+                visible: isw.sub.length > 0
+                text: isw.sub
+                color: Qt.alpha(Colors.on_surface_variant, 0.85)
+                font.family: Appearance.font.family
+                font.pixelSize: 9.5 * root.s
+                elide: Text.ElideRight
+            }
+        }
+
+        LinkToggle {
+            id: iswToggle
+            s: root.s
+            anchors.right: parent.right
+            anchors.rightMargin: 6 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            on: isw.on
+            accessibleName: isw.label
+            onToggled: isw.toggled()
+        }
+    }
+
+    /** Read-only detail: name left, value right; a tap copies the value. */
+    component ItemDetail: Rectangle {
+        id: idt
+
+        property string label: ""
+        property string value: ""
+        property bool copyable: true
+        readonly property bool justCopied: root.itemCopied === idt.label
+
+        visible: idt.value.length > 0
+        width: parent ? parent.width : 0
+        height: 28 * root.s
+        radius: 8 * root.s
+        color: idt.copyable && idtHover.hovered ? Colors.surface_container_highest : "transparent"
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+        Accessible.role: idt.copyable ? Accessible.Button : Accessible.StaticText
+        Accessible.name: idt.label
+        Accessible.description: idt.copyable ? idt.value + " — press to copy" : idt.value
+        Accessible.focusable: idt.copyable
+        Accessible.onPressAction: if (idt.copyable) root.copyText(idt.label, idt.value, false)
+
+        HoverHandler {
+            id: idtHover
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            enabled: idt.copyable
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.copyText(idt.label, idt.value, false)
+        }
+
+        Text {
+            id: idtLabel
+            anchors.left: parent.left
+            anchors.leftMargin: 10 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            text: idt.label
+            color: Colors.on_surface_variant
+            font.family: Appearance.font.family
+            font.pixelSize: 10.5 * root.s
+            font.weight: Font.Medium
+        }
+
+        Text {
+            anchors.left: idtLabel.right
+            anchors.leftMargin: 12 * root.s
+            anchors.right: parent.right
+            anchors.rightMargin: 10 * root.s
+            anchors.verticalCenter: parent.verticalCenter
+            horizontalAlignment: Text.AlignRight
+            text: idt.justCopied ? "Copied" : idt.value
+            color: idt.justCopied ? Colors.primary : Colors.on_surface
+            font.family: Appearance.font.family
+            font.pixelSize: 10.5 * root.s
+            font.weight: Font.Medium
+            font.features: ({ "tnum": 1 })
+            elide: Text.ElideMiddle
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
+        }
+    }
+
+    /** Pill action on an item page: outlined, `filled` (primary) or `danger` (error). */
+    component ItemAction: Rectangle {
+        id: iac
+
+        property string label: ""
+        property string icon: ""
+        property string description: ""
+        property bool filled: false
+        property bool danger: false
+        signal clicked()
+
+        readonly property color fg: iac.danger ? Colors.error
+            : (iac.filled ? Colors.on_primary : Colors.on_surface)
+
+        height: 30 * root.s
+        width: iacRow.implicitWidth + 26 * root.s
+        radius: height / 2
+        color: iac.danger ? Qt.alpha(Colors.error, 0.12)
+            : (iac.filled ? Colors.primary : "transparent")
+        border.width: iac.filled ? 0 : 1
+        border.color: iac.danger ? Qt.alpha(Colors.error, 0.45) : Qt.alpha(Colors.outline_variant, 0.6)
+        opacity: enabled ? 1 : 0.4
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
+        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+
+        scale: iacArea.pressed ? 0.94 : 1
+        Behavior on scale {
+            NumberAnimation {
+                duration: Motion.glide
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveFastSpatial
+            }
+        }
+
+        Accessible.role: Accessible.Button
+        Accessible.name: iac.label
+        Accessible.description: iac.description
+        Accessible.focusable: true
+        Accessible.onPressAction: iac.clicked()
+
+        // M3 state layer: the content colour at 8% hover / 12% press.
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            color: iac.fg
+            opacity: iacArea.pressed ? 0.12 : (iacArea.containsMouse ? 0.08 : 0)
+            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+        }
+
+        Row {
+            id: iacRow
+            anchors.centerIn: parent
+            spacing: 6 * root.s
+
+            GlyphIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: iac.icon.length > 0
+                width: 13 * root.s
+                height: 13 * root.s
+                name: iac.icon
+                stroke: 1.9
+                color: iac.fg
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: iac.label
+                color: iac.fg
+                font.family: Appearance.font.family
+                font.pixelSize: 10.5 * root.s
+                font.weight: Font.DemiBold
+            }
+        }
+
+        MouseArea {
+            id: iacArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: iac.clicked()
+        }
+    }
+
     // ── main view ───────────────────────────────────────────────────────────
     Item {
         id: mainView
@@ -917,7 +1641,7 @@ PillSurface {
                         text: "ON"
                         color: Colors.primary
                         font.family: Appearance.font.family
-                        font.pixelSize: 9 * root.s
+                        font.pixelSize: 9.5 * root.s
                         font.weight: Font.Bold
                         font.letterSpacing: 1.4 * root.s
                     }
@@ -1067,8 +1791,12 @@ PillSurface {
                     id: inboxClear
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: root.notifCount > 0
+                    opacity: root.notifCount > 0 ? 1 : 0
+                    visible: opacity > 0.01
                     spacing: 4 * root.s
+                    Behavior on opacity {
+                        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                    }
 
                     scale: inboxClearArea.pressed ? 0.92 : 1
                     Behavior on scale {
@@ -1406,6 +2134,7 @@ PillSurface {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.beadClear
             spacing: 2 * root.s
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -1542,6 +2271,15 @@ PillSurface {
                             color: Colors.primary
                             stroke: 2
                         }
+
+                        // Saved networks only: an unknown one has nothing to set.
+                        ItemCog {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: netItem.known || netItem.isActive
+                                || (netItem.modelData && netItem.modelData.known === true)
+                            itemName: netItem.ssid
+                            onClicked: root.openWifiItem(netItem.ssid)
+                        }
                     }
                 }
 
@@ -1635,7 +2373,9 @@ PillSurface {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 26 * root.s
                             height: 26 * root.s
-                            visible: pwField.text.length > 0
+                            opacity: pwField.text.length > 0 ? 1 : 0
+                            visible: opacity > 0.01
+                            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
                             Accessible.role: Accessible.Button
                             Accessible.name: pwBox.reveal ? "Hide password" : "Show password"
@@ -1693,8 +2433,8 @@ PillSurface {
                                 running: root.connecting && netItem.asking && !Motion.reduceMotion
                                 loops: Animation.Infinite
                                 alwaysRunToEnd: true
-                                NumberAnimation { from: 1; to: 0.45; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                NumberAnimation { from: 0.45; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
+                                NumberAnimation { from: 1; to: 0.45; duration: Motion.pulse; easing.type: Motion.easeStandard }
+                                NumberAnimation { from: 0.45; to: 1; duration: Motion.pulse; easing.type: Motion.easeStandard }
                             }
 
                             Accessible.role: Accessible.Button
@@ -1851,6 +2591,7 @@ PillSurface {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.beadClear
             spacing: 2 * root.s
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -2004,8 +2745,8 @@ PillSurface {
                             SequentialAnimation on opacity {
                                 running: (devItem.pairing || devItem.busy) && !Motion.reduceMotion
                                 loops: Animation.Infinite
-                                NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Easing.InOutSine }
-                                NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Easing.InOutSine }
+                                NumberAnimation { from: 0.35; to: 1; duration: Motion.pulse; easing.type: Motion.easeStandard }
+                                NumberAnimation { from: 1; to: 0.35; duration: Motion.pulse; easing.type: Motion.easeStandard }
                             }
                         }
 
@@ -2071,15 +2812,36 @@ PillSurface {
                                 onClicked: root.btActivate(devItem.modelData)
                             }
                         }
+
+                        ItemCog {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: devItem.isPaired
+                            itemName: devItem.devName
+                            onClicked: root.openBtItem(devItem.modelData)
+                        }
                     }
                 }
 
                 // Inline confirm row for known devices (Ricelin LinkBt):
                 // Connect/Disconnect, a Trust toggle, and Forget.
                 Item {
-                    visible: devItem.confirming
+                    // Grows open like the Wi-Fi password row; gated on opacity
+                    // (a hidden Column stops recomputing its children).
+                    opacity: devItem.confirming ? 1 : 0
+                    visible: opacity > 0.01
+                    clip: true
                     width: parent.width
-                    height: 26 * root.s
+                    height: devItem.confirming ? 26 * root.s : 0
+                    Behavior on opacity {
+                        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                    }
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Motion.standard
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.morphCurve
+                        }
+                    }
 
                     Text {
                         anchors.left: parent.left
@@ -2266,22 +3028,535 @@ PillSurface {
                 }
 
                 Text {
-                    visible: devItem.failed
+                    readonly property bool shown: devItem.failed
+                    opacity: shown ? 1 : 0
+                    visible: opacity > 0.01
+                    clip: true
+                    height: shown ? implicitHeight : 0
                     text: "Pairing failed"
                     color: Colors.error
                     font.family: Appearance.font.family
                     font.pixelSize: 9.5 * root.s
                     leftPadding: 32 * root.s
+                    Behavior on opacity {
+                        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+                    }
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Motion.standard
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.morphCurve
+                        }
+                    }
                 }
             }
         }
 
         HintText {
+            // Cross-fades with the list like the Wi-Fi hint does.
+            readonly property bool shown: root.btDevices.length === 0
             anchors.centerIn: btList
-            visible: root.btDevices.length === 0
+            opacity: shown ? 1 : 0
+            visible: opacity > 0.01
+            Behavior on opacity {
+                NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+            }
             text: root.btAdapter === null ? "No Bluetooth adapter"
                 : (!root.btOn ? "Bluetooth is off"
                     : (root.btDiscovering ? "Scanning…" : "No devices — scan to discover"))
+        }
+    }
+
+    // ── wifi network settings ───────────────────────────────────────────────
+    Item {
+        id: wifiItemView
+        anchors.fill: parent
+        opacity: root.subview === "wifiItem" ? 1 : 0
+        visible: opacity > 0.01
+        enabled: root.subview === "wifiItem" && root.active
+        Behavior on opacity {
+            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        }
+
+        SubHeader {
+            id: wifiItemHeader
+            anchors.top: parent.top
+            title: root.itemSsid
+            status: root.itemStatusText
+            statusLit: root.itemNetConnected
+            backHint: "Return to the Wi-Fi list"
+        }
+
+        Rectangle {
+            id: wifiItemDivider
+            anchors.top: wifiItemHeader.bottom
+            anchors.topMargin: 8 * root.s
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            color: Qt.alpha(Colors.on_surface, 0.06)
+        }
+
+        Flickable {
+            anchors.top: wifiItemDivider.bottom
+            anchors.topMargin: 2 * root.s
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.beadClear
+            contentHeight: wifiItemCol.implicitHeight + 8 * root.s
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+
+            Column {
+                id: wifiItemCol
+                width: parent.width
+                spacing: 2 * root.s
+
+                Row {
+                    topPadding: 10 * root.s
+                    bottomPadding: 2 * root.s
+                    leftPadding: 4 * root.s
+                    spacing: 8 * root.s
+
+                    ItemAction {
+                        label: root.itemNetConnected ? "Disconnect" : "Connect"
+                        icon: root.itemNetConnected ? "close" : "wifi"
+                        filled: !root.itemNetConnected
+                        description: root.itemSsid
+                        enabled: root.itemNet !== null && root.wifiOn
+                        onClicked: {
+                            if (!root.itemNet)
+                                return;
+                            if (root.itemNetConnected)
+                                root.itemNet.disconnect();
+                            else
+                                root.itemNet.connect();
+                        }
+                    }
+
+                    ItemAction {
+                        label: root.itemForgetArmed ? "Tap again to forget" : "Forget"
+                        icon: "trash"
+                        danger: true
+                        description: "Delete the saved profile for " + root.itemSsid
+                        enabled: root.itemProfiles.length > 0 || root.itemNet !== null
+                        onClicked: root.forgetWifiItem()
+                    }
+                }
+
+                SettingsUi.SettingsGroupLabel {
+                    s: root.s
+                    text: "Connection"
+                }
+
+                ItemSwitch {
+                    label: "Auto-connect"
+                    sub: "Join automatically when in range"
+                    on: root.itemAutoconnect
+                    enabled: root.itemPrimary !== null
+                    onToggled: root.setWifiItemProp("connection.autoconnect", root.itemAutoconnect ? "no" : "yes")
+                }
+
+                ItemSwitch {
+                    label: "Metered"
+                    sub: "Tell apps this link has a data cap"
+                    on: root.itemMetered
+                    enabled: root.itemPrimary !== null
+                    onToggled: root.setWifiItemProp("connection.metered", root.itemMetered ? "no" : "yes")
+                }
+
+                // Saved password: masked until asked for, read from nmcli on
+                // demand and dropped again when the page closes.
+                Rectangle {
+                    id: pskRow
+                    visible: root.itemPrimary !== null && (root.itemSecured || root.itemNet === null)
+                    width: parent.width
+                    height: 34 * root.s
+                    radius: 9 * root.s
+                    color: "transparent"
+
+                    Text {
+                        id: pskLabel
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10 * root.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Password"
+                        color: Colors.on_surface
+                        font.family: Appearance.font.family
+                        font.pixelSize: 11.5 * root.s
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        anchors.left: pskLabel.right
+                        anchors.leftMargin: 12 * root.s
+                        anchors.right: pskBtns.left
+                        anchors.rightMargin: 6 * root.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        horizontalAlignment: Text.AlignRight
+                        text: root.itemCopied === "Password" ? "Copied"
+                            : root.itemPskMissing ? "Not stored"
+                            : root.itemPskShown ? root.itemPsk : "••••••••"
+                        color: root.itemCopied === "Password" ? Colors.primary
+                            : root.itemPskMissing ? Colors.on_surface_variant : Colors.on_surface
+                        font.family: Appearance.font.family
+                        font.pixelSize: 10.5 * root.s
+                        font.weight: Font.Medium
+                        elide: Text.ElideMiddle
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    }
+
+                    Row {
+                        id: pskBtns
+                        anchors.right: parent.right
+                        anchors.rightMargin: 4 * root.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2 * root.s
+                        visible: !root.itemPskMissing
+
+                        Repeater {
+                            model: [
+                                { glyph: root.itemPskShown ? "eye-off" : "eye",
+                                  name: root.itemPskShown ? "Hide password" : "Show password", copy: false },
+                                { glyph: "copy", name: "Copy password", copy: true }
+                            ]
+
+                            delegate: Item {
+                                id: pskBtn
+                                required property var modelData
+                                width: 26 * root.s
+                                height: 26 * root.s
+
+                                Accessible.role: Accessible.Button
+                                Accessible.name: pskBtn.modelData.name
+                                Accessible.focusable: true
+                                Accessible.onPressAction: pskBtn.modelData.copy
+                                    ? root.copyWifiItemPsk() : root.toggleWifiItemPsk()
+
+                                scale: pskBtnArea.pressed ? 0.9 : 1
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: Motion.glide
+                                        easing.type: Motion.easeBezier
+                                        easing.bezierCurve: Motion.expressiveFastSpatial
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: width / 2
+                                    color: pskBtnArea.containsMouse ? Qt.alpha(Colors.on_surface, 0.08) : "transparent"
+                                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                                }
+                                GlyphIcon {
+                                    anchors.centerIn: parent
+                                    width: 14 * root.s
+                                    height: 14 * root.s
+                                    name: pskBtn.modelData.glyph
+                                    stroke: 1.7
+                                    color: pskBtnArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
+                                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                                }
+                                MouseArea {
+                                    id: pskBtnArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: pskBtn.modelData.copy
+                                        ? root.copyWifiItemPsk() : root.toggleWifiItemPsk()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SettingsUi.SettingsGroupLabel {
+                    s: root.s
+                    text: "Details"
+                }
+
+                ItemDetail {
+                    label: "Signal"
+                    copyable: false
+                    value: root.itemNet ? Math.round(root.pct(root.itemNet)) + "%" : ""
+                }
+                ItemDetail {
+                    label: "Security"
+                    copyable: false
+                    value: root.itemAp.security
+                        || (root.itemNet ? (root.itemSecured ? "Secured" : "Open") : "")
+                }
+                ItemDetail {
+                    label: "Band"
+                    copyable: false
+                    value: {
+                        var b = root.bandText(root.itemAp.freq);
+                        var ch = root.itemAp.chan || "";
+                        return b.length ? b + (ch.length ? " · ch " + ch : "") : "";
+                    }
+                }
+                ItemDetail {
+                    label: "Link rate"
+                    copyable: false
+                    value: root.itemNetConnected ? (root.itemAp.rate || "") : ""
+                }
+                ItemDetail { label: "IP address"; value: root.itemIp.ip4 || "" }
+                ItemDetail { label: "Gateway"; value: root.itemIp.gw || "" }
+                ItemDetail { label: "DNS"; value: root.itemIp.dns || "" }
+                ItemDetail { label: "IPv6"; value: root.itemIp.ip6 || "" }
+                ItemDetail { label: "MAC address"; value: root.itemIp.mac || "" }
+                ItemDetail { label: "BSSID"; value: root.itemAp.bssid || "" }
+                ItemDetail {
+                    // Only worth a line when the profile isn't simply the SSID.
+                    label: "Profile"
+                    copyable: false
+                    value: (root.itemPrimary && (root.itemPrimary.id !== root.itemSsid || root.itemProfiles.length > 1))
+                        ? root.itemPrimary.id + (root.itemProfiles.length > 1
+                            ? " +" + (root.itemProfiles.length - 1) + " more" : "")
+                        : ""
+                }
+            }
+        }
+
+        HintText {
+            anchors.centerIn: parent
+            visible: root.itemLoaded && root.itemProfiles.length === 0 && root.itemNet === null
+            text: "No saved profile"
+        }
+    }
+
+    // ── bluetooth device settings ───────────────────────────────────────────
+    Item {
+        id: btItemView
+        anchors.fill: parent
+        opacity: root.subview === "btItem" ? 1 : 0
+        visible: opacity > 0.01
+        enabled: root.subview === "btItem" && root.active
+        Behavior on opacity {
+            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        }
+
+        SubHeader {
+            id: btItemHeader
+            anchors.top: parent.top
+            title: root.itemDevName
+            status: root.itemDevStatus
+            statusLit: root.itemDev !== null && root.itemDev.connected === true
+            backHint: "Return to the Bluetooth list"
+        }
+
+        Rectangle {
+            id: btItemDivider
+            anchors.top: btItemHeader.bottom
+            anchors.topMargin: 8 * root.s
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            color: Qt.alpha(Colors.on_surface, 0.06)
+        }
+
+        Flickable {
+            anchors.top: btItemDivider.bottom
+            anchors.topMargin: 2 * root.s
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.beadClear
+            contentHeight: btItemCol.implicitHeight + 8 * root.s
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            visible: root.itemDev !== null
+
+            Column {
+                id: btItemCol
+                width: parent.width
+                spacing: 2 * root.s
+
+                Row {
+                    topPadding: 10 * root.s
+                    bottomPadding: 2 * root.s
+                    leftPadding: 4 * root.s
+                    spacing: 8 * root.s
+
+                    ItemAction {
+                        readonly property bool conn: root.itemDev !== null && root.itemDev.connected === true
+                        label: conn ? "Disconnect" : "Connect"
+                        icon: conn ? "close" : "bluetooth"
+                        filled: !conn
+                        description: root.itemDevName
+                        enabled: root.itemDev !== null && root.btOn && root.itemDev.blocked !== true
+                        onClicked: conn ? root.btDisconnect(root.itemDev) : root.btConnect(root.itemDev)
+                    }
+
+                    ItemAction {
+                        label: root.itemForgetArmed ? "Tap again to forget" : "Forget"
+                        icon: "trash"
+                        danger: true
+                        description: "Remove the pairing with " + root.itemDevName
+                        onClicked: root.forgetBtItem()
+                    }
+                }
+
+                SettingsUi.SettingsGroupLabel {
+                    s: root.s
+                    text: "Name"
+                }
+
+                // Rename: writes the BlueZ alias; the undo mark hands the
+                // device its own name back.
+                Rectangle {
+                    width: parent.width - 8 * root.s
+                    x: 4 * root.s
+                    height: 34 * root.s
+                    radius: height / 2
+                    color: Colors.surface_container_highest
+                    border.width: 1.2 * root.s
+                    border.color: btNameField.activeFocus ? Colors.primary : "transparent"
+                    Behavior on border.color { ColorAnimation { duration: Motion.fast } }
+
+                    readonly property bool aliased: root.itemDev !== null
+                        && (root.itemDev.deviceName || "").length > 0
+                        && root.itemDev.name !== root.itemDev.deviceName
+
+                    TextField {
+                        id: btNameField
+                        anchors.left: parent.left
+                        anchors.leftMargin: 14 * root.s
+                        anchors.right: btNameGo.left
+                        anchors.rightMargin: 6 * root.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        background: null
+                        padding: 0
+                        color: Colors.on_surface
+                        font.family: Appearance.font.family
+                        font.pixelSize: 12 * root.s
+                        placeholderText: root.itemDev ? (root.itemDev.deviceName || "Name") : "Name"
+                        placeholderTextColor: Qt.alpha(Colors.on_surface_variant, 0.65)
+                        Accessible.name: "Name for " + root.itemDevName
+                        selectByMouse: true
+                        selectionColor: Colors.primary
+                        selectedTextColor: Colors.on_primary
+                        onAccepted: {
+                            root.btRename(root.itemDev, text);
+                            focus = false;
+                        }
+                    }
+
+                    // Apply when edited; reset-to-own-name when it carries an alias.
+                    Item {
+                        id: btNameGo
+                        anchors.right: parent.right
+                        anchors.rightMargin: 4 * root.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 26 * root.s
+                        height: 26 * root.s
+
+                        readonly property bool dirty: root.itemDev !== null
+                            && btNameField.text.trim() !== (root.itemDev.name || "")
+                        readonly property bool resettable: parent.aliased && !dirty
+                        visible: dirty || resettable
+
+                        Accessible.role: Accessible.Button
+                        Accessible.name: btNameGo.dirty ? "Rename" : "Restore the device's own name"
+                        Accessible.focusable: true
+                        Accessible.onPressAction: btNameGoArea.clicked(null)
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: btNameGo.dirty ? Colors.primary
+                                : (btNameGoArea.containsMouse ? Qt.alpha(Colors.on_surface, 0.08) : "transparent")
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        }
+                        GlyphIcon {
+                            anchors.centerIn: parent
+                            width: 14 * root.s
+                            height: 14 * root.s
+                            name: btNameGo.dirty ? "check" : "undo"
+                            stroke: 2
+                            color: btNameGo.dirty ? Colors.on_primary : Colors.on_surface_variant
+                        }
+                        MouseArea {
+                            id: btNameGoArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (btNameGo.dirty) {
+                                    root.btRename(root.itemDev, btNameField.text);
+                                } else {
+                                    root.btRename(root.itemDev, "");
+                                    btNameField.text = root.itemDev ? (root.itemDev.deviceName || "") : "";
+                                }
+                                btNameField.focus = false;
+                            }
+                        }
+                    }
+                }
+
+                SettingsUi.SettingsGroupLabel {
+                    s: root.s
+                    text: "Device"
+                }
+
+                ItemSwitch {
+                    label: "Trusted"
+                    sub: "Reconnects without asking"
+                    on: root.itemDev !== null && root.itemDev.trusted === true
+                    onToggled: if (root.itemDev) root.itemDev.trusted = !root.itemDev.trusted
+                }
+
+                ItemSwitch {
+                    // BlueZ only honours WakeAllowed for input (HID) devices.
+                    visible: root.itemDevInput
+                    label: "Wake from sleep"
+                    sub: "Input from it can wake the computer"
+                    on: root.itemDev !== null && root.itemDev.wakeAllowed === true
+                    onToggled: if (root.itemDev) root.itemDev.wakeAllowed = !root.itemDev.wakeAllowed
+                }
+
+                ItemSwitch {
+                    label: "Blocked"
+                    sub: "Refuse every connection from it"
+                    on: root.itemDev !== null && root.itemDev.blocked === true
+                    onToggled: if (root.itemDev) root.itemDev.blocked = !root.itemDev.blocked
+                }
+
+                SettingsUi.SettingsGroupLabel {
+                    s: root.s
+                    text: "Details"
+                }
+
+                ItemDetail {
+                    label: "Type"
+                    copyable: false
+                    value: root.itemDev ? root.btKindText(root.itemDev.icon) : ""
+                }
+                ItemDetail {
+                    label: "Battery"
+                    copyable: false
+                    value: root.btBatteryText(root.itemDev)
+                }
+                ItemDetail {
+                    label: "Address"
+                    value: root.itemBtAddress
+                }
+                ItemDetail {
+                    label: "Device name"
+                    copyable: false
+                    value: (root.itemDev && root.itemDev.deviceName !== root.itemDev.name)
+                        ? (root.itemDev.deviceName || "") : ""
+                }
+            }
+        }
+
+        HintText {
+            anchors.centerIn: parent
+            visible: root.itemDev === null
+            text: "Device no longer available"
         }
     }
 }

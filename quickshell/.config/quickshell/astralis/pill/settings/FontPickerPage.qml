@@ -314,6 +314,7 @@ SettingsPage {
                 anchors.verticalCenter: parent.verticalCenter
                 text: frow.modelData.label
                 color: frow.selected ? Colors.primary : Colors.on_surface
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
                 font.family: frow.isReset ? Appearance.font.family : frow.modelData.family
                 font.pixelSize: 14 * root.s
                 font.weight: frow.selected ? Font.DemiBold : Font.Medium
@@ -325,7 +326,9 @@ SettingsPage {
                 anchors.right: parent.right
                 anchors.rightMargin: 14 * root.s
                 anchors.verticalCenter: parent.verticalCenter
-                visible: frow.selected
+                opacity: frow.selected ? 1 : 0
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                 width: 6 * root.s
                 height: 6 * root.s
                 radius: width / 2

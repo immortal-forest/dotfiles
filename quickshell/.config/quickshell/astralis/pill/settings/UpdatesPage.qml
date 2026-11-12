@@ -167,24 +167,31 @@ SettingsPage {
             height: 34 * root.s
             radius: width / 2
             color: Qt.alpha(root.badgeTint, 0.16)
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
 
             GlyphIcon {
                 anchors.centerIn: parent
-                visible: !root.checking
+                opacity: root.checking ? 0 : 1
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                 width: 17 * root.s
                 height: 17 * root.s
                 name: root.badgeIcon
                 color: root.badgeTint
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
                 stroke: 2.2
             }
 
             GlyphIcon {
                 anchors.centerIn: parent
-                visible: root.checking
+                opacity: root.checking ? 1 : 0
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                 width: 16 * root.s
                 height: 16 * root.s
                 name: "reboot"
                 color: root.badgeTint
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
                 stroke: 2
 
                 RotationAnimation on rotation {
@@ -233,8 +240,25 @@ SettingsPage {
         id: pendingLabel
         anchors.top: hero.bottom
         anchors.left: parent.left
-        visible: root.behind
-        height: visible ? implicitHeight : 0
+        // Fades and folds its height with `behind` (the list below is anchored to
+        // this label's bottom, so it glides). Visibility follows OPACITY.
+        opacity: root.behind ? 1 : 0
+        visible: root.behind || opacity > 0.01
+        Behavior on opacity {
+            enabled: root.hoverArmed
+            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        }
+        property real shownT: root.behind ? 1 : 0
+        Behavior on shownT {
+            enabled: root.hoverArmed
+            NumberAnimation {
+                duration: root.behind ? Motion.normalDur : Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.emphasized
+            }
+        }
+        height: implicitHeight * shownT
+        clip: shownT < 0.999
         topPadding: 14 * root.s
         bottomPadding: 6 * root.s
         leftPadding: 12 * root.s
@@ -371,8 +395,23 @@ SettingsPage {
         anchors.right: parent.right
         anchors.leftMargin: 4 * root.s
         anchors.rightMargin: 4 * root.s
-        visible: root.behind
-        height: visible ? implicitHeight : 0
+        opacity: root.behind ? 1 : 0
+        visible: root.behind || opacity > 0.01
+        Behavior on opacity {
+            enabled: root.hoverArmed
+            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        }
+        property real shownT: root.behind ? 1 : 0
+        Behavior on shownT {
+            enabled: root.hoverArmed
+            NumberAnimation {
+                duration: root.behind ? Motion.normalDur : Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.emphasized
+            }
+        }
+        height: implicitHeight * shownT
+        clip: shownT < 0.999
         text: "Read-only — install from a terminal (pacman -Syu / yay)."
         color: Qt.alpha(Colors.on_surface_variant, 0.65)
         font.family: Appearance.font.family

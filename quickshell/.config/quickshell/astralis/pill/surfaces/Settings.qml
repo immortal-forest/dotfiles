@@ -142,6 +142,8 @@ PillSurface {
         name: "chevron-right"
         color: (row && (sidebar.focusRowItem === row || row.lit))
             ? Colors.on_surface : Colors.on_surface_variant
+        // The row's own icon/label tint fades; the chevron used to snap.
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
         stroke: 2.2
     }
 
@@ -275,6 +277,13 @@ PillSurface {
                 }
             }
 
+            // While a drill-in page (no lit row) is open the box fades in place
+            // on the last lit row instead of sliding/shrinking toward y=0.
+            property var heldRow: null
+            onLitRowChanged: if (litRow) heldRow = litRow
+            Component.onCompleted: heldRow = litRow
+            readonly property var geoRow: litRow ? litRow : heldRow
+
             x: 0
             width: sidebar.width
             radius: 9 * root.s
@@ -289,8 +298,8 @@ PillSurface {
             // height low, so the accent drooped below the label on first open;
             // `y` is a plain reactive property, so this re-lays cleanly and
             // stays centred on the row.
-            y: navAccent.litRow ? treeCol.y + navAccent.litRow.y + 3 * root.s : 0
-            height: navAccent.litRow ? navAccent.litRow.height - 6 * root.s : 0
+            y: navAccent.geoRow ? treeCol.y + navAccent.geoRow.y + 3 * root.s : 0
+            height: navAccent.geoRow ? navAccent.geoRow.height - 6 * root.s : 0
 
             Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
             Behavior on height { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
@@ -308,7 +317,9 @@ PillSurface {
                 s: root.s
                 glyph: "設"
                 title: "SETTINGS"
-                onBack: root.requestClose()
+                // The page header's × (top-right of the surface) is the one
+                // close button; the sidebar header carries none.
+                showAction: false
             }
 
             Text {

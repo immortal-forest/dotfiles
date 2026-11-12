@@ -122,7 +122,16 @@ Item {
     function kbMove(dir) {
         if (!rows.length)
             return;
-        kbIndex = Math.max(0, Math.min(rows.length - 1, (kbIndex < 0 ? 0 : kbIndex + dir)));
+        var step = kbIndex < 0 ? 1 : dir;
+        var i = Math.max(0, Math.min(rows.length - 1, (kbIndex < 0 ? 0 : kbIndex + dir)));
+        // Skip rows folded away by a conditional (`shown: false` — collapsed
+        // or mid-collapse — or a plain `visible: false`); the seam would
+        // otherwise glide to a row that is not on screen.
+        while (i >= 0 && i < rows.length && (!rows[i].item.visible || rows[i].item.shown === false))
+            i += step;
+        if (i < 0 || i >= rows.length)
+            return;
+        kbIndex = i;
         focusRowItem = rows[kbIndex].item;
     }
 

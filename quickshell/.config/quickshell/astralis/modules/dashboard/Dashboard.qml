@@ -101,6 +101,10 @@ PanelWindow {
     function fmtTime(d) {
         return Qt.formatTime(d, Flags.time12h ? "h:mm AP" : "HH:mm");
     }
+    /** MB/s for a narrow stat column: one decimal while small, whole numbers from 10 up. */
+    function fmtRate(v) {
+        return v >= 10 ? Math.round(v).toString() : v.toFixed(1);
+    }
     readonly property string greeting: {
         var h = root.now.getHours();
         return h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
@@ -387,16 +391,16 @@ PanelWindow {
                             font.weight: Font.Light
                             font.pixelSize: 96 * root.s
                             font.features: ({ "tnum": 1 })
-                            opacity: clockTile.seg(0, 2)
-                            transform: Translate { y: (1 - clockTile.seg(0, 2)) * 14 * root.s }
+                            opacity: clockTile.seg(0)
+                            transform: Translate { y: (1 - clockTile.seg(0)) * 14 * root.s }
                         }
                         Row {
                             anchors.left: bigClock.left
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: 18 * root.s
                             spacing: 9 * root.s
-                            opacity: clockTile.seg(1, 2)
-                            transform: Translate { y: (1 - clockTile.seg(1, 2)) * 10 * root.s }
+                            opacity: clockTile.seg(1)
+                            transform: Translate { y: (1 - clockTile.seg(1)) * 10 * root.s }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: Flags.showGlyphs
@@ -458,7 +462,7 @@ PanelWindow {
 
                         Row {
                             x: 20 * root.s
-                            y: 44 * root.s
+                            y: 46 * root.s
                             spacing: 10 * root.s
                             GlyphIcon {
                                 anchors.verticalCenter: parent.verticalCenter
@@ -760,29 +764,11 @@ PanelWindow {
                                 onExited: ribbon.hoverDay = 0
                             }
 
-                            // 0→1 sweep driving the open wave
-                            property real wave: 1
                             Connections {
                                 target: root
                                 function onOpenChanged() {
-                                    if (root.open) {
-                                        ribbon.wave = 0;
-                                        waveAnim.restart();
-                                    } else {
+                                    if (!root.open)
                                         ribbon.hoverDay = 0;
-                                    }
-                                }
-                            }
-                            SequentialAnimation {
-                                id: waveAnim
-                                PauseAnimation { duration: Motion.standard }
-                                NumberAnimation {
-                                    target: ribbon
-                                    property: "wave"
-                                    to: 1
-                                    duration: Math.round(Motion.largeDur * 1.4)
-                                    easing.type: Motion.easeBezier
-                                    easing.bezierCurve: Motion.emphasized
                                 }
                             }
 
@@ -798,8 +784,16 @@ PanelWindow {
                                     readonly property bool weekend: (ribbon.lead + index) % 7 >= 5
                                     readonly property bool hovered: ribbon.hoverDay === day
                                     readonly property bool hasEv: (Events.events, Events.hasEvents(calTile.key(new Date(calTile.today.getFullYear(), calTile.today.getMonth(), day))))
-                                    // each capsule's share of the wave, trailing the one before it
-                                    readonly property real grow: Math.max(0, Math.min(1, (ribbon.wave * (ribbon.days + 8) - index) / 8))
+                                    // The open wave rides the tile's content clock: each
+                                    // capsule eases up over normalDur, a third of a
+                                    // cascade step behind the one before it (~1 s for
+                                    // the month). It used to run its own emphasized
+                                    // sweep from the moment the tile STARTED rising,
+                                    // so most of the month shot up in a burst before
+                                    // the tile was even on screen.
+                                    readonly property real grow: Motion.ease(
+                                        (calTile.clock - index * Motion.cascadeStep / 3) / Motion.normalDur,
+                                        Motion.standardCurve)
                                     visible: index < ribbon.days
                                     x: ribbon.xOf(index)
                                     width: ribbon.step
@@ -819,8 +813,12 @@ PanelWindow {
                                             : rd.past ? Qt.alpha(Colors.primary, rd.hovered ? 0.6 : 0.38)
                                             : Qt.alpha(Colors.on_surface, rd.hovered ? 0.28 : rd.weekend ? 0.07 : 0.12)
                                         Behavior on height {
-                                            enabled: ribbon.wave >= 1
-                                            NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard }
+                                            enabled: rd.grow >= 1
+                                            NumberAnimation {
+                                                duration: Motion.smallDur
+                                                easing.type: Motion.easeBezier
+                                                easing.bezierCurve: Motion.standardCurve
+                                            }
                                         }
                                         Behavior on color { ColorAnimation { duration: Motion.fast } }
 
@@ -889,8 +887,8 @@ PanelWindow {
                                     id: ev
                                     required property var modelData
                                     required property int index
-                                    opacity: calTile.seg(ev.index + 2, 5)
-                                    transform: Translate { x: (1 - calTile.seg(ev.index + 2, 5)) * -14 * root.s }
+                                    opacity: calTile.seg(ev.index + 3)
+                                    transform: Translate { x: (1 - calTile.seg(ev.index + 3)) * -14 * root.s }
                                     width: agendaList.width
                                     height: agendaList.rowH
                                     Column {
@@ -989,24 +987,19 @@ PanelWindow {
                             anchors.fill: parent
                             radius: parent.radius
                             color: "transparent"
-                            visible: washSrc.status === Image.Ready
-                            Image {
-                                id: washSrc
+                            // follows the art's own coverage: fades in with the
+                            // cover, and crossfades with it on a track change
+                            opacity: washArt.coverage
+                            ArtSwap {
+                                id: washArt
                                 anchors.fill: parent
                                 source: mediaTile.art
-                                sourceSize: Qt.size(96, 96)
-                                fillMode: Image.PreserveAspectCrop
-                                asynchronous: true
-                                visible: false
-                            }
-                            MultiEffect {
-                                anchors.fill: parent
-                                source: washSrc
-                                blurEnabled: true
-                                blur: 1
-                                blurMax: 48
-                                saturation: 0.2
+                                srcSize: Qt.size(96, 96)
+                                blurred: true
+                                // flattened first so the two crossfading layers
+                                // don't stack their translucency
                                 opacity: 0.32
+                                layer.enabled: true
                             }
                         }
 
@@ -1021,20 +1014,17 @@ PanelWindow {
                             color: Colors.surface_container_highest
                             GlyphIcon {
                                 anchors.centerIn: parent
-                                visible: coverImg.status !== Image.Ready
+                                opacity: 1 - coverArt.coverage
                                 width: 44 * root.s
                                 height: width
                                 name: "music"
                                 color: Colors.on_surface_variant
                             }
-                            Image {
-                                id: coverImg
+                            ArtSwap {
+                                id: coverArt
                                 anchors.fill: parent
                                 source: mediaTile.art
-                                sourceSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
-                                fillMode: Image.PreserveAspectCrop
-                                asynchronous: true
-                                visible: status === Image.Ready
+                                srcSize: Qt.size(Math.ceil(width * 2), Math.ceil(height * 2))
                             }
                         }
 
@@ -1099,8 +1089,8 @@ PanelWindow {
                             y: 116 * root.s
                             spacing: 16 * root.s
                             visible: Players.has
-                            opacity: mediaTile.seg(1, 3)
-                            transform: Translate { x: (1 - mediaTile.seg(1, 3)) * 16 * root.s }
+                            opacity: mediaTile.seg(1)
+                            transform: Translate { x: (1 - mediaTile.seg(1)) * 16 * root.s }
                             // 前 · seal 奏/休 · 次 — the pill's kanji transport
                             DashSkip {
                                 kanjiText: "前"
@@ -1122,6 +1112,7 @@ PanelWindow {
                                 opacity: 0.75 + 0.25 * sat
                                 border.width: 1
                                 border.color: Qt.alpha(Colors.primary, sealArea.containsMouse ? 0.8 : 0.4)
+                                Behavior on border.color { ColorAnimation { duration: Motion.fast } }
                                 gradient: Gradient {
                                     GradientStop { position: 0.0; color: Qt.alpha(Colors.primary, 0.45 + 0.27 * mediaSeal.sat) }
                                     GradientStop { position: 1.0; color: Qt.alpha(Qt.darker(Colors.primary, 1.18), 0.45 + 0.27 * mediaSeal.sat) }
@@ -1232,7 +1223,7 @@ PanelWindow {
                                     width: (qsGrid.width - 2 * qsGrid.gap) / 3
                                     icon: Networking.wifiEnabled ? "wifi" : "wifi-1"
                                     label: "Wi-Fi"
-                                    enter: qsBox.seg(0, 7)
+                                    enter: qsBox.seg(0)
                                     sub: root.wifiSub
                                     checked: Networking.wifiEnabled
                                     onClicked: Networking.wifiEnabled = !Networking.wifiEnabled
@@ -1241,7 +1232,7 @@ PanelWindow {
                                     width: (qsGrid.width - 2 * qsGrid.gap) / 3
                                     icon: "bluetooth"
                                     label: "Bluetooth"
-                                    enter: qsBox.seg(1, 7)
+                                    enter: qsBox.seg(1)
                                     sub: root.btSub
                                     checked: Bluetooth.defaultAdapter !== null && Bluetooth.defaultAdapter.enabled
                                     onClicked: if (Bluetooth.defaultAdapter) Bluetooth.defaultAdapter.enabled = !Bluetooth.defaultAdapter.enabled
@@ -1250,7 +1241,7 @@ PanelWindow {
                                     width: (qsGrid.width - 2 * qsGrid.gap) / 3
                                     icon: "dnd"
                                     label: "Silence"
-                                    enter: qsBox.seg(2, 7)
+                                    enter: qsBox.seg(2)
                                     sub: Services.Notifications.dnd ? "On" : "Off"
                                     checked: Services.Notifications.dnd
                                     onClicked: Services.Notifications.dnd = !Services.Notifications.dnd
@@ -1262,7 +1253,7 @@ PanelWindow {
                                     width: (qsGrid.width - qsGrid.gap) / 2
                                     icon: "awake"
                                     label: "Stay awake"
-                                    enter: qsBox.seg(3, 7)
+                                    enter: qsBox.seg(3)
                                     sub: root.awake ? "Idle blocked" : "Off"
                                     checked: root.awake
                                     onClicked: root.toggleAwake()
@@ -1272,7 +1263,7 @@ PanelWindow {
                                     width: (qsGrid.width - qsGrid.gap) / 2
                                     icon: muted ? "mic-off" : "mic"
                                     label: "Microphone"
-                                    enter: qsBox.seg(4, 7)
+                                    enter: qsBox.seg(4)
                                     sub: muted ? "Muted" : "Live"
                                     // On = the mic is live.
                                     checked: !muted
@@ -1294,7 +1285,7 @@ PanelWindow {
                                 muted: root.sink !== null && root.sink.audio !== null && root.sink.audio.muted
                                 icon: muted ? "speaker-off" : "speaker"
                                 label: "Volume"
-                                enter: qsBox.seg(5, 7)
+                                enter: qsBox.seg(5)
                                 value: root.sink && root.sink.audio ? root.sink.audio.volume * 100 : 0
                                 onIconClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.sink.audio.muted
                                 onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v / 100; }
@@ -1303,7 +1294,7 @@ PanelWindow {
                                 visible: Backlight.present
                                 icon: "sun"
                                 label: "Brightness"
-                                enter: qsBox.seg(6, 7)
+                                enter: qsBox.seg(6)
                                 value: root.brightnessShown * 100
                                 onMoved: (v) => root.setBrightness(v / 100)
                                 onReleased: root.commitBrightnessNow()
@@ -1400,12 +1391,12 @@ PanelWindow {
                                 id: heroMap
                                 space: wsTile.hero
                                 visible: wsTile.hero !== null
-                                opacity: wsTile.seg(0, 4)
+                                opacity: wsTile.seg(0)
                                 transform: Scale {
                                     origin.x: heroMap.width / 2
                                     origin.y: heroMap.height / 2
-                                    xScale: 0.9 + 0.1 * wsTile.seg(0, 4)
-                                    yScale: 0.9 + 0.1 * wsTile.seg(0, 4)
+                                    xScale: 0.9 + 0.1 * wsTile.seg(0)
+                                    yScale: 0.9 + 0.1 * wsTile.seg(0)
                                 }
                                 width: wsArea.heroW
                                 height: wsTile.hero ? width / wsTile.hero.aspect : 0
@@ -1496,8 +1487,8 @@ PanelWindow {
                                             id: card
                                             required property var modelData
                                             required property int index
-                                            opacity: wsTile.seg(card.index + 1, 4)
-                                            transform: Translate { x: (1 - wsTile.seg(card.index + 1, 4)) * 18 * root.s }
+                                            opacity: wsTile.seg(card.index + 1)
+                                            transform: Translate { x: (1 - wsTile.seg(card.index + 1)) * 18 * root.s }
                                             readonly property bool overflow: index === wsList.shown - 1 && wsList.count > wsList.shown
                                             readonly property var apps: {
                                                 var seen = {}, o = [];
@@ -1682,7 +1673,7 @@ PanelWindow {
                                 value: Sysmon.cpu
                                 valueText: Sysmon.cpu + "%"
                                 hist: Sysmon.cpuHist
-                                enter: sysBox.seg(0, 4)
+                                enter: sysBox.seg(0)
                                 tint: Colors.primary
                             }
                             Spark {
@@ -1690,7 +1681,7 @@ PanelWindow {
                                 value: Sysmon.memPct
                                 valueText: Sysmon.memUsedGb.toFixed(1) + " GB"
                                 hist: Sysmon.memHist
-                                enter: sysBox.seg(1, 4)
+                                enter: sysBox.seg(1)
                                 tint: Colors.tertiary
                             }
                         }
@@ -1710,7 +1701,7 @@ PanelWindow {
                                 visible: Sysmon.hasGpu
                                 width: sysStats.colW
                                 caption: "GPU"
-                                enter: sysBox.seg(2, 4)
+                                enter: sysBox.seg(2)
                                 value: Sysmon.gpu + "%"
                                 aside: Sysmon.gpuTemp >= 0 ? Sysmon.gpuTemp + "°" : ""
                                 frac: Sysmon.gpu / 100
@@ -1718,7 +1709,7 @@ PanelWindow {
                             Stat {
                                 width: sysStats.colW
                                 caption: "Disk"
-                                enter: sysBox.seg(2.6, 4)
+                                enter: sysBox.seg(2.6)
                                 value: Sysmon.diskPct + "%"
                                 frac: Sysmon.diskPct / 100
                                 tint: Sysmon.diskPct >= 90 ? Colors.error : Colors.secondary
@@ -1727,16 +1718,16 @@ PanelWindow {
                                 visible: Sysmon.swapUsedGb > 0.05
                                 width: sysStats.colW
                                 caption: "Swap"
-                                enter: sysBox.seg(3.2, 4)
+                                enter: sysBox.seg(3.2)
                                 value: Sysmon.swapUsedGb.toFixed(1)
                                 aside: "GB"
                             }
                             Stat {
                                 width: sysStats.colW
                                 caption: "Net"
-                                enter: sysBox.seg(3.8, 4)
-                                value: "↓ " + Sysmon.netDown.toFixed(1)
-                                aside: "↑ " + Sysmon.netUp.toFixed(1)
+                                enter: sysBox.seg(3.8)
+                                value: "↓ " + root.fmtRate(Sysmon.netDown)
+                                aside: "↑ " + root.fmtRate(Sysmon.netUp)
                             }
                         }
                     }
@@ -1764,6 +1755,7 @@ PanelWindow {
                             font.family: Appearance.font.family
                             font.pixelSize: 11 * root.s
                             font.weight: Font.Bold
+                            font.features: ({ "tnum": 1 })
                         }
                         Column {
                             visible: notifTile.latest === null
@@ -1792,7 +1784,7 @@ PanelWindow {
                             id: notifList
                             visible: notifTile.latest !== null
                             x: 12 * root.s
-                            y: 44 * root.s
+                            y: 46 * root.s
                             width: parent.width - 24 * root.s
                             readonly property real rowH: 34 * root.s
                             readonly property int rows: Math.max(1, Math.floor((notifTile.height - y - 10 * root.s) / rowH))
@@ -1802,8 +1794,8 @@ PanelWindow {
                                     id: nRow
                                     required property var modelData
                                     required property int index
-                                    opacity: notifTile.seg(nRow.index, 4)
-                                    transform: Translate { x: (1 - notifTile.seg(nRow.index, 4)) * -14 * root.s }
+                                    opacity: notifTile.seg(nRow.index)
+                                    transform: Translate { x: (1 - notifTile.seg(nRow.index)) * -14 * root.s }
                                     readonly property var n: modelData.newest
                                     width: notifList.width
                                     height: notifList.rowH
@@ -1984,11 +1976,24 @@ PanelWindow {
         property string accessibleName: ""
         property real rise: 0
         /**
-         * Content entrance, 0→1, starting as the tile settles: contents stagger
-         * in off it with seg(i, n) (item i of n), graphs draw in off it whole.
+         * Content timeline: a linear ms clock that starts once the tile has
+         * all but settled (~250 ms into its emphasized rise). Content eases its own
+         * slice of it — seg(i) is item i's entrance, Motion.cascadeStep apart,
+         * each easing over Motion.normalDur on the standard curve; `reveal` is
+         * the whole-tile draw-in for graphs and gauges.
+         *
+         * Was: one 0→1 `reveal` on M3 `emphasized`, sliced into equal windows.
+         * `emphasized` covers ~90% of its travel in its first quarter, so the
+         * slices all fired within a few frames of each other — the quick-
+         * settings grid and the calendar capsules popped in as a burst rather
+         * than a cascade, each piece moving near-linearly.
+         *
+         * At rest the clock sits far past every slice, so content is fully in.
          */
-        property real reveal: 1
-        function seg(i, n) { return Math.max(0, Math.min(1, (tile.reveal * (n + 1.5) - i) / 1.5)); }
+        property real clock: 1e6
+        readonly property int drawDur: Math.round(Motion.largeDur * 1.4)
+        readonly property real reveal: Motion.ease(tile.clock / tile.drawDur, Motion.standardCurve)
+        function seg(i) { return Motion.ease((tile.clock - i * Motion.cascadeStep) / Motion.normalDur, Motion.standardCurve); }
 
         radius: 24 * root.s
         color: Qt.alpha(Colors.surface_container, 0.94)
@@ -2015,7 +2020,7 @@ PanelWindow {
                 if (root.open) {
                     outAnim.stop();
                     tile.rise = 0;
-                    tile.reveal = 0;
+                    tile.clock = 0;
                     inAnim.restart();
                     revealAnim.restart();
                 } else {
@@ -2038,15 +2043,17 @@ PanelWindow {
         }
         SequentialAnimation {
             id: revealAnim
+            readonly property int span: Motion.largeDur * 3
             PauseAnimation { duration: 60 * Motion.mult + tile.order * Motion.rowStagger * 2 + Motion.smallDur + Motion.rowStagger * 2 }
             NumberAnimation {
                 target: tile
-                property: "reveal"
-                to: 1
-                duration: Math.round(Motion.largeDur * 1.8)
-                easing.type: Motion.easeBezier
-                easing.bezierCurve: Motion.emphasized
+                property: "clock"
+                to: revealAnim.span
+                duration: revealAnim.span
+                easing.type: Motion.easeClock
             }
+            // Past the span: anything with a slice beyond it lands fully in.
+            PropertyAction { target: tile; property: "clock"; value: 1e6 }
         }
         NumberAnimation {
             id: outAnim
@@ -2098,6 +2105,9 @@ PanelWindow {
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
+            // dynamic labels (weather city) stop short of the right-hand reading
+            width: Math.min(implicitWidth, Math.max(0, tl.parent.width - 2 * tl.x - tl.spacing - 24 * root.s - 110 * root.s))
+            elide: Text.ElideRight
             text: tl.text
             color: Colors.on_surface_variant
             font.family: Appearance.font.family
@@ -2128,8 +2138,8 @@ PanelWindow {
         transform: Scale {
             origin.x: qs.width / 2
             origin.y: qs.height / 2
-            xScale: 0.82 + 0.18 * qs.enter
-            yScale: 0.82 + 0.18 * qs.enter
+            xScale: 0.88 + 0.12 * qs.enter
+            yScale: 0.88 + 0.12 * qs.enter
         }
         radius: qs.checked ? 16 * root.s : height / 2
         color: qs.checked ? Colors.primary_container : Colors.surface_container_highest
@@ -2140,7 +2150,16 @@ PanelWindow {
                 easing.bezierCurve: Motion.expressiveFastSpatial
             }
         }
-        Behavior on color { ColorAnimation { duration: Motion.fast } }
+        // The fill and ink change on the same clock as the radius morph: the
+        // fill used to flip in `fast` (140 ms) under a 350 ms shape change and
+        // the label/icon ink snapped outright, so a toggle read as a flash.
+        Behavior on color {
+            ColorAnimation {
+                duration: Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.expressiveEffects
+            }
+        }
         scale: qsArea.pressed ? 0.96 : 1
         Behavior on scale {
             NumberAnimation {
@@ -2176,6 +2195,13 @@ PanelWindow {
             name: qs.icon
             color: qs.ink
             stroke: 1.8
+            Behavior on color {
+                ColorAnimation {
+                    duration: Motion.expressiveFastSpatialDur
+                    easing.type: Motion.easeBezier
+                    easing.bezierCurve: Motion.expressiveEffects
+                }
+            }
         }
         Column {
             anchors.left: qsIcon.right
@@ -2192,6 +2218,13 @@ PanelWindow {
                 font.family: Appearance.font.family
                 font.pixelSize: 12.5 * root.s
                 font.weight: Font.DemiBold
+                Behavior on color {
+                    ColorAnimation {
+                        duration: Motion.expressiveFastSpatialDur
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveEffects
+                    }
+                }
             }
             Text {
                 width: parent.width
@@ -2201,6 +2234,13 @@ PanelWindow {
                 font.family: Appearance.font.family
                 font.pixelSize: 10.5 * root.s
                 font.weight: Font.Medium
+                Behavior on color {
+                    ColorAnimation {
+                        duration: Motion.expressiveFastSpatialDur
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveEffects
+                    }
+                }
             }
         }
         MouseArea {
@@ -2482,7 +2522,11 @@ PanelWindow {
         Text {
             anchors.right: parent.right
             anchors.rightMargin: 20 * root.s
-            y: 16 * root.s
+            // Same 24 px header row as TileLabel (and every other tile's
+            // right-hand reading): y 16 with no height sat ~2.5 px high.
+            y: 14 * root.s
+            height: 24 * root.s
+            verticalAlignment: Text.AlignVCenter
             text: Battery.stateLabel
             color: bt.tint
             font.family: Appearance.font.family
@@ -2524,7 +2568,9 @@ PanelWindow {
                         anchors.left: parent.left
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
-                        width: Math.max(radius * 2, parent.width * Battery.frac)
+                        // Pours in with the tile's reveal instead of sitting
+                        // full before the tile has even risen.
+                        width: Math.max(radius * 2, parent.width * Battery.frac * bt.reveal)
                         radius: 9 * root.s
                         gradient: Gradient {
                             orientation: Gradient.Horizontal
@@ -2532,6 +2578,7 @@ PanelWindow {
                             GradientStop { position: 1.0; color: bt.tint }
                         }
                         Behavior on width {
+                            enabled: bt.reveal >= 1
                             NumberAnimation {
                                 duration: Motion.normalDur
                                 easing.type: Motion.easeBezier
@@ -2612,7 +2659,7 @@ PanelWindow {
                     font.family: Appearance.font.jp
                     font.weight: Font.Bold
                     font.pixelSize: 30 * root.s
-                    scale: 0.6 + 0.4 * Math.min(1, acGauge.sweep * 2.5)
+                    scale: 0.6 + 0.4 * Math.min(1, Math.min(acGauge.sweep, bt.reveal) * 2.5)
                 }
                 InkStroke {
                     id: acInk
@@ -2622,7 +2669,10 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     height: 34 * root.s
                     s: root.s * 1.8
-                    frac: Battery.frac * acGauge.sweep
+                    // Opening the dashboard draws the stroke with the tile's
+                    // reveal; it used to sit fully inked (bead already
+                    // running) while the tile was still rising.
+                    frac: Battery.frac * acGauge.sweep * bt.reveal
                     glide: false
                     inkStops: [Colors.error, Colors.tertiary, Colors.primary]
                     wet: 1
@@ -2632,7 +2682,7 @@ PanelWindow {
                     id: bead
                     property real t: 0
                     readonly property real run: Math.max(0, acInk.headX - acInk.inset - 26 * root.s)
-                    visible: acGauge.visible && acGauge.sweep >= 1 && run > 8 * root.s && !Motion.reduceMotion
+                    visible: acGauge.visible && acGauge.sweep >= 1 && bt.reveal >= 1 && run > 8 * root.s && !Motion.reduceMotion
                     x: acInk.x + acInk.inset + bead.t * bead.run - width / 2
                     anchors.verticalCenter: acInk.verticalCenter
                     width: 30 * root.s
@@ -2680,12 +2730,18 @@ PanelWindow {
             anchors.top: gauge.bottom
             anchors.topMargin: 8 * root.s
             width: parent.width - 40 * root.s
+            // Collapses with its text (full battery: no estimate to give) so no
+            // blank line is left under the gauge; eased so the curve below
+            // glides rather than jumps.
+            height: text.length > 0 ? timeLineFm.height : 0
+            Behavior on height { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve } }
+            FontMetrics { id: timeLineFm; font: timeLine.font }
             elide: Text.ElideRight
             text: bt.secs > 0
                 ? Battery.fmt(bt.secs) + (Battery.charging ? " to full" : " left") + "  ·  "
                     + (Battery.charging ? "full around " : "empty around ")
                     + root.fmtTime(new Date(root.now.getTime() + bt.secs * 1000))
-                : (Battery.full ? "Fully charged"
+                : (Battery.full ? ""
                     : (!Battery.charging && !Battery.discharging ? "Plugged in, holding at " + Battery.pct + "%" : Battery.stateLabel))
             color: Colors.on_surface
             font.family: Appearance.font.family
@@ -2785,8 +2841,8 @@ PanelWindow {
         // readings, in the System tile's column style
         Row {
             id: battStats
-            opacity: bt.seg(2, 4)
-            transform: Translate { y: (1 - bt.seg(2, 4)) * 8 * root.s }
+            opacity: bt.seg(2)
+            transform: Translate { y: (1 - bt.seg(2)) * 8 * root.s }
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.leftMargin: 20 * root.s
@@ -2852,8 +2908,8 @@ PanelWindow {
                         id: seg
                         required property var modelData
                         required property int index
-                        opacity: bt.seg(2.6 + seg.index * 0.4, 4)
-                        transform: Translate { y: (1 - bt.seg(2.6 + seg.index * 0.4, 4)) * 8 * root.s }
+                        opacity: bt.seg(2.6 + seg.index * 0.4)
+                        transform: Translate { y: (1 - bt.seg(2.6 + seg.index * 0.4)) * 8 * root.s }
                         readonly property bool on: root.profile === seg.modelData.k
                         readonly property bool first: index === 0
                         readonly property bool last: index === profileSeg.opts.length - 1
@@ -2866,7 +2922,8 @@ PanelWindow {
                         topRightRadius: seg.last ? outer : inner
                         bottomRightRadius: seg.last ? outer : inner
                         color: seg.on ? Colors.secondary_container : Colors.surface_container_highest
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        // same clock as the radius morph below (fill used to flip in `fast` under it)
+                        Behavior on color { ColorAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveEffects } }
                         scale: segArea.pressed ? 0.95 : 1
                         Behavior on scale { NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveFastSpatial } }
                         Behavior on topLeftRadius { NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveFastSpatial } }
@@ -2899,6 +2956,7 @@ PanelWindow {
                                 font.family: Appearance.font.family
                                 font.pixelSize: 10.5 * root.s
                                 font.weight: seg.on ? Font.Bold : Font.Medium
+                                Behavior on color { ColorAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveEffects } }
                             }
                         }
                         MouseArea {
@@ -2921,6 +2979,138 @@ PanelWindow {
                 stroke: 1.7
                 color: Colors.on_surface_variant
             }
+        }
+    }
+
+    /** One buffer of ArtSwap: an image that fades in once it has loaded. */
+    component ArtLayer: Item {
+        id: lay
+        property string src: ""
+        property size srcSize: Qt.size(0, 0)
+        property bool blurred: false
+        property bool on: false
+        property bool pending: false
+        readonly property bool ready: img.status === Image.Ready
+        signal promote()
+        signal failed()
+        anchors.fill: parent
+        opacity: lay.on && lay.ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve } }
+        // a layer that has faded out lets go of its pixmap
+        onOpacityChanged: if (opacity === 0 && !on && !pending && src !== "") src = ""
+        Image {
+            id: img
+            anchors.fill: parent
+            source: lay.src
+            sourceSize: lay.srcSize
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            // not toggled at runtime: the blurred variant is sampled by the effect
+            visible: !lay.blurred
+        }
+        MultiEffect {
+            anchors.fill: parent
+            source: img
+            visible: lay.blurred
+            blurEnabled: true
+            blur: 1
+            blurMax: 48
+            saturation: 0.2
+        }
+        Connections {
+            target: img
+            function onStatusChanged() {
+                if (!lay.pending)
+                    return;
+                if (img.status === Image.Ready) {
+                    lay.pending = false;
+                    lay.promote();
+                } else if (img.status === Image.Error) {
+                    lay.pending = false;
+                    lay.failed();
+                }
+            }
+        }
+    }
+
+    /**
+     * Cover art that never snaps. A new URL loads into the hidden buffer and
+     * fades in on top once Ready; the old buffer is dropped only after the new
+     * one is fully opaque, so coverage never dips mid-fade. `coverage` (0..1)
+     * is how much art is showing, for a placeholder to fade against.
+     */
+    component ArtSwap: Item {
+        id: sw
+        property string source: ""
+        property size srcSize: Qt.size(0, 0)
+        property bool blurred: false
+        readonly property real coverage: Math.max(slotA.opacity, slotB.opacity)
+        property Item front: null
+        property int zc: 0
+        readonly property real frontOpacity: sw.front ? sw.front.opacity : 0
+
+        function backSlot() { return sw.front === slotA ? slotB : slotA; }
+        function promoteSlot(l) {
+            sw.front = l;
+            sw.zc += 1;
+            l.z = sw.zc;
+            l.on = true;
+        }
+        function load() {
+            var b = sw.backSlot();
+            if (sw.source === "") {
+                slotA.pending = false;
+                slotB.pending = false;
+                slotA.on = false;
+                slotB.on = false;
+                sw.front = null;
+                return;
+            }
+            if (sw.front && sw.front.src === sw.source) {
+                // back to what is already showing: abandon any load in flight
+                if (b.pending) {
+                    b.pending = false;
+                    if (!b.on) b.src = "";
+                }
+                return;
+            }
+            if (b.pending && b.src === sw.source)
+                return;
+            var same = b.src === sw.source;
+            b.on = false;
+            b.pending = true;
+            b.src = sw.source;
+            if (same && b.ready) {
+                b.pending = false;
+                sw.promoteSlot(b);
+            }
+        }
+        // the buffers below exist only once the component has completed
+        property bool up: false
+        onSourceChanged: if (sw.up) sw.load()
+        Component.onCompleted: { sw.up = true; sw.load(); }
+        // the old buffer goes once the new one covers it
+        onFrontOpacityChanged: if (sw.frontOpacity >= 1 && sw.front) sw.backSlot().on = false
+
+        ArtLayer {
+            id: slotA
+            srcSize: sw.srcSize
+            blurred: sw.blurred
+            onPromote: sw.promoteSlot(slotA)
+            onFailed: if (slotA.src === sw.source) sw.clearAll()
+        }
+        ArtLayer {
+            id: slotB
+            srcSize: sw.srcSize
+            blurred: sw.blurred
+            onPromote: sw.promoteSlot(slotB)
+            onFailed: if (slotB.src === sw.source) sw.clearAll()
+        }
+        // art that failed to load: let the old cover go rather than keep a stale one
+        function clearAll() {
+            slotA.on = false;
+            slotB.on = false;
+            sw.front = null;
         }
     }
 
@@ -2950,7 +3140,11 @@ PanelWindow {
         Row {
             spacing: 5 * root.s
             Text {
+                id: statValue
                 anchors.baseline: parent.children[1].baseline
+                // never wider than the column: the aside gives way first
+                width: Math.min(implicitWidth, stat.width)
+                elide: Text.ElideRight
                 text: stat.value
                 color: Colors.on_surface
                 font.family: Appearance.font.family
@@ -2959,8 +3153,11 @@ PanelWindow {
                 font.features: ({ "tnum": 1 })
             }
             Text {
+                readonly property real room: stat.width - statValue.width - parent.spacing
                 text: stat.aside
-                visible: text.length > 0
+                width: Math.min(implicitWidth, Math.max(0, room))
+                elide: Text.ElideRight
+                visible: text.length > 0 && room > 8 * root.s
                 color: Colors.on_surface_variant
                 font.family: Appearance.font.family
                 font.pixelSize: 10.5 * root.s
@@ -2979,7 +3176,10 @@ PanelWindow {
                 height: parent.height
                 radius: parent.radius
                 color: stat.tint
-                Behavior on width { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveDefaultSpatial } }
+                Behavior on width {
+                    enabled: stat.enter >= 1
+                    NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveDefaultSpatial }
+                }
             }
         }
     }

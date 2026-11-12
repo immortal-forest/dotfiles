@@ -185,6 +185,7 @@ SettingsPage {
                             radius: width / 2
                             color: ruleRow.live && ruleRow.live.active
                                 ? Colors.primary : Qt.alpha(Colors.on_surface_variant, 0.5)
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
 
                         SideChip {
@@ -196,15 +197,19 @@ SettingsPage {
                 }
             }
 
-            Text {
-                visible: root.rules.length === 0
-                topPadding: 4 * root.s
-                leftPadding: 12 * root.s
-                text: "No workspace rules defined"
-                color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                font.family: Appearance.font.family
-                font.pixelSize: 10.5 * root.s
-                font.italic: true
+            SettingsCollapse {
+                shown: root.rules.length === 0
+                surface: root
+
+                Text {
+                    topPadding: 4 * root.s
+                    leftPadding: 12 * root.s
+                    text: "No workspace rules defined"
+                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 10.5 * root.s
+                    font.italic: true
+                }
             }
 
             SettingsGroupLabel { s: root.s; text: "Monitor assignments" }
@@ -230,17 +235,21 @@ SettingsPage {
                 }
             }
 
-            Text {
-                visible: root.monitorKeys.length === 0
-                topPadding: 4 * root.s
-                leftPadding: 12 * root.s
-                width: parent.width
-                text: "None — no rule names a monitor, so workspaces open on the focused one"
-                color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                font.family: Appearance.font.family
-                font.pixelSize: 10.5 * root.s
-                font.italic: true
-                wrapMode: Text.WordWrap
+            SettingsCollapse {
+                shown: root.monitorKeys.length === 0
+                surface: root
+
+                Text {
+                    topPadding: 4 * root.s
+                    leftPadding: 12 * root.s
+                    width: parent.width
+                    text: "None — no rule names a monitor, so workspaces open on the focused one"
+                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 10.5 * root.s
+                    font.italic: true
+                    wrapMode: Text.WordWrap
+                }
             }
 
             Item { width: 1; height: 10 * root.s }

@@ -94,6 +94,8 @@ PanelWindow {
     Item {
         id: drawRoot
         anchors.fill: parent
+        // Gated on OPACITY (never visible) so the Shapes keep painting.
+        opacity: vizLayer.viz.fade
 
         Repeater {
             model: vizLayer.viz.paths

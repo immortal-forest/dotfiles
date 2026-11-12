@@ -384,6 +384,8 @@ PillSurface {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 visible: !root.canPick && root.serviceLabel.length > 0
+                width: Math.min(implicitWidth, parent.width)
+                elide: Text.ElideRight
                 text: root.serviceLabel
                 color: Colors.on_surface_variant
                 font.family: Appearance.font.family
@@ -398,13 +400,14 @@ PillSurface {
                 height: 22 * root.s
                 width: bubbleRow.width + 16 * root.s
                 radius: height / 2
-                color: Qt.alpha(Colors.primary, 0.16)
+                color: Qt.alpha(Colors.primary, srcArea.containsMouse ? 0.26 : 0.16)
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
                 border.width: 1
                 border.color: Qt.alpha(Colors.primary, 0.45 + 0.35 * glow)
 
                 property real glow: 0
                 SequentialAnimation on glow {
-                    running: srcBubble.visible && !root.picking
+                    running: srcBubble.visible && !root.picking && !Motion.reduceMotion
                     loops: Animation.Infinite
                     NumberAnimation { to: 1; duration: 1300; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 0; duration: 1300; easing.type: Easing.InOutSine }
@@ -439,6 +442,7 @@ PillSurface {
                 }
 
                 MouseArea {
+                    id: srcArea
                     anchors.fill: parent
                     anchors.margins: -5 * root.s
                     hoverEnabled: true
@@ -485,7 +489,8 @@ PillSurface {
                         height: 32 * root.s
                         width: bubInner.width + 18 * root.s
                         radius: 11 * root.s
-                        color: isActive ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.on_surface, 0.045)
+                        color: isActive ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.on_surface, bubArea.containsMouse ? 0.1 : 0.045)
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                         border.width: 1
                         border.color: isActive ? Colors.primary : Qt.alpha(Colors.on_surface, 0.12)
 
@@ -521,6 +526,7 @@ PillSurface {
                         }
 
                         MouseArea {
+                            id: bubArea
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
@@ -573,6 +579,15 @@ PillSurface {
             gradient: Gradient {
                 GradientStop { position: 0.0; color: root.mix(Colors.primary, Colors.surface_container, 0.55 - 0.27 * seal.sat) }
                 GradientStop { position: 1.0; color: root.mix(Qt.darker(Colors.primary, 1.18), Colors.surface_container, 0.55 - 0.27 * seal.sat) }
+            }
+
+            // Hover wash: the seal is the one transport control with no hover cue.
+            Rectangle {
+                anchors.fill: parent
+                radius: seal.radius
+                color: Colors.on_surface
+                opacity: sealArea.containsMouse && sealArea.enabled ? 0.1 : 0
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
 
             Text {

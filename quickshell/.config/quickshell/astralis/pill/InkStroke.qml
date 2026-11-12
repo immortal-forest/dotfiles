@@ -36,7 +36,7 @@ Canvas {
         NumberAnimation {
             duration: Motion.expressiveDefaultSpatialDur
             easing.type: Motion.easeBezier
-            easing.bezierCurve: Motion.expressiveDefaultSpatial
+            easing.bezierCurve: Motion.standardCurve
         }
     }
 

@@ -325,10 +325,31 @@ ShellRoot {
             readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
 
             Loader {
-                active: root.vizEnabled
+                id: vizLoader
+                // Stays alive through the fade-out (dieTimer) so toggling off
+                // dissolves the wave instead of cutting it in one frame.
+                property bool keep: false
+                active: root.vizEnabled || keep
                 sourceComponent: Visualizer {
                     screen: vizScope.modelData
                     s: vizScope.s
+                    shown: root.vizEnabled
+                }
+                Connections {
+                    target: root
+                    function onVizEnabledChanged() {
+                        if (root.vizEnabled) {
+                            dieTimer.stop();
+                            vizLoader.keep = true;
+                        } else {
+                            dieTimer.restart();
+                        }
+                    }
+                }
+                Timer {
+                    id: dieTimer
+                    interval: Motion.standard + 150
+                    onTriggered: vizLoader.keep = false
                 }
             }
         }

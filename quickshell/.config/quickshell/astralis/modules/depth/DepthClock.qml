@@ -33,6 +33,17 @@ PanelWindow {
     /** Screen size in logical px. */
     property real sw: 1920
     property real sh: 1080
+    /** False starts the fade-out; Depth.qml's Loader destroys us once it has run. */
+    property bool shown: true
+    /** 0..1 clock opacity: eases in on creation, out when `shown` flips off. */
+    property real fade: 0
+    Behavior on fade {
+        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve }
+    }
+    Component.onCompleted: {
+        fade = Qt.binding(() => win.shown ? 1 : 0);
+        WallpaperDepth.want(win.physSize);
+    }
     readonly property real dpr: screen?.devicePixelRatio ?? 1
     /** Screen size in physical px — the cut-out is rendered at exactly this. */
     readonly property string physSize: Math.round(sw * dpr) + "x" + Math.round(sh * dpr)
@@ -55,7 +66,6 @@ PanelWindow {
     implicitHeight: Math.round(boxH)
     mask: Region {}
 
-    Component.onCompleted: WallpaperDepth.want(win.physSize)
     onPhysSizeChanged: WallpaperDepth.want(win.physSize)
 
     SystemClock {
@@ -238,7 +248,7 @@ PanelWindow {
              : Math.round((parent.width - width) / 2)
             y: Math.round((parent.height - height) / 2)
             spacing: Math.round(win.px * win.dateGap)
-            opacity: win.cfg.opacity
+            opacity: win.cfg.opacity * win.fade
 
             DateLine { visible: win.dateOn && win.cfg.layout !== "below" }
 
@@ -292,7 +302,7 @@ PanelWindow {
             opacity: win.cut.length && status === Image.Ready ? 1 : 0
             Behavior on opacity {
                 enabled: cutImg.opacity < 0.5
-                NumberAnimation { duration: Motion.largeDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve }
+                NumberAnimation { duration: Motion.largeDur; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve }
             }
         }
     }

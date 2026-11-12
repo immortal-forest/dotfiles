@@ -281,105 +281,131 @@ PillSurface {
     // ── calc result row ─────────────────────────────────────────────────────
     Item {
         id: calcRow
-        visible: root.calcActive
+        /**
+         * Expands and collapses (height + opacity, clipped) so the list below
+         * glides down and up instead of jumping. The 6px gap above the list is
+         * folded into the animated height (44 + 6), so a collapsed row leaves
+         * no gap. Anchor-positioned, so the visible gate is safe; it rides
+         * opacity, never the animated height.
+         */
         anchors.top: divider.bottom
         anchors.topMargin: 6 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        height: visible ? 44 * root.s : 0
-
-        // The shell's one in-surface container recipe (Recorder's tiles): a
-        // flat on_surface wash under a hairline of the same ink. The pill body
-        // is already a Panel, and a Panel nested in a Panel reads as packaging
-        // (astralis-architecture §2b-ii / §2b-iii).
-        Rectangle {
-            anchors.fill: parent
-            radius: 9 * root.s
-            color: Qt.alpha(Colors.on_surface, 0.04)
-            border.width: 1
-            border.color: Qt.alpha(Colors.on_surface, 0.06)
-        }
-
-        M3StateLayer {
-            anchors.fill: parent
-            radius: 9 * root.s
-            s: root.s
-            contentColor: Colors.on_surface
-            // A card-sized target: §6.1's 0.96 tier. The hit area is already
-            // the full row, so it does not need growing to the 40dp floor.
-            pressScale: 0.96
-            minTarget: 0
-            accessibleName: "Copy result " + root.calc.display
-            accessibleDescription: root.query
-            onClicked: root.copyResult()
+        height: root.calcActive ? 50 * root.s : 0
+        opacity: root.calcActive ? 1 : 0
+        visible: opacity > 0.01
+        enabled: root.calcActive
+        clip: true
+        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        Behavior on height {
+            NumberAnimation {
+                duration: Motion.standard
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.morphCurve
+            }
         }
 
         Item {
-            anchors.fill: parent
-            anchors.leftMargin: 12 * root.s
-            anchors.rightMargin: 12 * root.s
+            id: calcBody
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 44 * root.s
 
-            Column {
-                anchors.left: parent.left
-                anchors.right: copyHint.left
-                anchors.rightMargin: 8 * root.s
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 1 * root.s
-
-                Text {
-                    width: parent.width
-                    text: "= " + root.calc.display
-                    color: Colors.on_surface
-                    font.family: Appearance.font.family
-                    font.pixelSize: 15 * root.s
-                    font.weight: Font.DemiBold
-                    elide: Text.ElideRight
-                }
-                Text {
-                    width: parent.width
-                    text: root.query
-                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                    font.family: Appearance.font.family
-                    font.pixelSize: 10.5 * root.s
-                    elide: Text.ElideRight
-                }
+            // The shell's one in-surface container recipe (Recorder's tiles): a
+            // flat on_surface wash under a hairline of the same ink. The pill body
+            // is already a Panel, and a Panel nested in a Panel reads as packaging
+            // (astralis-architecture §2b-ii / §2b-iii).
+            Rectangle {
+                anchors.fill: parent
+                radius: 9 * root.s
+                color: Qt.alpha(Colors.on_surface, 0.04)
+                border.width: 1
+                border.color: Qt.alpha(Colors.on_surface, 0.06)
             }
 
-            /**
-             * The hint used to read "↵ copy" — the return ARROW borrowed from
-             * the UI font. A Unicode symbol renders at the font's weight,
-             * metrics and optical size, never the icon set's, so it landed
-             * beside the shell's real icons as a visibly different object no
-             * matter how it was sized (astralis-architecture §6.0-pre). It is
-             * a GlyphIcon now, and the copied state swaps it for a check
-             * rather than dropping to a bare word.
-             */
-            Row {
-                id: copyHint
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 5 * root.s
+            M3StateLayer {
+                anchors.fill: parent
+                radius: 9 * root.s
+                s: root.s
+                contentColor: Colors.on_surface
+                // A card-sized target: §6.1's 0.96 tier. The hit area is already
+                // the full row, so it does not need growing to the 40dp floor.
+                pressScale: 0.96
+                minTarget: 0
+                accessibleName: "Copy result " + root.calc.display
+                accessibleDescription: root.query
+                onClicked: root.copyResult()
+            }
 
-                readonly property color tone: root.calcCopied
-                    ? Colors.on_surface_variant : Colors.primary
+            Item {
+                anchors.fill: parent
+                anchors.leftMargin: 12 * root.s
+                anchors.rightMargin: 12 * root.s
 
-                GlyphIcon {
+                Column {
+                    anchors.left: parent.left
+                    anchors.right: copyHint.left
+                    anchors.rightMargin: 8 * root.s
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 13 * root.s
-                    height: 13 * root.s
-                    name: root.calcCopied ? "check" : "return"
-                    color: copyHint.tone
-                    stroke: 1.8
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    spacing: 1 * root.s
+
+                    Text {
+                        width: parent.width
+                        text: "= " + root.calc.display
+                        color: Colors.on_surface
+                        font.family: Appearance.font.family
+                        font.pixelSize: 15 * root.s
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        width: parent.width
+                        text: root.query
+                        color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                        font.family: Appearance.font.family
+                        font.pixelSize: 10.5 * root.s
+                        elide: Text.ElideRight
+                    }
                 }
 
-                Text {
+                /**
+                 * The hint used to read "↵ copy" — the return ARROW borrowed from
+                 * the UI font. A Unicode symbol renders at the font's weight,
+                 * metrics and optical size, never the icon set's, so it landed
+                 * beside the shell's real icons as a visibly different object no
+                 * matter how it was sized (astralis-architecture §6.0-pre). It is
+                 * a GlyphIcon now, and the copied state swaps it for a check
+                 * rather than dropping to a bare word.
+                 */
+                Row {
+                    id: copyHint
+                    anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.calcCopied ? "copied" : "copy"
-                    color: copyHint.tone
-                    font.family: Appearance.font.family
-                    font.pixelSize: 11 * root.s
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    spacing: 5 * root.s
+
+                    readonly property color tone: root.calcCopied
+                        ? Colors.on_surface_variant : Colors.primary
+
+                    GlyphIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 13 * root.s
+                        height: 13 * root.s
+                        name: root.calcCopied ? "check" : "return"
+                        color: copyHint.tone
+                        stroke: 1.8
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.calcCopied ? "copied" : "copy"
+                        color: copyHint.tone
+                        font.family: Appearance.font.family
+                        font.pixelSize: 11 * root.s
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    }
                 }
             }
         }
@@ -404,8 +430,8 @@ PillSurface {
     // ── results ─────────────────────────────────────────────────────────────
     ListView {
         id: list
-        anchors.top: root.calcActive ? calcRow.bottom : divider.bottom
-        anchors.topMargin: 6 * root.s
+        anchors.top: calcRow.bottom
+        anchors.topMargin: 0   // the 6px gap lives in calcRow's animated height
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -559,6 +585,9 @@ PillSurface {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.right: ret.left
                     anchors.rightMargin: 8 * root.s
+                    // Capped so a long genericName can't squeeze the app name to nothing.
+                    width: Math.min(implicitWidth, appRow.width * 0.4)
+                    elide: Text.ElideRight
                     visible: appRow.secondary.length > 0
                     text: appRow.secondary
                     color: appRow.selected ? Colors.on_surface_variant

@@ -88,6 +88,33 @@ SettingsPage {
         width: parent ? parent.width : 0
         height: col.implicitHeight + 22 * irow.s
 
+        // Same page-enter fade + rise as SettingsRow, so these four rows join
+        // the cascade instead of standing fully drawn above their siblings.
+        property bool entered: false
+        function playEnter() {
+            irow.entered = false;
+            enterTimer.restart();
+        }
+        Component.onCompleted: if (root.active) irow.playEnter()
+        Connections {
+            target: root
+            function onActiveChanged() {
+                if (root.active)
+                    irow.playEnter();
+            }
+        }
+        Timer {
+            id: enterTimer
+            interval: Motion.rowStagger * Math.min(Math.max(root.rowIndexOf(irow), 0), 10)
+            onTriggered: irow.entered = true
+        }
+        opacity: irow.entered ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        transform: Translate {
+            y: irow.entered ? 0 : 10 * irow.s
+            Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+        }
+
         HoverHandler {
             id: ih
             onHoveredChanged: root.reportRowHover(irow, hovered)
@@ -119,6 +146,7 @@ SettingsPage {
             height: 17 * irow.s
             name: irow.icon
             color: (ih.hovered || root.focusRowItem === irow) ? Colors.on_surface : Colors.on_surface_variant
+            Behavior on color { ColorAnimation { duration: Motion.fast } }
             stroke: 1.8
         }
 
@@ -142,7 +170,7 @@ SettingsPage {
                 width: parent.width
                 visible: irow.caption.length > 0
                 text: irow.caption
-                color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                color: Qt.alpha(Colors.on_surface_variant, 0.85)
                 font.family: Appearance.font.family
                 font.pixelSize: 10.5 * irow.s
             }

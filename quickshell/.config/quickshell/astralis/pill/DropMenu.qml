@@ -175,8 +175,9 @@ Item {
                         }
                     }
 
-                    readonly property color labelColor: row.current ? Colors.on_secondary_container
+                    property color labelColor: row.current ? Colors.on_secondary_container
                         : (rowArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant)
+                    Behavior on labelColor { ColorAnimation { duration: Motion.fast } }
 
                     DisplayLabel {
                         visible: row.label.indexOf("×") >= 0

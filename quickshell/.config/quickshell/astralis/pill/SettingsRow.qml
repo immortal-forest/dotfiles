@@ -70,8 +70,39 @@ Item {
      * overflows into the neighbouring row; for the real controls the text term
      * always wins, keeping the rhythm uniform.
      */
-    height: Math.max(textCol.implicitHeight + 26 * srow.s,
-                     controlSlot.childrenRect.height + 8 * srow.s)
+    readonly property real naturalHeight: Math.max(textCol.implicitHeight + 26 * srow.s,
+                                                   controlSlot.childrenRect.height + 8 * srow.s)
+
+    /**
+     * Conditional rows: call sites bind `shown: cond` instead of `visible:
+     * cond`. false collapses the row (height eases to 0, clipped) and fades it
+     * out; true expands it. `shownT` is the 0..1 expand fraction the height is
+     * scaled by, so the row's own height (and thus any Column spacing, which
+     * is 0 on every settings page) is what animates — the page reflows as a
+     * glide, not one frame. Visibility follows OPACITY, never height: a
+     * `visible: height > 0` gate would hide the item, and a hidden item is
+     * dropped from its Column's layout so it could never grow back.
+     *
+     * Hidden rows are also made invisible to screen readers.
+     */
+    property bool shown: true
+    property real shownT: srow.shown ? 1 : 0
+    Behavior on shownT {
+        // Snap on the first layout AND while the page is still entering
+        // (`entered`): a page's seed() flips its conditions on activation,
+        // and a row that starts collapsed must open already collapsed, not
+        // animate shut under the page's own fade-in.
+        enabled: srow.settled && srow.entered
+        NumberAnimation {
+            duration: srow.shown ? Motion.normalDur : Motion.expressiveFastSpatialDur
+            easing.type: Motion.easeBezier
+            easing.bezierCurve: Motion.emphasized
+        }
+    }
+    height: srow.naturalHeight * srow.shownT
+    clip: srow.shownT < 0.999
+    visible: srow.shown || srow.opacity > 0.01
+    Accessible.ignored: !srow.shown
 
     /**
      * Smooth the height change when a `captionOnFocus` row grows/shrinks on
@@ -129,7 +160,7 @@ Item {
         onTriggered: srow.entered = true
     }
 
-    opacity: srow.entered ? 1 : 0
+    opacity: srow.entered && srow.shown ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
     transform: Translate {
@@ -308,6 +339,12 @@ Item {
     Item {
         id: controlSlot
         anchors.right: parent.right
+        // Mirrors the leading icon's 14*s left inset so a control sits INSIDE
+        // rowHighlight (radius 9) with breathing room instead of on its rounded
+        // corner. 14*s also exceeds the press dip (0.985 of the row width,
+        // ~3px a side at the settings width), so the highlight shrinking under
+        // a press can never expose a control past its edge.
+        anchors.rightMargin: 14 * srow.s
         anchors.verticalCenter: parent.verticalCenter
         width: childrenRect.width
         height: childrenRect.height

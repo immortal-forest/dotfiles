@@ -1363,13 +1363,17 @@ PillSurface {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                spacing: 8 * root.s
+                // 0: the 8px gaps are explicit spacers or live inside the
+                // animated rows, so a collapsed row leaves no gap behind.
+                spacing: 0
 
                 Rectangle {
                     width: parent.width
                     height: 1
                     color: root.hair
                 }
+
+                Item { width: 1; height: 8 * root.s }
 
                 Row {
                     width: parent.width
@@ -1457,6 +1461,8 @@ PillSurface {
                     }
                 }
 
+                Item { width: 1; height: 8 * root.s }
+
                 Seg {
                     options: [
                         { label: "All day", value: "allday" },
@@ -1466,81 +1472,110 @@ PillSurface {
                     onPicked: (v) => editor.mode = v
                 }
 
-                Row {
+                /**
+                 * Timed row: grows open (height + opacity, clipped) so the
+                 * bottom-pinned form glides instead of snapping. The 8px gap the
+                 * Column would put above it is folded into the animated height,
+                 * so a collapsed row leaves no gap. Gated on OPACITY, never on
+                 * the height: a hidden Column stops recomputing its children.
+                 */
+                Item {
+                    id: timedWrap
+                    readonly property bool shown: editor.mode === "timed"
                     width: parent.width
-                    spacing: 8 * root.s
-                    visible: editor.mode === "timed"
-
-                    Item {
-                        width: (parent.width - 8 * root.s) / 2
-                        height: 26 * root.s
-
-                        TextField {
-                            id: startField
-                            anchors.fill: parent
-                            background: null
-                            padding: 0
-                            leftPadding: 2 * root.s
-                            verticalAlignment: TextInput.AlignVCenter
-                            color: Colors.on_surface
-                            font.family: Appearance.font.family
-                            font.pixelSize: 13 * root.s
-                            font.features: ({ "tnum": 1 })
-                            placeholderText: "09:00"
-                            Accessible.name: "Start time"
-                            placeholderTextColor: root.wxFaint
-                            inputMethodHints: Qt.ImhPreferNumbers
-                            selectByMouse: true
-                            selectionColor: Colors.primary
-                            onTextChanged: editor.startVal = text
-                            Keys.onReturnPressed: editor.commit()
-                        }
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            height: 1
-                            color: root.wxFaint
-                            opacity: startField.activeFocus ? 0.7 : 0.2
-                            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                    height: shown ? 34 * root.s : 0
+                    opacity: shown ? 1 : 0
+                    visible: opacity > 0.01
+                    enabled: shown
+                    clip: true
+                    Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Motion.standard
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.morphCurve
                         }
                     }
 
-                    Item {
-                        width: (parent.width - 8 * root.s) / 2
-                        height: 26 * root.s
+                    Row {
+                        anchors.top: parent.top
+                        anchors.topMargin: 8 * root.s
+                        width: parent.width
+                        spacing: 8 * root.s
 
-                        TextField {
-                            id: endField
-                            anchors.fill: parent
-                            background: null
-                            padding: 0
-                            leftPadding: 2 * root.s
-                            verticalAlignment: TextInput.AlignVCenter
-                            color: Colors.on_surface
-                            font.family: Appearance.font.family
-                            font.pixelSize: 13 * root.s
-                            font.features: ({ "tnum": 1 })
-                            placeholderText: "until"
-                            Accessible.name: "End time"
-                            placeholderTextColor: root.wxFaint
-                            inputMethodHints: Qt.ImhPreferNumbers
-                            selectByMouse: true
-                            selectionColor: Colors.primary
-                            onTextChanged: editor.endVal = text
-                            Keys.onReturnPressed: editor.commit()
+                        Item {
+                            width: (parent.width - 8 * root.s) / 2
+                            height: 26 * root.s
+
+                            TextField {
+                                id: startField
+                                anchors.fill: parent
+                                background: null
+                                padding: 0
+                                leftPadding: 2 * root.s
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: Colors.on_surface
+                                font.family: Appearance.font.family
+                                font.pixelSize: 13 * root.s
+                                font.features: ({ "tnum": 1 })
+                                placeholderText: "09:00"
+                                Accessible.name: "Start time"
+                                placeholderTextColor: root.wxFaint
+                                inputMethodHints: Qt.ImhPreferNumbers
+                                selectByMouse: true
+                                selectionColor: Colors.primary
+                                onTextChanged: editor.startVal = text
+                                Keys.onReturnPressed: editor.commit()
+                            }
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: 1
+                                color: root.wxFaint
+                                opacity: startField.activeFocus ? 0.7 : 0.2
+                                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                            }
                         }
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            height: 1
-                            color: root.wxFaint
-                            opacity: endField.activeFocus ? 0.7 : 0.2
-                            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+
+                        Item {
+                            width: (parent.width - 8 * root.s) / 2
+                            height: 26 * root.s
+
+                            TextField {
+                                id: endField
+                                anchors.fill: parent
+                                background: null
+                                padding: 0
+                                leftPadding: 2 * root.s
+                                verticalAlignment: TextInput.AlignVCenter
+                                color: Colors.on_surface
+                                font.family: Appearance.font.family
+                                font.pixelSize: 13 * root.s
+                                font.features: ({ "tnum": 1 })
+                                placeholderText: "until"
+                                Accessible.name: "End time"
+                                placeholderTextColor: root.wxFaint
+                                inputMethodHints: Qt.ImhPreferNumbers
+                                selectByMouse: true
+                                selectionColor: Colors.primary
+                                onTextChanged: editor.endVal = text
+                                Keys.onReturnPressed: editor.commit()
+                            }
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                height: 1
+                                color: root.wxFaint
+                                opacity: endField.activeFocus ? 0.7 : 0.2
+                                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                            }
                         }
                     }
                 }
+
+                Item { width: 1; height: 8 * root.s }
 
                 Seg {
                     options: [
@@ -1566,15 +1601,36 @@ PillSurface {
                  * a single day. Hidden for a recurring entry, which is a single
                  * repeating day.
                  */
-                Row {
+                Item {
+                    id: spanWrap
+                    // Grows open like the Timed row; the 8px gap above it is
+                    // folded into the animated height.
+                    readonly property bool shown: editor.recur === ""
                     width: parent.width
-                    spacing: 8 * root.s
-                    visible: editor.recur === ""
+                    height: shown ? 36 * root.s : 0
+                    opacity: shown ? 1 : 0
+                    visible: opacity > 0.01
+                    enabled: shown
+                    clip: true
+                    Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: Motion.standard
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.morphCurve
+                        }
+                    }
+
+                  Row {
+                    anchors.top: parent.top
+                    anchors.topMargin: 8 * root.s
+                    width: parent.width
+                    spacing: 0
 
                     Rectangle {
                         id: spanChip
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - extendBtn.width - clearSpan.width - 16 * root.s
+                        width: parent.width - extendBtn.width - clearSpan.width - 8 * root.s
                         height: 28 * root.s
                         radius: Motion.rSmall * root.s
                         color: Colors.surface_container_highest
@@ -1597,6 +1653,8 @@ PillSurface {
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: editor.spanLabel
+                                width: Math.min(implicitWidth, spanChip.width - 34 * root.s)
+                                elide: Text.ElideRight
                                 color: root.selEndDate.length > 0 ? Colors.on_surface : Colors.on_surface_variant
                                 font.family: Appearance.font.family
                                 font.pixelSize: 11 * root.s
@@ -1606,6 +1664,8 @@ PillSurface {
                             }
                         }
                     }
+
+                    Item { width: 8 * root.s; height: 1 }
 
                     Rectangle {
                         id: extendBtn
@@ -1649,7 +1709,8 @@ PillSurface {
                             id: extendLabel
                             anchors.centerIn: parent
                             text: root.pickingEnd ? "pick…" : (root.selEndDate.length > 0 ? "edit" : "+ days")
-                            color: extendBtn.armed ? Colors.tertiary : Colors.on_surface_variant
+                            color: extendBtn.armed ? Colors.tertiary
+                                : (extendArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant)
                             font.family: Appearance.font.family
                             font.pixelSize: 10.5 * root.s
                             font.weight: Font.Bold
@@ -1660,6 +1721,7 @@ PillSurface {
                         MouseArea {
                             id: extendArea
                             anchors.fill: parent
+                            hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 if (root.pickingEnd) {
@@ -1673,43 +1735,63 @@ PillSurface {
                         }
                     }
 
+                    // Clear ✕: its width (gap included) and opacity ease so
+                    // the chip glides instead of snapping when a span is set.
                     Item {
                         id: clearSpan
                         anchors.verticalCenter: parent.verticalCenter
-                        width: visible ? 16 * root.s : 0
+                        readonly property bool shown: root.selEndDate.length > 0 && !root.pickingEnd
+                        width: shown ? 24 * root.s : 0
                         height: 16 * root.s
-                        visible: root.selEndDate.length > 0 && !root.pickingEnd
+                        opacity: shown ? 1 : 0
+                        visible: opacity > 0.01
+                        enabled: shown
+                        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                        Behavior on width {
+                            NumberAnimation {
+                                duration: Motion.standard
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.morphCurve
+                            }
+                        }
 
                         Accessible.role: Accessible.Button
                         Accessible.name: "Clear date range"
                         Accessible.focusable: clearSpan.visible
                         Accessible.onPressAction: root.selEndDate = ""
 
-                        scale: clearArea.pressed ? 0.92 : 1
-                        Behavior on scale {
-                            NumberAnimation {
-                                duration: Motion.glide
-                                easing.type: Motion.easeBezier
-                                easing.bezierCurve: Motion.expressiveFastSpatial
+                        Item {
+                            anchors.right: parent.right
+                            width: 16 * root.s
+                            height: 16 * root.s
+
+                            scale: clearArea.pressed ? 0.92 : 1
+                            Behavior on scale {
+                                NumberAnimation {
+                                    duration: Motion.glide
+                                    easing.type: Motion.easeBezier
+                                    easing.bezierCurve: Motion.expressiveFastSpatial
+                                }
+                            }
+
+                            GlyphIcon {
+                                anchors.fill: parent
+                                name: "close"
+                                color: clearArea.containsMouse ? Colors.tertiary : Colors.on_surface_variant
+                                stroke: 1.6
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            }
+                            MouseArea {
+                                id: clearArea
+                                anchors.fill: parent
+                                anchors.margins: -5 * root.s
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.selEndDate = ""
                             }
                         }
-
-                        GlyphIcon {
-                            anchors.fill: parent
-                            name: "close"
-                            color: clearArea.containsMouse ? Colors.tertiary : Colors.on_surface_variant
-                            stroke: 1.6
-                            Behavior on color { ColorAnimation { duration: Motion.fast } }
-                        }
-                        MouseArea {
-                            id: clearArea
-                            anchors.fill: parent
-                            anchors.margins: -5 * root.s
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.selEndDate = ""
-                        }
                     }
+                  }
                 }
             }
         }

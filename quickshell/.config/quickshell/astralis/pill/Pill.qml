@@ -197,7 +197,7 @@ Item {
         // widening the whole card.
         media:     { size: () => { surfaceItem(ldMedia);     return Qt.size(390 * s, 150 * s); /* keep in step with ldMedia's size */ }, ame: () => surfaceItem(ldMedia) },
         calendar:  { size: () => { surfaceItem(ldCalendar);  return Qt.size(698 * s, 304 * s); }, ame: () => surfaceItem(ldCalendar) },
-        mixer:     { size: () => { surfaceItem(ldMixer);     return Qt.size(440 * s, 214 * s); }, ame: () => surfaceItem(ldMixer) },
+        mixer:     { size: () => { surfaceItem(ldMixer);     return Qt.size(440 * s, 226 * s); }, ame: () => surfaceItem(ldMixer) },
         link:      { size: () => fitSize(ldLink, 350, 420), ame: () => surfaceItem(ldLink) },
         launcher:  { size: () => { surfaceItem(ldLauncher);  return Qt.size(360 * s, 332 * s); }, ame: () => surfaceItem(ldLauncher) },
         clipboard: { size: () => { surfaceItem(ldClipboard); return Qt.size(360 * s, 332 * s); }, ame: () => surfaceItem(ldClipboard) },
@@ -209,7 +209,7 @@ Item {
         // Header 24 + 14 + state panel 80 + 12 + settings card 134 + 10 +
         // chip row 34 + 8 + output 36 = 352 content ⇒ 380 fixed; 430 wide fits
         // the frame-rate and quality strips on one line each.
-        recorder:  { size: () => { surfaceItem(ldRecorder);  return Qt.size(430 * s, 348 * s); }, ame: () => surfaceItem(ldRecorder) }
+        recorder:  { size: () => fitSize(ldRecorder, 430, 400), ame: () => surfaceItem(ldRecorder) }
     })
 
     // Mode ladder (Ricelin Pill.qml:224–231; game/quickChoose/quickCount rungs
@@ -639,6 +639,9 @@ Item {
                 visible: opacity > 0.01
                 Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                 spacing: 6 * pill.s
+                // Extra air after the take's group so "録 00:04" and "時 12:56"
+                // read as two readings, not one string run together.
+                rightPadding: 7 * pill.s
 
                 // 録 seal: breathes while capturing; a countdown or a paused
                 // take holds steady and greys, so "live" is never ambiguous.
@@ -658,7 +661,10 @@ Item {
                     // hand, and animating a second hand is a fidget.
                     live: rest.visible && ScreenRec.arming
                     text: ScreenRec.arming ? "" + ScreenRec.countdown : ScreenRec.elapsedText
-                    font.pixelSize: 13 * pill.s
+                    // Same size and weight as the clock beside it, so the two
+                    // numerals share a baseline instead of the timer riding
+                    // ~2px high at a smaller size.
+                    font.pixelSize: 16 * pill.s
                     font.weight: Font.DemiBold
                 }
             }
@@ -937,6 +943,7 @@ Item {
             }
 
             GlyphIcon {
+                id: statusGlyphIcon
                 anchors.centerIn: parent
                 width: statusGlyph.iconSize * pill.s
                 height: statusGlyph.iconSize * pill.s
@@ -946,14 +953,12 @@ Item {
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
             }
 
-            // Unread badge, tucked inside the 32dp box rather than hung off
-            // its corner — the box is the button now, and a dot floating
-            // outside it would sit on the group track's edge.
+            // Unread badge on the GLYPH's top-right shoulder, not the 32dp
+            // box's corner: the glyph is smaller and centred, so a dot pinned
+            // to the box floated a few px off the icon it belongs to.
             Rectangle {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.topMargin: 3 * pill.s
-                anchors.rightMargin: 3 * pill.s
+                x: statusGlyphIcon.x + statusGlyphIcon.width - width / 2 - 1 * pill.s
+                y: statusGlyphIcon.y - height / 2 + 1 * pill.s
                 width: M3.badgeDotSize * pill.s
                 height: width
                 radius: width / 2

@@ -173,7 +173,7 @@ PanelWindow {
 
             Rectangle {
                 anchors.fill: parent
-                color: Qt.alpha(Colors.scrim !== undefined ? Colors.scrim : "#000000", 0.22)
+                color: Qt.alpha(Colors.scrim, 0.22)
             }
 
             // ── snap grid (brightens while something is being dragged) ──────
@@ -350,11 +350,13 @@ PanelWindow {
                             width: br.len; height: br.th; radius: br.th / 2
                             y: br.b ? br.len - br.th : 0
                             color: Qt.alpha(fr.ink, fr.hot ? 1 : 0.7)
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
                         Rectangle {
                             width: br.th; height: br.len; radius: br.th / 2
                             x: br.r ? br.len - br.th : 0
                             color: Qt.alpha(fr.ink, fr.hot ? 1 : 0.7)
+                            Behavior on color { ColorAnimation { duration: Motion.fast } }
                         }
                     }
                 }
@@ -369,6 +371,7 @@ PanelWindow {
                     color: Colors.surface_container_high
                     border.width: 1
                     border.color: Qt.alpha(fr.ink, fr.hot ? 0.6 : 0.25)
+                    Behavior on border.color { ColorAnimation { duration: Motion.fast } }
                     Row {
                         id: tagRow
                         anchors.centerIn: parent
@@ -526,7 +529,7 @@ PanelWindow {
                 border.color: Qt.alpha(Colors.primary, 0.45)
                 scale: tap.pressed ? 0.9 : 1
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
-                Behavior on scale { NumberAnimation { duration: Motion.fast; easing.type: Easing.OutBack } }
+                Behavior on scale { NumberAnimation { duration: Motion.glide; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveFastSpatial } }
                 readonly property color ink: b.accent ? Colors.on_primary
                     : b.on ? Colors.on_primary_container
                     : b.active ? Colors.primary
@@ -552,6 +555,7 @@ PanelWindow {
                     font.pixelSize: 11 * win.s
                     font.weight: Font.Bold
                     font.features: { "tnum": 1 }
+                    Behavior on color { ColorAnimation { duration: Motion.fast } }
                 }
                 // toggle-on dot
                 Rectangle {
@@ -643,10 +647,12 @@ PanelWindow {
                 // Folded: a single bead, tap to unfold.
                 Text {
                     anchors.centerIn: parent
-                    visible: win.folded
+                    opacity: win.folded ? 1 : 0
+                    visible: opacity > 0.01
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                     text: "景"
                     color: Colors.primary
-                    font.family: Appearance.font.family
+                    font.family: Appearance.font.jp
                     font.pixelSize: 16 * win.s
                     TapHandler { onTapped: win.folded = false }
                 }
@@ -788,6 +794,7 @@ PanelWindow {
                         font.pixelSize: 10.5 * win.s
                         font.weight: chip.sel ? Font.Bold : Font.Medium
                         font.features: { "tnum": 1 }
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
                     }
                     HoverHandler { id: chipHov; cursorShape: Qt.PointingHandCursor }
                     TapHandler { onTapped: sg.picked(chip.modelData.value) }
@@ -842,6 +849,7 @@ PanelWindow {
                 y: 3 * win.s
                 x: sw.on ? parent.width - width - 3 * win.s : 3 * win.s
                 color: sw.on ? Colors.on_primary : Colors.on_surface_variant
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
                 Behavior on x { NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveFastSpatial } }
             }
             HoverHandler { cursorShape: Qt.PointingHandCursor }

@@ -221,10 +221,10 @@ PanelWindow {
                     z: 2
                     opacity: info.mode === "overlay" && info.wanted ? 1 : 0
                     visible: opacity > 0.001
-                    Behavior on opacity { NumberAnimation { duration: Motion.standard } }
+                    Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
                     gradient: Gradient {
                         GradientStop { position: 0; color: "transparent" }
-                        GradientStop { position: 1; color: Qt.alpha("#000000", 0.62) }
+                        GradientStop { position: 1; color: Qt.alpha(Colors.scrim, 0.62) }
                     }
                 }
             }
@@ -336,7 +336,7 @@ PanelWindow {
                         radius: height / 2
                         color: on ? TrackInfo.accent : Qt.alpha(Colors.on_surface, 0.35)
                         Behavior on width { NumberAnimation { duration: Motion.expressiveFastSpatialDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.expressiveFastSpatial } }
-                        Behavior on color { ColorAnimation { duration: Motion.standard } }
+                        Behavior on color { ColorAnimation { duration: Motion.standard; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
                     }
                 }
             }
@@ -358,7 +358,7 @@ PanelWindow {
                 font.pixelSize: Appearance.font.sizeS * win.s
                 font.letterSpacing: 0.6 * win.s
                 style: Text.Raised
-                styleColor: Qt.alpha("#000000", 0.35)
+                styleColor: Qt.alpha(Colors.shadow, 0.35)
             }
         }
     }

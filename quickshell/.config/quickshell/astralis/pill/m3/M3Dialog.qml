@@ -133,11 +133,13 @@ FocusScope {
                 easing.bezierCurve: Motion.expressiveDefaultSpatial
             }
         }
+        // Fade on the effects curve: the spatial spring overshoots, which on an
+        // opacity just clamps at 1 early and reads as a shorter fade.
         Behavior on opacity {
             NumberAnimation {
-                duration: Motion.expressiveDefaultSpatialDur
+                duration: Motion.expressiveEffectsDur
                 easing.type: Motion.easeBezier
-                easing.bezierCurve: Motion.expressiveDefaultSpatial
+                easing.bezierCurve: Motion.expressiveEffects
             }
         }
 

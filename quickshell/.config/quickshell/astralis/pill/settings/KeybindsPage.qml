@@ -336,7 +336,7 @@ SettingsPage {
                 anchors.right: parent.right
                 anchors.rightMargin: 14 * root.s
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 1 * root.s
+                spacing: 0
 
                 Text {
                     width: parent.width
@@ -350,22 +350,29 @@ SettingsPage {
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
                 }
 
-                Text {
-                    // `shown` drives layout; opacity fades the raw dispatcher
-                    // in/out over that so it eases in with the hover instead
-                    // of hard-popping at full opacity (same idiom as
-                    // SettingsRow's captionOnFocus).
+                // The caption's slot grows with the hover (clipped, like
+                // SettingsRow's capBox) so the action line glides up instead of
+                // jumping when the Column gains a child; the text fades over it.
+                Item {
                     readonly property bool shown: rowArea.containsMouse && brow.modelData.caption.length > 0
                     width: parent.width
-                    horizontalAlignment: Text.AlignRight
-                    visible: shown || opacity > 0.01
-                    opacity: shown ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-                    text: brow.modelData.caption
-                    color: Qt.alpha(Colors.on_surface_variant, 0.5)
-                    font.family: Appearance.font.family
-                    font.pixelSize: 9 * root.s
-                    elide: Text.ElideLeft
+                    clip: true
+                    height: shown ? capText.implicitHeight + 1 * root.s : 0
+                    Behavior on height { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+
+                    Text {
+                        id: capText
+                        y: 1 * root.s
+                        width: parent.width
+                        horizontalAlignment: Text.AlignRight
+                        opacity: parent.shown ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+                        text: brow.modelData.caption
+                        color: Qt.alpha(Colors.on_surface_variant, 0.5)
+                        font.family: Appearance.font.family
+                        font.pixelSize: 9 * root.s
+                        elide: Text.ElideLeft
+                    }
                 }
             }
         }
@@ -373,7 +380,13 @@ SettingsPage {
 
     Text {
         anchors.centerIn: list
-        visible: root.filtered.length === 0
+        // Fades rather than blinking as the filter empties / refills.
+        opacity: root.filtered.length === 0 ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity {
+            enabled: root.hoverArmed
+            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
+        }
         text: root.binds.length === 0 ? "No binds reported" : "No matches"
         color: Qt.alpha(Colors.on_surface_variant, 0.65)
         font.family: Appearance.font.family

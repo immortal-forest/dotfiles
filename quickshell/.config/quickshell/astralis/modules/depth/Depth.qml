@@ -54,12 +54,33 @@ Scope {
             readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
 
             Loader {
-                active: Widgets.depth.on
+                id: clockLoader
+                // Stays alive through the fade-out (dieTimer) so toggling off
+                // dissolves the clock instead of cutting it in one frame.
+                // Seeded from the flag; later driven by onWantedChanged / dieTimer.
+                property bool keep: Widgets.depth.on
+                active: wanted || keep
                 sourceComponent: DepthClock {
                     screen: per.modelData
                     s: per.s
                     sw: per.modelData.width
                     sh: per.modelData.height
+                    shown: clockLoader.wanted
+                }
+                // Widgets.depth is a plain object, so watch a derived flag.
+                readonly property bool wanted: Widgets.depth.on
+                onWantedChanged: {
+                    if (wanted) {
+                        dieTimer.stop();
+                        keep = true;
+                    } else {
+                        dieTimer.restart();
+                    }
+                }
+                Timer {
+                    id: dieTimer
+                    interval: Motion.standard + 150
+                    onTriggered: clockLoader.keep = false
                 }
             }
         }

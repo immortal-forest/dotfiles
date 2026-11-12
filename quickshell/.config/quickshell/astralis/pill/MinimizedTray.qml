@@ -57,9 +57,9 @@ Row {
         for (var i = 0; i < apps.length; i++) {
             var e = apps[i];
             if (e && e.id && e.id.toLowerCase() === cls.toLowerCase() && e.icon)
-                return Quickshell.iconPath(e.icon, "application-x-executable");
+                return (Quickshell.iconPath(e.icon, true) || Quickshell.iconPath("application-x-executable", true));
         }
-        return Quickshell.iconPath(cls, "application-x-executable");
+        return (Quickshell.iconPath(cls, true) || Quickshell.iconPath("application-x-executable", true));
     }
 
     /**

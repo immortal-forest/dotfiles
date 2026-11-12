@@ -78,11 +78,15 @@ PillSurface {
         property string label: ""
         property bool shrink: false
 
+        // The sweep is the surface's content entrance: it waits for the open
+        // morph to settle instead of drawing in while the card is still rising.
+        readonly property bool armed: root.settled
         property real display: 0
-        onArcChanged: display = arc
-        Component.onCompleted: display = arc
+        onArcChanged: if (armed) display = arc
+        onArmedChanged: if (armed) display = arc
+        Component.onCompleted: display = armed ? arc : 0
         onDisplayChanged: face.requestPaint()
-        Behavior on display { NumberAnimation { duration: Math.round(700 * Motion.mult); easing.type: Motion.easeStandard } }
+        Behavior on display { NumberAnimation { duration: Math.round(Motion.largeDur * 1.2); easing.type: Motion.easeStandard } }
 
         width: 110 * root.s
         height: 110 * root.s
@@ -212,7 +216,7 @@ PillSurface {
             Row {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 9 * root.s
+                spacing: 8 * root.s
 
                 Text {
                     id: kanji
@@ -233,7 +237,7 @@ PillSurface {
                     font.pixelSize: 10 * root.s
                     font.weight: Font.DemiBold
                     font.capitalization: Font.AllUppercase
-                    font.letterSpacing: 1.8 * root.s
+                    font.letterSpacing: 1.6 * root.s
                 }
             }
 

@@ -1,5 +1,6 @@
 SettingsPage 1.0 SettingsPage.qml
 SettingsGroupLabel 1.0 SettingsGroupLabel.qml
+SettingsCollapse 1.0 SettingsCollapse.qml
 AppearancePage 1.0 AppearancePage.qml
 AnimationPage 1.0 AnimationPage.qml
 LookPage 1.0 LookPage.qml

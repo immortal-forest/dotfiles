@@ -36,6 +36,7 @@ Singleton {
     readonly property int heat:       Math.round(1100 * mult)   // power-hold heat ramp
     readonly property int pulse:      Math.round(420  * mult)   // looping breath pulse
     readonly property int rowStagger: Math.round(24   * mult)   // per-row cascade step (content entrance)
+    readonly property int cascadeStep: Math.round(60  * mult)   // dashboard tile-content cascade step
 
     // ── Material 3 expressive durations (ms, ×mult) — `Dur` suffix ──────────
     readonly property int smallDur:  Math.round(200 * mult)
@@ -49,6 +50,56 @@ Singleton {
     readonly property int easeStandard: Easing.OutCubic
     readonly property int easeMorph:    Easing.BezierSpline   // Ricelin name (used with morphCurve)
     readonly property int easeBezier:   Easing.BezierSpline   // alias for any list<real> curve below
+    // Timeline CLOCKS only — a linear ms counter that a cascade reads from,
+    // never a visible motion. Every item on the clock eases its own slice
+    // through ease() below, so a stagger stays evenly spaced in time instead
+    // of bunching wherever a driver curve is steepest.
+    readonly property int easeClock:    Easing.Linear
+
+    /**
+     * A single-segment curve token ([x1,y1, x2,y2, 1,1]) evaluated at t, for
+     * bindings that ease a slice of a clock (see easeClock). t is clamped to
+     * 0..1. Multi-segment tokens (`emphasized`) are not supported here.
+     */
+    function ease(t, curve) {
+        if (!(t > 0))
+            return 0;
+        if (t >= 1)
+            return 1;
+        var x1 = curve[0], y1 = curve[1], x2 = curve[2], y2 = curve[3];
+        // Solve x(u) = t: Newton first, bisection if it wanders.
+        var u = t;
+        for (var i = 0; i < 6; i++) {
+            var dx = root._bez(u, x1, x2) - t;
+            if (Math.abs(dx) < 1e-4)
+                return root._bez(u, y1, y2);
+            var d = root._bezD(u, x1, x2);
+            if (Math.abs(d) < 1e-6)
+                break;
+            u = Math.max(0, Math.min(1, u - dx / d));
+        }
+        var lo = 0, hi = 1;
+        u = t;
+        for (var j = 0; j < 24; j++) {
+            var x = root._bez(u, x1, x2);
+            if (Math.abs(x - t) < 1e-4)
+                break;
+            if (x < t)
+                lo = u;
+            else
+                hi = u;
+            u = (lo + hi) / 2;
+        }
+        return root._bez(u, y1, y2);
+    }
+    function _bez(u, p1, p2) {
+        var v = 1 - u;
+        return 3 * v * v * u * p1 + 3 * v * u * u * p2 + u * u * u;
+    }
+    function _bezD(u, p1, p2) {
+        var v = 1 - u;
+        return 3 * v * v * p1 + 6 * v * u * (p2 - p1) + 3 * u * u * (1 - p2);
+    }
 
     // ── curves (list<real>: cubic-bezier control points, last pair 1,1) ─────
     // Ricelin signature morph: cubic-bezier(0.16,1,0.3,1) — front-loaded expo

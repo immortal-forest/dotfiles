@@ -39,6 +39,15 @@ Scope {
     property var screen
     property real s: 1
 
+    /** False starts the fade-out; shell.qml's Loader destroys us once it has run. */
+    property bool shown: true
+    /** 0..1 surface opacity: eases in on creation, out when `shown` flips off. */
+    property real fade: 0
+    Behavior on fade {
+        NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve }
+    }
+    Component.onCompleted: fade = Qt.binding(() => viz.shown ? 1 : 0)
+
     readonly property string layout: Flags.vizLayout
     /** Full wave height for straight edges (bent layouts scale it down). */
     readonly property real depth: Math.round(200 * s)

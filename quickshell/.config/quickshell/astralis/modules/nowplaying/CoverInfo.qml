@@ -138,9 +138,12 @@ Item {
         id: content
         anchors.fill: parent
         property real swapFade: 1
-        opacity: (root.wanted ? 1 : 0) * swapFade * (Players.playing || Widgets.editing ? 1 : 0.65)
+        // The state fade eases here; swapFade (driven by swapAnim) multiplies
+        // in un-smoothed, so the text is really out before the swap lands.
+        property real shownA: (root.wanted ? 1 : 0) * (Players.playing || Widgets.editing ? 1 : 0.65)
+        opacity: shownA * swapFade
         visible: opacity > 0.001
-        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
+        Behavior on shownA { NumberAnimation { duration: Motion.standard; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
 
         transform: Scale {
             origin.x: root.cx
@@ -152,7 +155,7 @@ Item {
         layer.enabled: root.cfg.infoShadow ?? true
         layer.effect: MultiEffect {
             shadowEnabled: true
-            shadowColor: Qt.alpha("#000000", 0.6)
+            shadowColor: Qt.alpha(Colors.shadow, 0.6)
             shadowBlur: 0.55
             shadowVerticalOffset: 1
             blurMax: 24
