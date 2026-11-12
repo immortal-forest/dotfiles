@@ -18,20 +18,21 @@ import "../../pill/m3"
  * Deliberately carries NO Ame soul bead — this is a modal outside the pill's
  * own morph/anchor system entirely.
  *
- * Six session actions as big centered tiles (Lock, Logout, Suspend,
- * Hibernate, Reboot, Shutdown). The destructive three (Logout/Reboot/
+ * Seven session actions as big centered tiles (Lock, Screen off, Logout,
+ * Suspend, Hibernate, Reboot, Shutdown). The destructive three (Logout/Reboot/
  * Shutdown) use the same hold-to-confirm heat fill as the in-pill Power
  * surface (pill/HeatHold.qml): holding ramps a bottom-up fill over
  * Motion.heat and fires on completion; releasing early drains it, so a
  * stray click or tap can never end the session. Lock/Suspend/Hibernate are
- * all resumable (no data loss), so they fire on a single tap — Ricelin's
+ * all resumable (no data loss), so they fire on a single tap (as does
+ * Screen off, which doesn't even pause anything) — Ricelin's
  * "Lock/Suspend can be single-action" split, extended to Hibernate.
  *
  * Keyboard: Left/Right/Up/Down and hjkl move focus across the single tile
  * row; Enter activates the focused tile (a held Enter on a destructive tile
  * drives the same heat fill as a pointer hold — release before it completes
  * drains, so the keyboard path can't confirm on a single keystroke either);
- * number keys 1-6 jump focus straight to a tile (kept to *moving* focus,
+ * number keys 1-7 jump focus straight to a tile (kept to *moving* focus,
  * never firing, so a stray digit can't queue a destructive action). Escape
  * or a click on the scrim dismisses.
  */
@@ -61,23 +62,59 @@ PanelWindow {
     // since the content is plain UI chrome, not imagery.
     anchors { left: true; right: true; top: true; bottom: true }
 
+    /**
+     * Screen off: blank every output (DPMS) but keep the machine fully awake,
+     * so downloads/renders/builds keep running. systemd-inhibit (see
+     * screenOffArgv) holds a sleep (+ lid-switch) BLOCK inhibitor for exactly
+     * as long as the screen is dark — idle-suspend (and a shut lid) can't put
+     * the laptop to sleep —
+     * and its child loop exits (dropping the inhibitor) the moment any output
+     * reports DPMS on again (a key always wakes it, pointer motion only if
+     * Settings › Idle / Lock "Wake on touchpad / mouse" is on —
+     * misc.key_press_enables_dpms / mouse_move_enables_dpms),
+     * or if hyprctl stops answering (session gone). The 1 s lead lets the
+     * menu's exit fade finish and the clicking hand leave the touchpad first.
+     * Detached, so an astralis restart mid-blank doesn't drop the inhibitor.
+     * Idle lock still fires while dark — tasks are unaffected by a lock.
+     */
+    readonly property string screenOffScript:
+        "sleep 1; hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })' >/dev/null; "
+        + "while s=$(hyprctl monitors -j) && ! printf '%s' \"$s\" | grep -q '\"dpmsStatus\": true'; do sleep 2; done"
+
     readonly property var actions: [
-        { key: "lock",      glyph: "lock",     label: "Lock",      hint: "1", confirm: false, argv: ["loginctl", "lock-session"] },
-        { key: "logout",    glyph: "logout",   label: "Logout",    hint: "2", confirm: true,  argv: ["hyprctl", "dispatch", "exit"] },
-        { key: "suspend",   glyph: "suspend",  label: "Suspend",   hint: "3", confirm: false, argv: ["systemctl", "suspend"] },
+        { key: "lock",      glyph: "lock",     label: "Lock",       hint: "1", confirm: false, argv: ["loginctl", "lock-session"] },
+        { key: "screenoff", glyph: "monitor",  label: "Screen off", hint: "2", confirm: false, argv: [] },
+        { key: "logout",    glyph: "logout",   label: "Logout",     hint: "3", confirm: true,  argv: ["hyprctl", "dispatch", "exit"] },
+        { key: "suspend",   glyph: "suspend",  label: "Suspend",    hint: "4", confirm: false, argv: ["systemctl", "suspend"] },
         // No dedicated hand-drawn glyph for hibernate; "download" (an arrow
         // into a tray) reads as "save state to disk", which is what
         // hibernate actually does — reused rather than growing GlyphIcon.
-        { key: "hibernate", glyph: "download", label: "Hibernate", hint: "4", confirm: false, argv: ["systemctl", "hibernate"] },
-        { key: "reboot",    glyph: "reboot",   label: "Reboot",    hint: "5", confirm: true,  argv: ["systemctl", "reboot"] },
-        { key: "shutdown",  glyph: "shutdown", label: "Shutdown",  hint: "6", confirm: true,  argv: ["systemctl", "poweroff"] }
+        { key: "hibernate", glyph: "download", label: "Hibernate",  hint: "5", confirm: false, argv: ["systemctl", "hibernate"] },
+        { key: "reboot",    glyph: "reboot",   label: "Reboot",     hint: "6", confirm: true,  argv: ["systemctl", "reboot"] },
+        { key: "shutdown",  glyph: "shutdown", label: "Shutdown",   hint: "7", confirm: true,  argv: ["systemctl", "poweroff"] }
     ]
 
     property int focusIndex: 0
     property bool keyHeld: false
 
+    /**
+     * Built when the tile fires (not baked into `actions`, so flipping a
+     * pref doesn't rebuild the tile Repeater): Settings › Idle / Lock picks
+     * whether the lid-switch is inhibited too (Flags.screenOffKeepLid —
+     * off, a shut lid suspends as usual; logind ignores the plain sleep lock
+     * for the lid by default) and whether to lock first (Flags.screenOffLock).
+     * `--who` is what Hypridle's idle on-resume greps for to stand down.
+     */
+    function screenOffArgv() {
+        return ["systemd-inhibit",
+                "--what=" + (Flags.screenOffKeepLid ? "sleep:handle-lid-switch" : "sleep"),
+                "--mode=block", "--who=astralis-screen-off",
+                "--why=Screen off — tasks keep running", "sh", "-c",
+                (Flags.screenOffLock ? "loginctl lock-session; " : "") + root.screenOffScript];
+    }
+
     function run(a) {
-        Quickshell.execDetached(a.argv);
+        Quickshell.execDetached(a.key === "screenoff" ? root.screenOffArgv() : a.argv);
         root.requestClose();
     }
 
@@ -162,7 +199,8 @@ PanelWindow {
             case Qt.Key_3:
             case Qt.Key_4:
             case Qt.Key_5:
-            case Qt.Key_6: {
+            case Qt.Key_6:
+            case Qt.Key_7: {
                 const idx = event.key - Qt.Key_1;
                 if (idx < root.actions.length) {
                     root.keyHeld = false;
@@ -243,7 +281,7 @@ PanelWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 28 * root.s
 
-                // The six tiles are a fixed intrinsic width; on a narrow (or
+                // The seven tiles are a fixed intrinsic width; on a narrow (or
                 // portrait / small) output that overruns the screen. Shrink the
                 // whole row uniformly to fit the available width — a visual
                 // transform only, so tile hit-testing and the hold-to-confirm

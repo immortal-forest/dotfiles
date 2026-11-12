@@ -50,6 +50,8 @@ Singleton {
     property alias idleScreenOffMin: adapter.idleScreenOffMin
     property alias idleSuspendMin: adapter.idleSuspendMin
     property alias lockBeforeSleep: adapter.lockBeforeSleep
+    property alias screenOffKeepLid: adapter.screenOffKeepLid
+    property alias screenOffLock: adapter.screenOffLock
     property alias weatherCity: adapter.weatherCity
     property alias musicViz: adapter.musicViz
     property alias vizColorCycle: adapter.vizColorCycle
@@ -235,6 +237,10 @@ Singleton {
             property int idleScreenOffMin: 6
             property int idleSuspendMin: 0
             property bool lockBeforeSleep: true
+            // Power-menu "Screen off": also hold the lid-switch inhibitor (shut
+            // lid keeps tasks running), and lock the session as it blanks.
+            property bool screenOffKeepLid: true
+            property bool screenOffLock: false
             property string weatherCity: ""
             // Rest-pill spectrum. Deliberately NOT read by the full-screen
             // visualizer (modules/visualizer), which is its own runtime toggle.

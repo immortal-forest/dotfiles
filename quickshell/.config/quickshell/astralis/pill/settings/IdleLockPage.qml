@@ -4,6 +4,7 @@ import QtQuick
 import ".."
 import "../../colors"
 import "../../services"
+import "../../services" as Services
 import "../../config"
 
 /**
@@ -20,9 +21,15 @@ import "../../config"
  * astralis now ships this daemon: services/Hypridle.qml regenerates the conf
  * on every pick and (re)starts the hypridle user unit (enabled by default —
  * lock at 5 min, screen-off at 6), so picks apply immediately. It wires: dim → a
- * brightnessctl listener, screen-off → `hyprctl dispatch dpms off/on`,
+ * brightnessctl listener, screen-off → `hl.dsp.dpms` off/on,
  * lock → the lock command listener, suspend → `systemctl suspend`, and
  * lockBeforeSleep → `before_sleep_cmd = loginctl lock-session`.
+ *
+ * Below that, the POWER-MENU SCREEN OFF group (modules/powermenu): keep tasks
+ * running with the lid shut (Flags.screenOffKeepLid), lock as it blanks
+ * (Flags.screenOffLock) — both read when the tile fires — and wake on
+ * touchpad/mouse, a Hyprland keyword (misc:mouse_move_enables_dpms) so it
+ * lives in the Settings store/overlay, not Flags.
  */
 SettingsPage {
     id: root
@@ -51,8 +58,17 @@ SettingsPage {
         { item: screenRow, kind: "seg", vals: root.screenOptions.map(function (o) { return o.value; }), get: function () { return Flags.idleScreenOffMin; }, set: function (v) { Flags.idleScreenOffMin = v; } },
         { item: lockRow, kind: "seg", vals: root.lockOptions.map(function (o) { return o.value; }), get: function () { return Flags.idleLockMin; }, set: function (v) { Flags.idleLockMin = v; } },
         { item: suspendRow, kind: "seg", vals: root.suspendOptions.map(function (o) { return o.value; }), get: function () { return Flags.idleSuspendMin; }, set: function (v) { Flags.idleSuspendMin = v; } },
-        { item: sleepLockRow, kind: "toggle", get: function () { return Flags.lockBeforeSleep; }, set: function (v) { Flags.lockBeforeSleep = v; } }
+        { item: sleepLockRow, kind: "toggle", get: function () { return Flags.lockBeforeSleep; }, set: function (v) { Flags.lockBeforeSleep = v; } },
+        { item: lidRow, kind: "toggle", get: function () { return Flags.screenOffKeepLid; }, set: function (v) { Flags.screenOffKeepLid = v; } },
+        { item: wakeRow, kind: "toggle", get: function () { return root.wakeOnPointer; }, set: function (v) { root.setStore.set("wakeOnPointer", v); } },
+        { item: blankLockRow, kind: "toggle", get: function () { return Flags.screenOffLock; }, set: function (v) { Flags.screenOffLock = v; } }
     ]
+
+    // The singleton, hoisted once (`Settings` unqualified would shadow-clash
+    // with the surface type of the same name in importing contexts).
+    readonly property var setStore: Services.Settings
+    // get() reads the wholesale-reassigned `data`, so this stays live.
+    readonly property bool wakeOnPointer: root.setStore.get("wakeOnPointer") === true
 
     /**
      * One idle row: name and caption on their own full-width line with the
@@ -94,11 +110,13 @@ SettingsPage {
         GlyphIcon {
             id: irowIcon
             anchors.left: parent.left
-            anchors.leftMargin: 12 * irow.s
-            y: col.y + 2 * irow.s
+            // Same leading metrics as pill/SettingsRow.qml (icon at 14, 17px,
+            // text at 14+17+13) so these rows line up with the toggle rows.
+            anchors.leftMargin: 14 * irow.s
+            y: col.y + 1.5 * irow.s
             visible: irow.icon.length > 0
-            width: 16 * irow.s
-            height: 16 * irow.s
+            width: 17 * irow.s
+            height: 17 * irow.s
             name: irow.icon
             color: (ih.hovered || root.focusRowItem === irow) ? Colors.on_surface : Colors.on_surface_variant
             stroke: 1.8
@@ -108,7 +126,7 @@ SettingsPage {
             id: col
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: (irow.icon.length > 0 ? 12 + 16 + 9 : 12) * irow.s
+            anchors.leftMargin: (irow.icon.length > 0 ? 14 + 17 + 13 : 12) * irow.s
             anchors.rightMargin: 12 * irow.s
             anchors.verticalCenter: parent.verticalCenter
             spacing: 3 * irow.s
@@ -172,7 +190,7 @@ SettingsPage {
             width: flick.width
             spacing: 0
 
-            Item { width: 1; height: 12 * root.s }
+            SettingsGroupLabel { s: root.s; text: "When idle" }
 
             IdleRow {
                 id: dimRow
@@ -251,12 +269,60 @@ SettingsPage {
                 }
             }
 
+            SettingsGroupLabel { s: root.s; text: "Power menu screen off" }
+
+            SettingsRow {
+                id: lidRow
+                surface: root
+                name: "Keep running with lid shut"
+                sub: "Closing the lid won't suspend while the screen is off"
+                captionOnFocus: true
+                icon: "suspend"
+
+                LinkToggle {
+                    s: root.s
+                    on: Flags.screenOffKeepLid
+                    onToggled: Flags.screenOffKeepLid = !Flags.screenOffKeepLid
+                }
+            }
+
+            SettingsRow {
+                id: wakeRow
+                surface: root
+                name: "Wake on touchpad / mouse"
+                sub: "Off: only a key press turns the screen back on"
+                captionOnFocus: true
+                icon: "mouse"
+
+                LinkToggle {
+                    s: root.s
+                    on: root.wakeOnPointer
+                    onToggled: root.setStore.set("wakeOnPointer", !root.wakeOnPointer)
+                }
+            }
+
+            SettingsRow {
+                id: blankLockRow
+                surface: root
+                name: "Lock when it blanks"
+                sub: "Lock the session as the screen turns off"
+                captionOnFocus: true
+                icon: "lock"
+                last: true
+
+                LinkToggle {
+                    s: root.s
+                    on: Flags.screenOffLock
+                    onToggled: Flags.screenOffLock = !Flags.screenOffLock
+                }
+            }
+
             Text {
                 topPadding: 12 * root.s
                 leftPadding: 12 * root.s
                 rightPadding: 12 * root.s
                 width: parent.width
-                text: "Hypridle is running — these apply live: it dims the backlight, blanks the display, locks the session and suspends on the timeouts above (defaults: screen off at 6 min, lock at 5 min). Keep-awake (in the mixer) pauses all of it while on."
+                text: "Hypridle is running — these apply live: it dims the backlight, blanks the display, locks the session and suspends on the timeouts above (defaults: screen off at 6 min, lock at 5 min). Stay awake (in the dashboard) pauses all of it while on. Screen off from the power menu holds off suspend until the screen wakes; auto-lock still applies."
                 color: Qt.alpha(Colors.on_surface_variant, 0.65)
                 font.family: Appearance.font.family
                 font.pixelSize: 9.5 * root.s

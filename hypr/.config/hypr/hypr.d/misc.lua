@@ -17,5 +17,10 @@ hl.config({
 		-- original launch workspace, so switching workspaces then immediately
 		-- spawning (Super+T) landed it on the previous/first workspace.
 		initial_workspace_tracking = 0,
+		-- Any key or pointer motion turns a DPMS-blanked screen back on. The
+		-- power menu's "Screen off" tile blanks without suspending and relies
+		-- on this to wake; hypridle's idle screen-off also resumes this way.
+		key_press_enables_dpms = true,
+		mouse_move_enables_dpms = true,
 	},
 })

@@ -16,7 +16,8 @@ import Quickshell
  * CURRENT level (floored at 1% of max) — PROPORTIONAL, so it always dims and
  * never raises an already-low backlight (a fixed `set 10%` brightened a screen
  * sitting at 6%); brightnessctl -s saves the pre-dim value, -r restores it on
- * resume. Screen-off toggles dpms; suspend calls systemctl.
+ * resume. Screen-off sets dpms via the Lua hl.dsp.dpms dispatcher; suspend
+ * calls systemctl.
  *
  * Loaded at startup via a reference in shell.qml so the conf is written and the
  * daemon started on login; the debounce coalesces a burst of seg changes into
@@ -25,11 +26,19 @@ import Quickshell
 Singleton {
     id: root
 
+    // Hyprland runs the Lua config, so `hyprctl dispatch` takes Lua: the old
+    // `dpms off` form is a Lua syntax error that hyprctl rejects (idle never
+    // actually blanked the screen). hypridle runs these through sh, so the
+    // single quotes survive.
+    function dpms(action) {
+        return "hyprctl dispatch 'hl.dsp.dpms({ action = \"" + action + "\" })'";
+    }
+
     function buildConf() {
         var out = "general {\n";
         if (Flags.lockBeforeSleep)
             out += "    before_sleep_cmd = loginctl lock-session\n";
-        out += "    after_sleep_cmd = hyprctl dispatch dpms on\n"
+        out += "    after_sleep_cmd = " + root.dpms("on") + "\n"
             + "}\n";
 
         if (Flags.idleDimMin > 0)
@@ -42,8 +51,12 @@ Singleton {
         if (Flags.idleScreenOffMin > 0)
             out += "\nlistener {\n"
                 + "    timeout = " + (Flags.idleScreenOffMin * 60) + "\n"
-                + "    on-timeout = hyprctl dispatch dpms off\n"
-                + "    on-resume = hyprctl dispatch dpms on\n"
+                + "    on-timeout = " + root.dpms("off") + "\n"
+                // Skipped while the power menu's Screen off holds its
+                // inhibitor: hypridle's resume fires on ANY activity, which
+                // would make "wake on touchpad/mouse: off" leak once this
+                // listener has timed out during a long manual blank.
+                + "    on-resume = systemd-inhibit --list --no-legend | grep -q astralis-screen-off || " + root.dpms("on") + "\n"
                 + "}\n";
 
         if (Flags.idleLockMin > 0)

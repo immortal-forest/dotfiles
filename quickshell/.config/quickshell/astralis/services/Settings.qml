@@ -124,6 +124,9 @@ Singleton {
         touchNaturalScroll: true,
         touchTapToClick: true,
         touchDwt: true,
+        // 錠 IDLE (hypr.d/misc.lua) — pointer motion wakes a DPMS-blanked
+        // screen; key presses always do (misc.key_press_enables_dpms).
+        wakeOnPointer: true,
         // 画 DISPLAY — structured `{ <output>: { mode, position, scale,
         // transform } }`, applied by its own block in apply() (not a scalar).
         monitors: ({})
@@ -149,7 +152,8 @@ Singleton {
         accelProfile: "input:accel_profile",
         touchNaturalScroll: "input:touchpad:natural_scroll",
         touchTapToClick: "input:touchpad:tap_to_click",
-        touchDwt: "input:touchpad:disable_while_typing"
+        touchDwt: "input:touchpad:disable_while_typing",
+        wakeOnPointer: "misc:mouse_move_enables_dpms"
     })
 
     /** Scalar setting → overlay `hl.config` path (dot-nested, same order as the keyword map). */
@@ -172,7 +176,8 @@ Singleton {
         accelProfile: "input.accel_profile",
         touchNaturalScroll: "input.touchpad.natural_scroll",
         touchTapToClick: "input.touchpad.tap_to_click",
-        touchDwt: "input.touchpad.disable_while_typing"
+        touchDwt: "input.touchpad.disable_while_typing",
+        wakeOnPointer: "misc.mouse_move_enables_dpms"
     })
 
     /**
