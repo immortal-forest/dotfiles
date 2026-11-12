@@ -38,8 +38,21 @@ SettingsPage {
         { label: "Classic", value: "classic" }, { label: "Stacked", value: "stacked" }, { label: "Date below", value: "below" }
     ]
     readonly property var fillOptions: [
-        { label: "Solid", value: "solid" }, { label: "Outline", value: "outline" }, { label: "Gradient", value: "gradient" }
+        { label: "Solid", value: "solid" }, { label: "Outline", value: "outline" }, { label: "Gradient", value: "gradient" },
+        { label: "Glass", value: "glass" }
     ]
+    readonly property var effectOptions: [
+        { label: "None", value: "none" }, { label: "Glow", value: "glow" }, { label: "Extrude", value: "extrude" }, { label: "Echo", value: "echo" }
+    ]
+    /** Echo isn't offered with the outline fill. */
+    readonly property var clockEffectOptions: Widgets.depth.fill === "outline" ? effectOptions.filter(o => o.value !== "echo") : effectOptions
+    /** Picking Outline while Echo is on drops the effect with it. */
+    function setClockFill(v) {
+        if (v === "outline" && Widgets.depth.effect === "echo")
+            Widgets.set("depth", { fill: v, effect: "none" });
+        else
+            Widgets.set("depth", "fill", v);
+    }
     readonly property var dateFormatOptions: [
         { label: "Long", value: "long" }, { label: "Short", value: "short" }, { label: "Off", value: "off" }
     ]
@@ -72,7 +85,8 @@ SettingsPage {
         { item: featherRow, kind: "scrub", bump: function (d) { featherScrub.bump(d); } },
         { item: clockLayoutRow, kind: "seg", vals: root.layoutOptions.map(o => o.value), get: function () { return Widgets.depth.layout; }, set: function (v) { Widgets.set("depth", "layout", v); } },
         { item: clockFontRow, kind: "nav", surface: "clockfont" },
-        { item: clockFillRow, kind: "seg", vals: root.fillOptions.map(o => o.value), get: function () { return Widgets.depth.fill; }, set: function (v) { Widgets.set("depth", "fill", v); } },
+        { item: clockFillRow, kind: "seg", vals: root.fillOptions.map(o => o.value), get: function () { return Widgets.depth.fill; }, set: function (v) { root.setClockFill(v); } },
+        { item: clockEffectRow, kind: "seg", vals: root.clockEffectOptions.map(o => o.value), get: function () { return Widgets.depth.effect; }, set: function (v) { Widgets.set("depth", "effect", v); } },
         { item: clockColorRow, kind: "seg", vals: root.colorOptions.map(o => o.value), get: function () { return Widgets.depth.color; }, set: function (v) { Widgets.set("depth", "color", v); } },
         { item: clockWeightRow, kind: "seg", vals: root.weightOptions.map(o => o.value), get: function () { return Widgets.depth.weight; }, set: function (v) { Widgets.set("depth", "weight", v); } },
         { item: clockColor2Row, kind: "seg", vals: root.colorOptions.map(o => o.value), get: function () { return Widgets.depth.color2; }, set: function (v) { Widgets.set("depth", "color2", v); } },
@@ -484,7 +498,21 @@ SettingsPage {
                     s: root.s
                     options: root.fillOptions
                     value: Widgets.depth.fill
-                    onPicked: (v) => Widgets.set("depth", "fill", v)
+                    onPicked: (v) => root.setClockFill(v)
+                }
+            }
+            SettingsRow {
+                id: clockEffectRow
+                surface: root
+                name: "Effect"
+                icon: "sun"
+                shown: Widgets.depth.on
+
+                SettingsSeg {
+                    s: root.s
+                    options: root.clockEffectOptions
+                    value: Widgets.depth.effect
+                    onPicked: (v) => Widgets.set("depth", "effect", v)
                 }
             }
             SettingsRow {
@@ -518,9 +546,9 @@ SettingsPage {
             SettingsRow {
                 id: clockColor2Row
                 surface: root
-                name: "Gradient end"
+                name: Widgets.depth.fill === "gradient" ? "Gradient end" : "Echo colour"
                 icon: "palette"
-                shown: Widgets.depth.on && Widgets.depth.fill === "gradient"
+                shown: Widgets.depth.on && (Widgets.depth.fill === "gradient" || (Widgets.depth.effect === "echo" && Widgets.depth.fill !== "outline"))
 
                 SettingsSeg {
                     s: root.s
@@ -635,7 +663,7 @@ SettingsPage {
                 id: clockShadowRow
                 surface: root
                 name: "Shadow"
-                sub: "Lifts the numerals off bright wallpapers"
+                sub: Widgets.depth.effect === "glow" ? "Not drawn under Glow — it carries its own light" : "Lifts the numerals off bright wallpapers"
                 captionOnFocus: true
                 icon: "sparkles"
                 shown: Widgets.depth.on
