@@ -176,33 +176,6 @@ Singleton {
         t.start();
     }
 
-    // ── pen strokes for the "write" fill (on demand, scripts/strokes.py) ──
-    /** char → { u, w, s: [[svgPath, length], …] } in writing order; {} until ready. */
-    readonly property var glyphs: entry && entry.glyphs ? entry.glyphs : ({})
-    readonly property bool wantGlyphs: Widgets.lyrics.fill === "write"
-    readonly property string strokesScript: String(Qt.resolvedUrl("../scripts/strokes.py")).replace(/^file:\/\//, "")
-    onWantGlyphsChanged: Qt.callLater(loadGlyphs)
-
-    function loadGlyphs() {
-        var e = root.entry;
-        if (!root.wantGlyphs || !e || e.status !== "synced" || e.glyphStatus)
-            return;
-        // romanLines arrive later ("replace" mode): a re-run covers their characters.
-        var texts = e.lines.map(l => l.text).concat(e.rlines ? e.rlines.map(l => l.text) : []);
-        var rk = TrackInfo.key + "|" + e.source;
-        var key = texts.join("\n");
-        root.setRoman(rk, { glyphStatus: "busy" });
-        var p = Qt.createQmlObject('import Quickshell.Io; Process { stdout: StdioCollector {} }', root, "Lyrics.glyphs");
-        p.command = ["python3", "-I", root.strokesScript, key];
-        p.exited.connect(function (code) {
-            var g = null;
-            try { g = JSON.parse(p.stdout.text); } catch (x) {}
-            p.destroy();
-            root.setRoman(rk, g && code === 0 ? { glyphStatus: "ready", glyphs: g } : { glyphStatus: "error" });
-        });
-        p.running = true;
-    }
-
     // ── romanization (on demand, scripts/romanize.py) ─────────────────────
     /** Per-line romanized text for the current track ([] until ready). */
     readonly property var roman: entry && entry.roman ? entry.roman : []
@@ -216,10 +189,7 @@ Singleton {
     onWantRomanChanged: romanize(true)
     // Deferred: writing `romans` from inside entry's change notification
     // is a binding loop on `entry` (QML drops the re-evaluation).
-    onEntryChanged: {
-        Qt.callLater(romanize);
-        Qt.callLater(loadGlyphs);
-    }
+    onEntryChanged: Qt.callLater(romanize)
 
     function romanize(retry) {
         var e = root.entry;
@@ -256,7 +226,7 @@ Singleton {
                 n.span = l.span;    // keep the original line's sung span
                 return n;
             });
-            root.setRoman(rk, { romanStatus: "ready", roman: clean, rlines: rl, glyphStatus: "" });
+            root.setRoman(rk, { romanStatus: "ready", roman: clean, rlines: rl });
         });
         p.running = true;
     }
