@@ -1,11 +1,11 @@
 # astralis-patched skwd-wall-v2 GUI. deck/paper/lens stay on the stock -bin packages.
 # Update: bump _ver + sha256sums (from the AUR skwd-wall-v2 PKGBUILD), then `makepkg -si`.
 # Patch: per-folder only (no "All wallpapers"/root entries, Ctrl+M disabled),
-#        top filter bar never shown (Shift+Up disabled).
+#        (top filter bar: hidden at launch via config, Shift+Up toggles it — stock).
 pkgname=skwd-wall-v2
 _ver=1.0.0-beta.26
 pkgver=${_ver//-/_}
-pkgrel=1.1
+pkgrel=1.2
 pkgdesc='GPU-rendered graphical client for the Skwd wallpaper suite v2 (astralis patches)'
 arch=(x86_64)
 url='https://github.com/liixini/skwd-wall/tree/v2'

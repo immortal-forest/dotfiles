@@ -65,13 +65,3 @@ index 48b3890f..6ce49bef 100644
  }
  
  pub(super) fn toggle_show_hidden(app: &mut App) -> Task<Message> {
-@@ -108,7 +116,8 @@ pub(super) fn toggle_random_rotate(app: &mut App) -> Task<Message> {
- }
- 
- pub(super) fn toggle_filter_bar(app: &mut App) -> Task<Message> {
--    if app.menu_capturing() {
-+    // astralis: the top filter bar stays hidden completely.
-+    if true || app.menu_capturing() {
-         return Task::none();
-     }
-     app.chrome.filter_bar_visible = !app.chrome.filter_bar_visible;
