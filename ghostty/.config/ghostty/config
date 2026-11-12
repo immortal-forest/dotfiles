@@ -5,6 +5,7 @@ cursor-style = block
 font-family = Obel Mono Lig
 font-family = Symbols Nerd Font Mono
 font-feature = calt
+font-feature = ss01
 font-size = 16
 
 custom-shader = shaders/blaze.glsl

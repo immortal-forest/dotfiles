@@ -85,3 +85,28 @@ do
     end)
   end
 end
+
+-- Obel Mono masks keys (font-feature ss01) only when it sees a name and its
+-- value as one stretch of same-coloured text, on one line. Highlighting colours
+-- KEY and =value differently and wrapping splits long keys, which both show the
+-- key. So .env files get no highlighting and no wrapping.
+autocmd({ "BufWinEnter", "FileType" }, {
+  group = vim.api.nvim_create_augroup("obel_mask_env", { clear = true }),
+  pattern = { ".env", ".env.*", "*.env", "env", "sh", "conf", "dotenv" },
+  callback = function(args)
+    local name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(args.buf), ":t")
+    if not (name == ".env" or name:match "^%.env%." or name:match "%.env$") then
+      return
+    end
+    vim.schedule(function()
+      if not vim.api.nvim_buf_is_valid(args.buf) then
+        return
+      end
+      pcall(vim.treesitter.stop, args.buf)
+      vim.bo[args.buf].syntax = "off"
+      for _, win in ipairs(vim.fn.win_findbuf(args.buf)) do
+        vim.wo[win].wrap = false
+      end
+    end)
+  end,
+})
