@@ -55,6 +55,8 @@ post_hook   = "hyprctl reload"
 [templates.cava]
 input_path  = "~/.config/matugen/templates/cava"
 output_path = "/home/immortalforest/.config/cava/config"
+# A running cava only reads its config at start; SIGUSR2 makes it reload the colours.
+post_hook   = "pkill -USR2 -x cava"
 
 # --- Terminals (the user runs both ghostty and kitty) -------------------------------
 [templates.kitty]
