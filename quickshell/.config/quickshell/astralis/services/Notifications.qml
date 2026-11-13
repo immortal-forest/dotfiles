@@ -40,6 +40,127 @@ Singleton {
     /** Do-not-disturb: non-critical arrivals skip the toast queue. */
     property bool dnd: false
 
+    // ── Settings → Notifications (pushed in by Flags, like `dnd`) ───────────
+    /** Quiet hours: DND turns itself on every day from quietFrom to quietTo (minutes since midnight). */
+    property bool scheduleOn: false
+    property int quietFrom: 1380
+    property int quietTo: 420
+    /** Critical notifications still pop up while quiet. */
+    property bool urgentThrough: true
+    /** "short" | "normal" | "long" — scales how long a toast stays. */
+    property string popupLength: "normal"
+    /** Chime when a toast shows. */
+    property bool sound: false
+    /** App label (sourceLabel) → "silent" | "off"; absent = "alert". */
+    property var appRules: ({})
+
+    property int nowMin: 0
+    function stampNow() {
+        var d = new Date();
+        root.nowMin = d.getHours() * 60 + d.getMinutes();
+    }
+    Timer {
+        interval: 20000
+        running: root.scheduleOn
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.stampNow()
+    }
+
+    /** Quiet hours switched off for the rest of tonight's window (ms timestamp; phone-style tile tap). */
+    property real quietSkipUntil: 0
+    function skipQuietHours() {
+        var d = new Date();
+        d.setHours(Math.floor(root.quietTo / 60), root.quietTo % 60, 0, 0);
+        if (d.getTime() <= Date.now())
+            d.setDate(d.getDate() + 1);
+        root.quietSkipUntil = d.getTime();
+    }
+
+    readonly property bool inQuietHours: {
+        if (!root.scheduleOn || root.quietFrom === root.quietTo)
+            return false;
+        var t = root.nowMin;
+        if (Date.now() < root.quietSkipUntil)
+            return false;
+        return root.quietFrom < root.quietTo
+            ? (t >= root.quietFrom && t < root.quietTo)
+            : (t >= root.quietFrom || t < root.quietTo);
+    }
+    /** What every view should treat as "silenced": manual DND or quiet hours. */
+    readonly property bool quiet: root.dnd || root.inQuietHours
+
+    function modeFor(app) {
+        var m = root.appRules[app];
+        return m === "silent" || m === "off" ? m : "alert";
+    }
+
+    /**
+     * Every app that has ever notified (label → { icon, glyph, last }), kept
+     * in its own small cache so Settings can list an app after its
+     * notifications are long gone — and, above all, so a blocked app (whose
+     * notifications never arrive anywhere else) stays listed and can be
+     * unblocked. Updated at most once a minute per app.
+     */
+    property alias knownApps: knownAdapter.apps
+
+    function noteApp(n, app) {
+        if (!app || !app.length) return;
+        var cur = root.knownApps[app];
+        var now = Date.now();
+        var icon = root.appIconFor(n);
+        if (!icon.length && cur) icon = cur.icon || "";
+        if (cur && cur.icon === icon && now - (cur.last || 0) < 60000) return;
+        var m = Object.assign({}, root.knownApps);
+        m[app] = { icon: icon, glyph: root.glyphFor(n), last: now };
+        root.knownApps = m;
+    }
+
+    /** Labels for the Settings app list: known ∪ ruled ∪ in the centre, most recent first. */
+    function appKeys() {
+        var seen = {};
+        var out = [];
+        var lastOf = {};
+        function add(a, t) {
+            if (!a || !a.length) return;
+            lastOf[a] = Math.max(lastOf[a] || 0, t || 0);
+            if (!seen[a]) { seen[a] = true; out.push(a); }
+        }
+        var k = root.knownApps;
+        for (var a in k) add(a, k[a].last);
+        for (var r in root.appRules) add(r, 0);
+        var gs = root.groups;
+        for (var i = 0; i < gs.length; i++) add(gs[i].app, gs[i].t);
+        out.sort(function(x, y) {
+            return (lastOf[y] - lastOf[x]) || x.localeCompare(y);
+        });
+        return out;
+    }
+
+    /** Freedesktop chime via PipeWire (PulseAudio fallback); honours suppress-sound / sound-file / sound-name. */
+    function chime(n) {
+        if (!root.sound) return;
+        var h = (n && n.hints) || {};
+        if (h["suppress-sound"]) return;
+        var dir = "/usr/share/sounds/freedesktop/stereo/";
+        var f = String(h["sound-file"] || "");
+        if (f.indexOf("file://") === 0) f = f.substring(7);
+        var nm = String(h["sound-name"] || "");
+        var fallback = dir + (n.urgency === NotificationUrgency.Critical ? "dialog-warning.oga" : "message.oga");
+        var named = /^[\w.-]+$/.test(nm) ? dir + nm + ".oga" : "";
+        Quickshell.execDetached(["sh", "-c",
+            "f=\"$1\"; [ -f \"$f\" ] || f=\"$2\"; [ -f \"$f\" ] || f=\"$3\"; "
+            + "command -v pw-play >/dev/null 2>&1 && exec pw-play \"$f\"; exec paplay \"$f\"",
+            "sh", f.indexOf("/") === 0 ? f : "", named, fallback]);
+    }
+
+    /** The toast on top is critical: the pill body takes the error material while it shows. */
+    readonly property bool topCritical: {
+        var p = root.popups;
+        var n = p.length > 0 ? p[p.length - 1] : null;
+        return !!n && n.urgency === NotificationUrgency.Critical;
+    }
+
     readonly property var tracked: server.trackedNotifications.values
     readonly property int count: tracked.length + history.length
 
@@ -130,6 +251,10 @@ Singleton {
         var t = n.expireTimeout;
         if (t > 0)
             life = Math.max(1500, Math.min(10000, t > 100 ? t : t * 1000));
+        if (root.popupLength === "short")
+            life = Math.max(1500, Math.round(life * 0.6));
+        else if (root.popupLength === "long")
+            life = Math.round(life * 2);
         if (k === "screenshot" || (k === "recording" && !root.isFailure(n)))
             life = Math.max(life, 8000);
         e[n.id] = Date.now() + life;
@@ -138,8 +263,13 @@ Singleton {
         root.expireAt = e;
         root.hookClosed(n);
         var critical = n.urgency === NotificationUrgency.Critical;
-        if (!root.dnd || critical)
+        // Per-app "silent" goes straight to the centre; quiet (DND or quiet
+        // hours) holds everything back except criticals, if those may pass.
+        if (root.modeFor(root.sourceLabel(n)) === "alert"
+                && (!root.quiet || (critical && root.urgentThrough))) {
             root.popups = root.popups.concat([n]).slice(-3);
+            root.chime(n);
+        }
         // Deferred: the new arrival only joins trackedNotifications after
         // onNotification returns, so counting now would run one over the cap.
         Qt.callLater(root.boundLive);
@@ -780,9 +910,47 @@ Singleton {
                 root.hookClosed(n);
                 return;
             }
-            n.tracked = true;
             persist.lastId = Math.max(persist.lastId, n.id);
+            var app = root.sourceLabel(n);
+            root.noteApp(n, app);
+            // Blocked app: never tracked, so the server drops it on the spot —
+            // no toast, no centre row, no unread dot.
+            if (root.modeFor(app) === "off")
+                return;
+            n.tracked = true;
             root.recordArrival(n);
+        }
+    }
+
+    // Seen-apps cache (see knownApps). Writes only after a clean read, so a
+    // torn or hand-broken file is left alone instead of being reset.
+    property bool knownWritable: false
+    FileView {
+        id: knownFile
+        path: Quickshell.env("HOME") + "/.cache/astralis/notif-apps.json"
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onAdapterUpdated: if (root.knownWritable) writeAdapter()
+        onLoaded: {
+            var t = String(text() || "").trim();
+            var ok = true;
+            if (t.length) {
+                try { var o = JSON.parse(t); ok = o !== null && typeof o === "object" && !Array.isArray(o); }
+                catch (err) { ok = false; }
+            }
+            root.knownWritable = ok;
+        }
+        onLoadFailed: function (error) {
+            if (error === FileViewError.FileNotFound) {
+                root.knownWritable = true;
+                Quickshell.execDetached(["mkdir", "-p", Quickshell.env("HOME") + "/.cache/astralis"]);
+            }
+        }
+
+        JsonAdapter {
+            id: knownAdapter
+            property var apps: ({})
         }
     }
 }

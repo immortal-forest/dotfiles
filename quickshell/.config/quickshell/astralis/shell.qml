@@ -202,6 +202,8 @@ ShellRoot {
         function media(mon: string): void { root.toggleSurface(mon, "media"); }
         function notifications(mon: string): void { root.toggleSurface(mon, "notifications"); }
         function settings(mon: string): void { root.settingsOpen = !root.settingsOpen; }
+        /** Open settings on one page: `ipc call pill settingsPage notifications`. */
+        function settingsPage(page: string): void { Widgets.pendingPage = page; root.settingsOpen = true; }
         function sysmon(mon: string): void { root.toggleSurface(mon, "sysmon"); }
         function system(mon: string): void { root.toggleSurface(mon, "sysmon"); }
         function recorder(mon: string): void { root.toggleSurface(mon, "recorder"); }

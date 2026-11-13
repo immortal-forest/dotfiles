@@ -431,6 +431,18 @@ Item {
         // thinner at rest over the visualizer; firmer once a surface needs reading
         fillAlpha: !pill.vizBehind ? 1 : pill.surfaceOpen ? 0.88 : 0.6
         Behavior on fillAlpha { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+
+        // A critical toast makes the pill ITSELF the error container (M3:
+        // container + its on-colour ink, see Toast.qml) — same radius, edge
+        // and gradient shape as always, so it reads as the pill changing
+        // state rather than a red box dropped inside it. Panel eases the
+        // colours, so the change rides the toast morph in and out.
+        readonly property bool critical: pill.mode === "toast" && Services.Notifications.topCritical
+        topColor: body.critical ? Colors.error_container : Colors.surface_container_high
+        bottomColor: body.critical ? Qt.tint(Colors.error_container, Qt.alpha(Colors.surface_container, 0.3))
+            : Colors.surface_container
+        outlineColor: body.critical ? Colors.error : Colors.outline_variant
+        outlineAlpha: body.critical ? 0.45 : 0.6
     }
 
     // ── Ame, the soul bead ──────────────────────────────────────────────────
@@ -1263,7 +1275,7 @@ Item {
                 anchors.bottom: parent.bottom
                 visible: Services.Notifications.popups.length > 1
                 text: "+" + (Services.Notifications.popups.length - 1)
-                color: Colors.on_surface_variant
+                color: body.critical ? Qt.alpha(Colors.on_error_container, 0.8) : Colors.on_surface_variant
                 font.family: Appearance.font.family
                 font.pixelSize: 9 * pill.s
                 font.weight: Font.DemiBold

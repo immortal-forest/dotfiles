@@ -1242,9 +1242,13 @@ PanelWindow {
                                     icon: "dnd"
                                     label: "Silence"
                                     enter: qsBox.seg(2)
-                                    sub: Services.Notifications.dnd ? "On" : "Off"
-                                    checked: Services.Notifications.dnd
-                                    onClicked: Services.Notifications.dnd = !Services.Notifications.dnd
+                                    sub: Services.Notifications.dnd ? "On" : (Services.Notifications.inQuietHours ? "Quiet hours" : "Off")
+                                    checked: Services.Notifications.quiet
+                                    onClicked: {
+                                        if (Services.Notifications.dnd) Services.Flags.dnd = false;
+                                        else if (Services.Notifications.inQuietHours) Services.Notifications.skipQuietHours();
+                                        else Services.Flags.dnd = true;
+                                    }
                                 }
                             }
                             Row {
@@ -1750,7 +1754,7 @@ PanelWindow {
                             verticalAlignment: Text.AlignVCenter
                             visible: notifTile.latest !== null
                             text: Services.Notifications.unread > 0 ? Services.Notifications.unread + " unread"
-                                : (Services.Notifications.dnd ? "Silenced" : "Read")
+                                : (Services.Notifications.quiet ? "Silenced" : "Read")
                             color: Services.Notifications.unread > 0 ? Colors.primary : Colors.on_surface_variant
                             font.family: Appearance.font.family
                             font.pixelSize: 11 * root.s
@@ -1766,13 +1770,13 @@ PanelWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 width: 26 * root.s
                                 height: width
-                                name: Services.Notifications.dnd ? "dnd" : "inbox"
+                                name: Services.Notifications.quiet ? "dnd" : "inbox"
                                 color: Qt.alpha(Colors.on_surface_variant, 0.6)
                                 stroke: 1.6
                             }
                             Text {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: Services.Notifications.dnd ? "Silenced, nothing waiting" : "Nothing new"
+                                text: Services.Notifications.quiet ? "Silenced, nothing waiting" : "Nothing new"
                                 color: Qt.alpha(Colors.on_surface_variant, 0.8)
                                 font.family: Appearance.font.family
                                 font.pixelSize: 11.5 * root.s

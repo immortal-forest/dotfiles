@@ -190,6 +190,7 @@ PillSurface {
         case "keybinds":   return pgKeybinds;
         case "workspaces": return pgWorkspaces;
         case "idlelock":   return pgIdleLock;
+        case "notifications": return pgNotifications;
         case "updates":    return pgUpdates;
         case "widgets":    return pgWidgets;
         case "fontpicker": return pgFontPicker;
@@ -248,6 +249,7 @@ PillSurface {
             { item: keybindsRow, kind: "nav", surface: "keybinds" },
             { item: workspacesRow, kind: "nav", surface: "workspaces" },
             { item: idleRow, kind: "nav", surface: "idlelock" },
+            { item: notifRow, kind: "nav", surface: "notifications" },
             { item: widgetsRow, kind: "nav", surface: "widgets" },
             { item: updatesRow, kind: "nav", surface: "updates" }
         ]
@@ -271,6 +273,7 @@ PillSurface {
                 case "keybinds":   return keybindsRow;
                 case "workspaces": return workspacesRow;
                 case "idlelock":   return idleRow;
+                case "notifications": return notifRow;
                 case "updates":    return updatesRow;
                 case "widgets":    return widgetsRow;
                 default:           return null;
@@ -421,6 +424,15 @@ PillSurface {
                 name: "Idle / Lock"
                 lit: root.page === "idlelock"
                 NavChevron { row: idleRow }
+            }
+
+            SettingsRow {
+                id: notifRow
+                surface: sidebar
+                icon: "inbox"
+                name: "Notifications"
+                lit: root.page === "notifications"
+                NavChevron { row: notifRow }
             }
 
             SettingsRow {
@@ -575,6 +587,19 @@ PillSurface {
                 anchors.fill: parent
                 s: root.s
                 active: root.page === "idlelock" && root.open
+                onRequestPage: (name) => root.openPage(name)
+                onBack: root.requestClose()
+            }
+        }
+
+        PageSlot {
+            current: root.page === "notifications"
+
+            NotificationsPage {
+                id: pgNotifications
+                anchors.fill: parent
+                s: root.s
+                active: root.page === "notifications" && root.open
                 onRequestPage: (name) => root.openPage(name)
                 onBack: root.requestClose()
             }

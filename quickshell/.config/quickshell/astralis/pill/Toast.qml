@@ -13,12 +13,18 @@ import "../config"
 
 /**
  * astralis — toast content for the morphing pill body (ported from
- * Gakuseei/Ricelin pill/Toast.qml): kind tile, source eyebrow, title with a
- * critical ember dot, caption, then whatever the notification's kind brings —
- * a screenshot thumbnail, the shell's own file actions, the sender's action
- * pills — and a dismiss glyph on the right. Draws no background of its own
- * except the error-container wash on criticals — the pill body behind it
- * provides the material. Clicking the body opens (screenshot/recording) or
+ * Gakuseei/Ricelin pill/Toast.qml): kind tile, source eyebrow, title,
+ * caption, then whatever the notification's kind brings — a screenshot
+ * thumbnail, the shell's own file actions, the sender's action pills — and a
+ * dismiss glyph on the right. Draws no background of its own: the pill body
+ * behind it provides the material.
+ *
+ * Critical: the pill body turns error_container (Pill.qml `body.critical`),
+ * and everything drawn here switches to that container's one ink,
+ * on_error_container — eyebrow, title, caption, dismiss, a tonal tile and
+ * tonal/filled chips — with hierarchy from weight and alpha, never from a
+ * second colour family. The eyebrow says "Urgent" in words so the state
+ * never rests on colour alone. Clicking the body opens (screenshot/recording) or
  * jumps to the source app; dismiss and action pills consume their clicks.
  * Auto-expires via the deadline snapshot below unless the notification is
  * critical (criticals persist); hovering holds the countdown.
@@ -39,6 +45,9 @@ Item {
     readonly property bool critical: notif ? notif.urgency === NotificationUrgency.Critical : false
     readonly property bool failed: Notifications.isFailure(notif)
     readonly property string file: Notifications.fileOf(notif)
+    /** Primary / secondary ink: the error container's own on-colour on criticals. */
+    readonly property color ink: root.critical ? Colors.on_error_container : Colors.on_surface
+    readonly property color inkSoft: root.critical ? Qt.alpha(Colors.on_error_container, 0.8) : Colors.on_surface_variant
     readonly property var acts: (notif && notif.actions)
         ? notif.actions.filter(function(a) { return a && a.text && a.text.length > 0; }) : []
 
@@ -161,6 +170,8 @@ Item {
         property real s: 1
         property real size: 28 * s
         property bool avatar: true
+        /** Sitting on the error container (critical toast): tonal tile + on_error_container glyph. */
+        property bool onError: false
 
         readonly property string kind: Notifications.kindOf(kt.n)
         readonly property bool crit: kt.n ? kt.n.urgency === NotificationUrgency.Critical : false
@@ -220,7 +231,8 @@ Item {
             anchors.fill: parent
             visible: kt.seal.length === 0 && !kt.faceOk
             radius: kt.radius
-            color: Colors.surface_container_high
+            color: kt.onError ? Qt.alpha(Colors.on_error_container, 0.12) : Colors.surface_container_high
+            Behavior on color { ColorAnimation { duration: Motion.standard } }
 
             Image {
                 id: iconImg
@@ -243,7 +255,7 @@ Item {
                 height: width
                 opacity: iconImg.status === Image.Ready ? 0 : 1
                 name: Notifications.glyphFor(kt.n)
-                color: Colors.on_surface_variant
+                color: kt.onError ? Colors.on_error_container : Colors.on_surface_variant
                 stroke: 1.8
                 Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
@@ -405,16 +417,22 @@ Item {
         property string glyph: ""
         property bool primary: false
         property bool danger: false
+        /** On the error container: primary = filled error/on_error, others tonal in on_error_container. */
+        property bool onError: false
         signal tapped()
 
         height: 22 * chip.s
         width: chipRow.implicitWidth + 18 * chip.s
         radius: height / 2
-        color: chip.danger ? Qt.alpha(Colors.error, chipArea.containsMouse ? 0.28 : 0.18)
+        color: (chip.onError && chip.primary) ? (chipArea.containsMouse ? Qt.lighter(Colors.error, 1.08) : Colors.error)
+            : chip.onError ? Qt.alpha(Colors.on_error_container, chipArea.containsMouse ? 0.16 : 0.08)
+            : chip.danger ? Qt.alpha(Colors.error, chipArea.containsMouse ? 0.28 : 0.18)
             : chip.primary ? Qt.alpha(Colors.primary, chipArea.containsMouse ? 0.24 : 0.14)
             : (chipArea.containsMouse ? Colors.surface_container_highest : Colors.surface_container_high)
         border.width: 1
-        border.color: chip.danger ? Qt.alpha(Colors.error, 0.6)
+        border.color: (chip.onError && chip.primary) ? "transparent"
+            : chip.onError ? Qt.alpha(Colors.on_error_container, 0.28)
+            : chip.danger ? Qt.alpha(Colors.error, 0.6)
             : chip.primary ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
         Behavior on color { ColorAnimation { duration: Motion.fast } }
         Behavior on border.color { ColorAnimation { duration: Motion.fast } }
@@ -451,7 +469,9 @@ Item {
                 id: chipText
                 anchors.verticalCenter: parent.verticalCenter
                 text: chip.label
-                color: chip.danger ? Colors.error : chip.primary ? Colors.primary : Colors.on_surface_variant
+                color: (chip.onError && chip.primary) ? Colors.on_error
+                    : chip.onError ? Colors.on_error_container
+                    : chip.danger ? Colors.error : chip.primary ? Colors.primary : Colors.on_surface_variant
                 font.family: Appearance.font.family
                 font.pixelSize: 9.5 * chip.s
                 font.weight: Font.DemiBold
@@ -570,23 +590,6 @@ Item {
 
     // ── the toast ───────────────────────────────────────────────────────────
 
-    // Critical: an error-container wash behind the whole toast, so a
-    // persistent failure reads apart from routine traffic at a glance.
-    Rectangle {
-        anchors.fill: parent
-        anchors.leftMargin: -6 * root.s
-        anchors.rightMargin: -6 * root.s
-        anchors.topMargin: -5 * root.s
-        anchors.bottomMargin: -5 * root.s
-        radius: 12 * root.s
-        color: Qt.alpha(Colors.error_container, 0.55)
-        border.width: 1
-        border.color: Qt.alpha(Colors.error, 0.35)
-        opacity: root.critical ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-    }
-
     MouseArea {
         id: bodyArea
         anchors.fill: parent
@@ -618,6 +621,7 @@ Item {
         n: root.notif
         s: root.s
         size: 30 * root.s
+        onError: root.critical
     }
 
     GlyphIcon {
@@ -631,7 +635,7 @@ Item {
         width: 13 * root.s
         height: 13 * root.s
         name: "close"
-        color: dismissArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant
+        color: dismissArea.containsMouse ? root.ink : root.inkSoft
         stroke: 1.9
 
         Behavior on color {
@@ -673,7 +677,8 @@ Item {
         Text {
             width: parent.width
             text: Notifications.sourceLabel(root.notif) + (root.kind === "recording" ? "  ·  Recorder" : "")
-            color: root.critical ? Colors.on_error_container : Qt.alpha(Colors.on_surface_variant, 0.85)
+                + (root.critical ? "  ·  Urgent" : "")
+            color: root.critical ? Qt.alpha(Colors.on_error_container, 0.8) : Qt.alpha(Colors.on_surface_variant, 0.85)
             font.family: Appearance.font.family
             font.pixelSize: 8.5 * root.s
             font.weight: Font.DemiBold
@@ -682,43 +687,15 @@ Item {
             elide: Text.ElideRight
         }
 
-        Row {
+        Text {
             width: parent.width
-            spacing: 5 * root.s
-
-            Item {
-                visible: root.critical
-                anchors.verticalCenter: parent.verticalCenter
-                width: 8 * root.s
-                height: 8 * root.s
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 8 * root.s
-                    height: 8 * root.s
-                    radius: width / 2
-                    color: Colors.error
-                    opacity: 0.3
-                }
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 4 * root.s
-                    height: 4 * root.s
-                    radius: width / 2
-                    color: Colors.error
-                }
-            }
-
-            Text {
-                width: parent.width - (root.critical ? 13 * root.s : 0)
-                text: Notifications.titleFor(root.notif)
-                color: root.failed ? Colors.error : Colors.on_surface
-                font.family: Appearance.font.family
-                font.pixelSize: 11.5 * root.s
-                font.weight: Font.DemiBold
-                maximumLineCount: 1
-                elide: Text.ElideRight
-            }
+            text: Notifications.titleFor(root.notif)
+            color: root.critical ? root.ink : root.failed ? Colors.error : Colors.on_surface
+            font.family: Appearance.font.family
+            font.pixelSize: 11.5 * root.s
+            font.weight: Font.DemiBold
+            maximumLineCount: 1
+            elide: Text.ElideRight
         }
 
         Text {
@@ -726,7 +703,8 @@ Item {
             visible: text.length > 0
             text: Notifications.captionFor(root.notif)
             // A failed take's caption IS the error: error ink, more lines.
-            color: root.failed ? Colors.on_error_container
+            color: root.critical ? root.inkSoft
+                : root.failed ? Colors.on_error_container
                 : root.kind === "screenshot" ? Qt.alpha(Colors.on_surface_variant, 0.8) : Colors.on_surface_variant
             font.family: Appearance.font.family
             font.pixelSize: (root.kind === "screenshot" ? 9.5 : 10.5) * root.s
@@ -789,6 +767,7 @@ Item {
                     // First sender action is the primary CTA unless the
                     // shell's own Open/Play already took that role.
                     primary: actPill.index === 0 && !fileActs.shown
+                    onError: root.critical
                     onTapped: {
                         root.markAction();
                         actPill.modelData.invoke();

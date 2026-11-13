@@ -31,8 +31,10 @@ FloatingWindow {
 
     // Fixed window size (Hyprland `center` rule drops it in the middle).
     implicitWidth:  Math.round(720 * win.s)   // default
-    implicitHeight: Math.round(520 * win.s)
-    minimumSize:    Qt.size(Math.round(720 * win.s), Math.round(520 * win.s))
+    // 572: the sidebar's eleven rows (Notifications joined) plus both group
+    // labels need ~566; at 520 the last row (Updates) fell off the bottom.
+    implicitHeight: Math.round(572 * win.s)
+    minimumSize:    Qt.size(Math.round(720 * win.s), Math.round(572 * win.s))
     
     // Escape closes regardless of which child currently holds focus.
     Shortcut { sequences: ["Escape"]; onActivated: win.requestClose() }

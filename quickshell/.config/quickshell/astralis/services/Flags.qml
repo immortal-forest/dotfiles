@@ -21,6 +21,14 @@ Singleton {
     id: root
 
     property alias dnd: adapter.dnd
+    // Settings → Notifications (pushed into the Notifications service below).
+    property alias dndSchedule: adapter.dndSchedule
+    property alias dndFrom: adapter.dndFrom
+    property alias dndTo: adapter.dndTo
+    property alias dndUrgent: adapter.dndUrgent
+    property alias notifPopup: adapter.notifPopup
+    property alias notifSound: adapter.notifSound
+    property alias notifApps: adapter.notifApps
     property alias airplane: adapter.airplane
     property alias time12h: adapter.time12h
     property alias clockSeconds: adapter.clockSeconds
@@ -74,6 +82,23 @@ Singleton {
         target: Notifications
         property: "dnd"
         value: adapter.dnd
+    }
+    Binding { target: Notifications; property: "scheduleOn"; value: adapter.dndSchedule }
+    Binding { target: Notifications; property: "quietFrom"; value: adapter.dndFrom }
+    Binding { target: Notifications; property: "quietTo"; value: adapter.dndTo }
+    Binding { target: Notifications; property: "urgentThrough"; value: adapter.dndUrgent }
+    Binding { target: Notifications; property: "popupLength"; value: adapter.notifPopup }
+    Binding { target: Notifications; property: "sound"; value: adapter.notifSound }
+    Binding { target: Notifications; property: "appRules"; value: adapter.notifApps }
+
+    /** Per-app notification mode: "alert" (default, drops the key) | "silent" | "off". */
+    function setNotifApp(app, mode) {
+        var m = Object.assign({}, adapter.notifApps);
+        if (mode === "silent" || mode === "off")
+            m[app] = mode;
+        else
+            delete m[app];
+        adapter.notifApps = m;
     }
     // Colourfulness (Settings → Appearance): map the string pref onto the
     // Colors singleton's numeric vibrancy so the whole shell recolours live.
@@ -202,6 +227,14 @@ Singleton {
         JsonAdapter {
             id: adapter
             property bool dnd: false
+            // Quiet hours (minutes since midnight; from > to wraps past midnight).
+            property bool dndSchedule: false
+            property int dndFrom: 1380
+            property int dndTo: 420
+            property bool dndUrgent: true
+            property string notifPopup: "normal"
+            property bool notifSound: false
+            property var notifApps: ({})
             property bool airplane: false
             property bool time12h: false
             property bool clockSeconds: false
