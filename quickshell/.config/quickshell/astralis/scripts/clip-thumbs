@@ -1,0 +1,82 @@
+#!/bin/sh
+# astralis — clipboard thumbnail cache (driven by services/ClipHistory.qml).
+#
+#   clip-thumbs <cache-dir> [<id>-<key> ...]
+#
+# Keeps <cache-dir> holding exactly one <id>-<key>.png per live cliphist image
+# entry, then prints the <id>-<key> tokens whose thumbnail is ready, one per
+# line. <key> is the entry's size and dimensions from `cliphist list`
+# (e.g. 225KiBpng1260x2800), letters and digits only.
+#
+# Why not just <id>: cliphist ids restart at 1 when its db is wiped or
+# rebuilt, so an id-named thumb outlives its entry and shows up on a different
+# one (deleted screenshots reappearing on unrelated rows). Two guards: the
+# whole cache is dropped when the db file is replaced (new device:inode), and
+# a reused id only matches its old thumb if the size and dimensions match too.
+#
+# Thumbnails are real 208x128 centre crops (the row tile is 52x32 at 4x, enough
+# for the shell scale x 1.6 HiDPI), ~40 KB each, so a row loads a tiny PNG
+# instead of decoding a full 2560x1600 screenshot. Without vips it falls back
+# to the raw decode (the row still sets a sourceSize).
+#
+# The prune is shell builtins only: one fork per cached file was ~1 s at 450
+# images. cliphist decodes run serially (they share bolt's db lock) and feed
+# vips, which runs in parallel; that only matters for a big first-run backlog.
+
+cache=$1
+shift
+mkdir -p "$cache" && chmod 700 "$cache" || exit 1
+
+db=${CLIPHIST_DB_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/cliphist/db}
+stamp=$(stat -Lc '%d:%i' -- "$db" 2>/dev/null)
+old=
+[ -r "$cache/.db" ] && read -r old <"$cache/.db"
+if [ -n "$stamp" ] && [ "$stamp" != "$old" ]; then
+    rm -f -- "$cache"/*
+    printf '%s\n' "$stamp" >"$cache/.db"
+fi
+
+live=" $* "
+
+# Prune: anything that is not <live token>.png, including leftover .raw/.part
+# files and thumbs named by the old id-only scheme.
+for f in "$cache"/*; do
+    [ -e "$f" ] || continue
+    n=${f##*/}
+    case $n in
+        *.png) case $live in *" ${n%.png} "*) continue ;; esac ;;
+    esac
+    rm -f -- "$f"
+done
+
+missing=
+for tok; do
+    case $tok in [0-9]*-*) ;; *) continue ;; esac
+    [ -s "$cache/$tok.png" ] || missing="$missing $tok"
+done
+
+if [ -n "$missing" ]; then
+    if command -v vips >/dev/null 2>&1; then
+        for tok in $missing; do
+            printf '%s' "${tok%%-*}" | cliphist decode >"$cache/$tok.raw" 2>/dev/null \
+                && printf '%s\n' "$tok"
+        done | xargs -r -n 1 -P "$(nproc 2>/dev/null || echo 4)" sh -c '
+            c=$1 t=$2
+            vips thumbnail "$c/$t.raw" "$c/$t.part.png" 208 --height 128 --crop centre 2>/dev/null \
+                && mv -f -- "$c/$t.part.png" "$c/$t.png"
+            rm -f -- "$c/$t.raw" "$c/$t.part.png"
+        ' _ "$cache"
+    else
+        for tok in $missing; do
+            printf '%s' "${tok%%-*}" | cliphist decode >"$cache/$tok.part.png" 2>/dev/null \
+                && [ -s "$cache/$tok.part.png" ] \
+                && mv -f -- "$cache/$tok.part.png" "$cache/$tok.png"
+            rm -f -- "$cache/$tok.part.png"
+        done
+    fi
+fi
+
+for tok; do
+    [ -s "$cache/$tok.png" ] && printf '%s\n' "$tok"
+done
+exit 0

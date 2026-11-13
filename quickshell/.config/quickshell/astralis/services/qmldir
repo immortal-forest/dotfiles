@@ -22,3 +22,4 @@ singleton TrackInfo TrackInfo.qml
 singleton Lyrics Lyrics.qml
 singleton Widgets Widgets.qml
 singleton DiskCache DiskCache.qml
+singleton ClipHistory ClipHistory.qml

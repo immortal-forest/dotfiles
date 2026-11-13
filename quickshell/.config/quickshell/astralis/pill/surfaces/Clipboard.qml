@@ -1,8 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import Quickshell
-import Quickshell.Io
 import ".."
 import "../../colors"
 import "../../services"
@@ -15,9 +13,13 @@ import "../../config"
  * beside a type/size label; text entries render as text. Enter/click copies
  * the entry back to the clipboard via cliphist decode | wl-copy and closes;
  * hovering a row cross-fades its age ↵ marker into a dismiss ✕ that deletes
- * it (Ctrl+X does the same for the keyboard selection). Thumbnails decode
- * into the cache before the list lands so image rows never bind to a missing
- * file.
+ * it (Ctrl+X does the same for the keyboard selection). Multi-select: Ctrl- or
+ * Shift-click a row, click its thumbnail/type mark, Ctrl+Space, or Ctrl+A for
+ * every result; once anything is marked a plain click toggles, the counter
+ * reads "n selected", and the trash (or Ctrl+X / Delete) deletes the marked
+ * rows with one click; Esc clears the marks. The history, its thumbnails and
+ * the cliphist calls live in [[ClipHistory]], which outlives this surface, so
+ * an open shows the last snapshot at once and re-syncs.
  */
 PillSurface {
     id: root
@@ -29,10 +31,19 @@ PillSurface {
 
     property string query: ""
     property int selectedIndex: 0
-    property var entries: []
-    property bool unavailable: false
+    readonly property var entries: ClipHistory.entries
 
-    readonly property string thumbDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/astralis-cliphist/"
+    readonly property var entryById: {
+        var m = {};
+        for (var i = 0; i < entries.length; i++)
+            m[entries[i].id] = entries[i];
+        return m;
+    }
+
+    // Multi-select marks, id → true. By id, so they survive narrowing the search.
+    property var marked: ({})
+    readonly property int markCount: Object.keys(marked).length
+    property int markAnchor: -1
 
     /**
      * Window-coordinate position of the last hover event that was allowed to
@@ -57,27 +68,10 @@ PillSurface {
         if (!q.length)
             return entries;
         var out = [];
-        for (var i = 0; i < entries.length; i++) {
-            var hay = (entries[i].isImage
-                ? entries[i].label + " " + entries[i].sizeLabel
-                : entries[i].preview).toLowerCase();
-            if (hay.indexOf(q) !== -1)
+        for (var i = 0; i < entries.length; i++)
+            if (entries[i].hay.indexOf(q) !== -1)
                 out.push(entries[i]);
-        }
         return out;
-    }
-
-    // Coalesce refreshes: if a thumb/list pass is mid-flight the request would
-    // otherwise be silently dropped (e.g. a post-delete reload landing while a
-    // prior pass runs). Remember it and flush once the current pass finishes.
-    property bool refreshPending: false
-
-    function refresh() {
-        if (thumbProc.running || listProc.running) {
-            refreshPending = true;
-            return;
-        }
-        thumbProc.running = true;
     }
 
     function move(delta) {
@@ -90,126 +84,153 @@ PillSurface {
     function activate() {
         if (results.length === 0 || selectedIndex < 0 || selectedIndex >= results.length)
             return;
-        var id = String(results[selectedIndex].id);
-        if (!/^\d+$/.test(id))
-            return;
-        Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" | cliphist decode | wl-copy", "_", id]);
+        ClipHistory.copy(results[selectedIndex].id);
         root.requestClose();
     }
 
     function removeAt(index) {
-        if (index < 0 || index >= results.length || delProc.running)
+        if (index < 0 || index >= results.length)
             return;
-        var id = String(results[index].id);
-        if (!/^\d+$/.test(id))
+        slideTimer.arm();
+        ClipHistory.remove(results[index].id);
+    }
+
+    function removeMarked() {
+        var ids = Object.keys(marked);
+        if (!ids.length)
             return;
-        // optimistic local prune so the row vanishes at once
-        var kept = [];
-        for (var i = 0; i < entries.length; i++)
-            if (String(entries[i].id) !== id)
-                kept.push(entries[i]);
-        entries = kept;
-        delProc.command = ["sh", "-c", "printf '%s' \"$1\" | cliphist delete", "_", id];
-        delProc.running = true;
+        marked = {};
+        markAnchor = -1;
+        slideTimer.arm();
+        ClipHistory.removeMany(ids);
+    }
+
+    function setMarks(ids, on) {
+        var m = Object.assign({}, marked);
+        for (var i = 0; i < ids.length; i++) {
+            if (on)
+                m[ids[i]] = true;
+            else
+                delete m[ids[i]];
+        }
+        marked = m;
+    }
+
+    function toggleMark(index) {
+        if (index < 0 || index >= results.length)
+            return;
+        var id = results[index].id;
+        setMarks([id], !marked[id]);
+        markAnchor = index;
+        selectedIndex = index;
+    }
+
+    // Shift-click: marks every row between the last toggled one and this one.
+    function markRange(index) {
+        if (index < 0 || index >= results.length)
+            return;
+        var from = markAnchor >= 0 && markAnchor < results.length ? markAnchor : index;
+        var ids = [];
+        for (var i = Math.min(from, index); i <= Math.max(from, index); i++)
+            ids.push(results[i].id);
+        setMarks(ids, true);
+        selectedIndex = index;
+    }
+
+    // Ctrl+A: marks every current result, or unmarks them if all already are.
+    function markAll() {
+        var ids = results.map(e => e.id);
+        setMarks(ids, !(ids.length > 0 && ids.every(id => marked[id] === true)));
+    }
+
+    /**
+     * Keeps `rows` (one `eid` per result) in step with `results` by removing
+     * and inserting only what changed. The old count-based model reset on
+     * every change, which rebuilt every delegate and snapped the list back to
+     * the top, so deleting a row halfway down lost your place.
+     */
+    function syncRows() {
+        var want = results;
+        if (rows.count === 0) {
+            if (want.length)
+                rows.append(want.map(e => ({ eid: e.id })));
+            return;
+        }
+        var at = {};
+        for (var j = 0; j < want.length; j++)
+            at[want[j].id] = j;
+        var i = 0;
+        j = 0;
+        while (j < want.length) {
+            if (i < rows.count) {
+                var have = rows.get(i).eid;
+                if (at[have] === undefined || at[have] < j) {
+                    rows.remove(i);
+                    continue;
+                }
+                if (have === want[j].id) {
+                    i++;
+                    j++;
+                    continue;
+                }
+            }
+            rows.insert(i, { eid: want[j].id });
+            i++;
+            j++;
+        }
+        if (rows.count > i)
+            rows.remove(i, rows.count - i);
     }
 
     function wipe() {
-        entries = [];
-        wipeProc.running = true;
+        ClipHistory.wipe();
     }
 
     onOpenChanged: if (open) {
         search.text = "";
         query = "";
         selectedIndex = 0;
-        refresh();
+        marked = {};
+        markAnchor = -1;
+        list.positionViewAtBeginning();
+        ClipHistory.refresh();
         Qt.callLater(() => search.input.forceActiveFocus());
     }
 
-    onResultsChanged: if (selectedIndex >= results.length) selectedIndex = Math.max(0, results.length - 1)
-
-    Process {
-        id: delProc
-        onExited: root.refresh()
+    onResultsChanged: {
+        syncRows();
+        if (selectedIndex >= results.length)
+            selectedIndex = Math.max(0, results.length - 1);
     }
 
-    Process {
-        id: wipeProc
-        command: ["cliphist", "wipe"]
-        onExited: root.refresh()
+    // Drop marks whose entry left the history (deleted elsewhere, wiped).
+    onEntriesChanged: {
+        var live = {};
+        for (var i = 0; i < entries.length; i++)
+            live[entries[i].id] = true;
+        var gone = Object.keys(marked).filter(id => !live[id]);
+        if (gone.length)
+            setMarks(gone, false);
     }
 
-    /**
-     * Thumbnail pass, run before every list read: decodes any image entry
-     * without a cached preview into thumbDir/<id> (QML sniffs the format, no
-     * extension needed) and prunes thumbs whose entry left the history.
-     */
-    Process {
-        id: thumbProc
-        command: ["sh", "-c",
-            'cache="$1"; mkdir -p "$cache"; chmod 700 "$cache"; ' +
-            'tab=$(printf "\\t"); snapshot=$(cliphist list) || exit 1; ' +
-            'ids=$(printf "%s\\n" "$snapshot" | cut -f1); ' +
-            'for f in "$cache"/*; do [ -e "$f" ] || continue; fid=$(basename "$f"); ' +
-            'printf "%s\\n" "$ids" | grep -qxF "$fid" || rm -f -- "$f"; done; ' +
-            'printf "%s\\n" "$snapshot" | while IFS= read -r line; do case "$line" in ' +
-            '*"$tab[[ binary data"*png*" ]]"|*"$tab[[ binary data"*jpg*" ]]"|*"$tab[[ binary data"*jpeg*" ]]"|*"$tab[[ binary data"*gif*" ]]"|*"$tab[[ binary data"*bmp*" ]]"|*"$tab[[ binary data"*webp*" ]]") ' +
-            'id=${line%%"$tab"*}; t="$cache/$id"; ' +
-            '[ -s "$t" ] || printf "%s" "$id" | cliphist decode > "$t" 2>/dev/null ;; ' +
-            'esac; done',
-            "_", root.thumbDir]
-        onExited: listProc.running = true
+    Component.onCompleted: syncRows()
+
+    ListModel {
+        id: rows
     }
 
-    Process {
-        id: listProc
-        command: ["cliphist", "list"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                var lines = this.text.split("\n");
-                var out = [];
-                var metaRe = /^\[\[ binary data (.*) \]\]$/;
-                var imgRe = /\b(png|jpg|jpeg|gif|bmp|webp)\b/;
-                var splitRe = /^(\S+ \S+) (\w+) (\d+)x(\d+)$/;
-                for (var i = 0; i < lines.length; i++) {
-                    var line = lines[i];
-                    var tab = line.indexOf("\t");
-                    if (tab < 1)
-                        continue;
-                    var id = line.substring(0, tab);
-                    if (!/^\d+$/.test(id))
-                        continue;
-                    var preview = line.substring(tab + 1);
-                    var m = metaRe.exec(preview);
-                    var isImage = m !== null && imgRe.test(m[1]);
-                    var label = "";
-                    var sizeLabel = "";
-                    if (isImage) {
-                        var p = splitRe.exec(m[1]);
-                        label = p ? p[2] + " " + p[3] + "×" + p[4] : m[1];
-                        sizeLabel = p ? p[1] : "";
-                    }
-                    out.push({
-                        id: id,
-                        preview: preview,
-                        isImage: isImage,
-                        label: label,
-                        sizeLabel: sizeLabel,
-                        thumb: isImage ? root.thumbDir + id : ""
-                    });
-                }
-                root.entries = out;
-                if (out.length)
-                    root.unavailable = false;
-            }
+    // Rows below a deleted one slide up into its place instead of jumping.
+    // Armed only for a moment around a delete, so search filtering doesn't
+    // set the whole list sliding.
+    Timer {
+        id: slideTimer
+        property bool armed: false
+        interval: Motion.standard
+        function arm() {
+            armed = true;
+            restart();
         }
-        onExited: (exitCode) => {
-            root.unavailable = exitCode !== 0;
-            if (root.refreshPending) {
-                root.refreshPending = false;
-                thumbProc.running = true;
-            }
-        }
+        onTriggered: armed = false
     }
 
     // ── search field + hold-to-wipe ─────────────────────────────────────────
@@ -222,19 +243,37 @@ PillSurface {
         s: root.s
         kanji: "控"
         placeholder: "Search clipboard"
-        count: root.results.length
-        total: root.entries.length
+        counterText: root.markCount > 0 ? root.markCount + " selected"
+            : root.results.length + " / " + root.entries.length
         onTextChanged: {
             root.query = text;
             root.selectedIndex = 0;
+            Qt.callLater(list.positionViewAtBeginning);
         }
         onMoved: (d) => root.move(d)
         onAccepted: root.activate()
         onDismissed: root.requestClose()
         onKeyPressed: (e) => {
-            if (e.key === Qt.Key_X && (e.modifiers & Qt.ControlModifier)
-                && search.input.selectedText.length === 0) {
-                root.removeAt(root.selectedIndex);
+            var ctrl = (e.modifiers & Qt.ControlModifier) !== 0;
+            if (ctrl && e.key === Qt.Key_X && search.input.selectedText.length === 0) {
+                if (root.markCount > 0)
+                    root.removeMarked();
+                else
+                    root.removeAt(root.selectedIndex);
+                e.accepted = true;
+            } else if (e.key === Qt.Key_Delete && root.markCount > 0) {
+                root.removeMarked();
+                e.accepted = true;
+            } else if (ctrl && e.key === Qt.Key_A) {
+                root.markAll();
+                e.accepted = true;
+            } else if (ctrl && e.key === Qt.Key_Space) {
+                root.toggleMark(root.selectedIndex);
+                e.accepted = true;
+            } else if (e.key === Qt.Key_Escape && root.markCount > 0) {
+                // first Esc drops the marks, the next one closes
+                root.marked = {};
+                root.markAnchor = -1;
                 e.accepted = true;
             }
         }
@@ -247,7 +286,9 @@ PillSurface {
 
             readonly property real hold: wipeHeat.hold
             readonly property bool holding: wipeHeat.holding
-            readonly property color tone: holding ? Colors.primary
+            // With rows marked the trash deletes just those, on one click.
+            readonly property bool selecting: root.markCount > 0
+            readonly property color tone: holding || selecting ? Colors.primary
                 : (wipeArea.containsMouse ? Colors.on_surface : Qt.alpha(Colors.on_surface_variant, 0.65))
 
             // A screen-reader user gets no benefit from a heat-fill they
@@ -256,9 +297,10 @@ PillSurface {
             // press action: a destructive hold-to-confirm control must not be
             // fireable by a single synthetic activation.
             Accessible.role: Accessible.Button
-            Accessible.name: "Clear clipboard history"
-            Accessible.description: "Hold to confirm — this will delete all clipboard history"
+            Accessible.name: selecting ? "Delete " + root.markCount + " selected" : "Clear clipboard history"
+            Accessible.description: selecting ? "" : "Hold to confirm — this will delete all clipboard history"
             Accessible.focusable: true
+            Accessible.onPressAction: if (selecting) root.removeMarked()
 
             GlyphIcon {
                 anchors.fill: parent
@@ -279,26 +321,27 @@ PillSurface {
                 anchors.margins: -5 * root.s
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onPressed: wipeHeat.press()
+                onPressed: if (!wipeBtn.selecting) wipeHeat.press()
                 onReleased: wipeHeat.release()
                 onExited: wipeHeat.cancel()
+                onClicked: if (wipeBtn.selecting) root.removeMarked()
             }
         }
     }
 
-    Rectangle {
+    // Centred in the whole gap between the search field and the first
+    // entry (it sat 8 below the field but only 6 above the entry).
+    Rule {
         id: divider
         anchors.top: search.bottom
-        anchors.topMargin: 8 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 1
-        color: Qt.alpha(Colors.on_surface, 0.06)
+        height: 14 * root.s + 1
 
         // wipe heat sweeps along the divider while the wipe glyph is held
         Rectangle {
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
+            anchors.top: divider.line.top
+            anchors.bottom: divider.line.bottom
             anchors.right: parent.right
             width: parent.width * wipeBtn.hold
             visible: wipeBtn.holding
@@ -317,7 +360,7 @@ PillSurface {
         opacity: root.results.length === 0 ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
-        text: root.unavailable ? "cliphist unavailable"
+        text: ClipHistory.unavailable ? "cliphist unavailable"
             : (root.query.length ? "No matches" : "History empty")
         color: Qt.alpha(Colors.on_surface_variant, 0.65)
         font.family: Appearance.font.family
@@ -328,30 +371,48 @@ PillSurface {
     ListView {
         id: list
         anchors.top: divider.bottom
-        anchors.topMargin: 6 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         spacing: 2 * root.s
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        model: root.results.length
+        model: rows
+
+        displaced: Transition {
+            enabled: slideTimer.armed
+            NumberAnimation {
+                property: "y"
+                duration: Motion.glide
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.standardCurve
+            }
+        }
 
         delegate: Item {
             id: row
             required property int index
+            required property string eid
             width: list.width
             height: (entry && entry.isImage ? 44 : 28) * root.s
 
-            readonly property var entry: root.results[index]
+            readonly property var entry: root.entryById[eid]
             readonly property bool selected: index === root.selectedIndex
+            readonly property bool marked: root.marked[eid] === true
 
             Accessible.role: Accessible.Button
-            Accessible.name: row.entry === undefined ? "" : (row.entry.isImage ? row.entry.label : row.entry.preview)
+            Accessible.name: row.entry === undefined ? "" : (row.entry.isImage ? row.entry.label
+                : (row.entry.secret ? "Hidden secret" : row.entry.preview))
             Accessible.description: row.entry !== undefined && row.entry.isImage ? row.entry.sizeLabel : ""
             Accessible.selected: row.selected
+            Accessible.checkable: root.markCount > 0
+            Accessible.checked: row.marked
             Accessible.focusable: true
             Accessible.onPressAction: {
+                if (root.markCount > 0) {
+                    root.toggleMark(row.index);
+                    return;
+                }
                 root.selectedIndex = row.index;
                 root.activate();
             }
@@ -381,6 +442,16 @@ PillSurface {
                 Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
 
+            // marked tint, over the selection fill so a marked row still reads as marked when selected
+            Rectangle {
+                anchors.fill: parent
+                radius: 9 * root.s
+                color: Qt.alpha(Colors.primary, 0.13)
+                opacity: row.marked ? 1 : 0
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            }
+
             // Press dip, the same 0.96 launcher-result tier as Launcher's rows.
             scale: rowArea.pressed ? 0.96 : 1
             Behavior on scale {
@@ -395,9 +466,15 @@ PillSurface {
                 id: rowArea
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    root.selectedIndex = row.index;
-                    root.activate();
+                onClicked: (mouse) => {
+                    if (mouse.modifiers & Qt.ShiftModifier)
+                        root.markRange(row.index);
+                    else if ((mouse.modifiers & Qt.ControlModifier) || root.markCount > 0)
+                        root.toggleMark(row.index);
+                    else {
+                        root.selectedIndex = row.index;
+                        root.activate();
+                    }
                 }
             }
 
@@ -421,7 +498,8 @@ PillSurface {
                     Image {
                         anchors.fill: parent
                         anchors.margins: 1
-                        source: thumbTile.visible
+                        // empty until the thumb pass has the file on disk
+                        source: thumbTile.visible && row.entry.thumb.length
                             ? "file://" + encodeURI(row.entry.thumb).replace(/#/g, '%23').replace(/\?/g, '%3F')
                             : ""
                         sourceSize.width: 128
@@ -438,15 +516,88 @@ PillSurface {
                 // labels start a thumbnail further in.
                 GlyphIcon {
                     id: textMark
-                    visible: !thumbTile.visible
+                    visible: !thumbTile.visible && opacity > 0.01
+                    opacity: markSlot.ring ? 0 : 1
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
                     x: (52 * root.s - width) / 2
                     anchors.verticalCenter: parent.verticalCenter
                     width: 14 * root.s
                     height: width
-                    name: "type"
+                    // a lock marks rows whose key is hidden (ClipHistory.secretView)
+                    name: row.entry !== undefined && row.entry.secret ? "lock" : "type"
                     stroke: 1.7
                     color: row.selected ? Colors.on_surface_variant : Qt.alpha(Colors.on_surface_variant, 0.5)
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
+                }
+
+                // Multi-select toggle in the leading slot (M3's avatar tap):
+                // hovering it, or any row being marked, shows an empty ring
+                // there; a marked row fills it with a check. On an image the
+                // ring sits on a scrim over the thumbnail.
+                Item {
+                    id: markSlot
+                    width: 52 * root.s
+                    height: parent.height
+                    readonly property bool ring: row.marked || markHover.hovered || root.markCount > 0
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.topMargin: (parent.height - thumbTile.height) / 2
+                        anchors.bottomMargin: anchors.topMargin
+                        visible: thumbTile.visible && opacity > 0.01
+                        radius: thumbTile.radius
+                        color: Qt.alpha(Colors.scrim, row.marked ? 0.55 : 0.4)
+                        opacity: markSlot.ring ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 15 * root.s
+                        height: width
+                        radius: width / 2
+                        color: row.marked ? Colors.primary : "transparent"
+                        border.width: row.marked ? 0 : 1.5 * root.s
+                        border.color: thumbTile.visible ? Colors.on_surface : Colors.on_surface_variant
+                        opacity: markSlot.ring ? 1 : 0
+                        visible: opacity > 0.01
+                        scale: row.marked ? 1 : 0.86
+                        Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Motion.glide
+                                easing.type: Motion.easeBezier
+                                easing.bezierCurve: Motion.expressiveFastSpatial
+                            }
+                        }
+
+                        GlyphIcon {
+                            anchors.centerIn: parent
+                            width: 10 * root.s
+                            height: width
+                            name: "check"
+                            color: Colors.on_primary
+                            stroke: 2.6
+                            opacity: row.marked ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+                        }
+                    }
+
+                    HoverHandler {
+                        id: markHover
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: (mouse) => {
+                            if (mouse.modifiers & Qt.ShiftModifier)
+                                root.markRange(row.index);
+                            else
+                                root.toggleMark(row.index);
+                        }
+                    }
                 }
 
                 Text {
@@ -455,12 +606,17 @@ PillSurface {
                     anchors.leftMargin: (52 + 9) * root.s
                     anchors.right: sizeTag.left
                     anchors.rightMargin: 8 * root.s
-                    text: row.entry === undefined ? "" : (row.entry.isImage ? row.entry.label : row.entry.preview)
+                    readonly property bool secret: row.entry !== undefined && row.entry.secret === true
+                    // `shown` already has bullets where Obel's ss01 wouldn't mask
+                    text: row.entry === undefined ? "" : (row.entry.isImage ? row.entry.label : row.entry.shown)
                     color: row.entry !== undefined && row.entry.isImage
                         ? (row.selected ? Colors.on_surface_variant : Qt.alpha(Colors.on_surface_variant, 0.65))
                         : (row.selected ? Colors.on_surface : Colors.on_surface_variant)
-                    font.family: Appearance.font.family
-                    font.pixelSize: 11.5 * root.s
+                    // Key rows only: Obel Mono with its ss01 secret masking (Outfit
+                    // stays the UI face; Obel is a cell wider, hence a step smaller).
+                    font.family: secret ? "Obel Mono Lig" : Appearance.font.family
+                    font.features: secret ? ({ "ss01": 1 }) : ({})
+                    font.pixelSize: (secret ? 10.5 : 11.5) * root.s
                     // Pinned, as in Launcher: hover moves the selection, and a weight
                     // change under the cursor reflows the text and can't be animated.
                     font.weight: Font.Medium
