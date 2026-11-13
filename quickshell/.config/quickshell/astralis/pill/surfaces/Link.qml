@@ -1703,15 +1703,12 @@ PillSurface {
                 }
             }
 
-            Item { width: 1; height: 4 * root.s }
-
-            Rectangle {
+            // Header to first row, centred: the Column's 4 + 4 either side
+            // of a 16 + 1 rule keeps the old 12 | line | 12.
+            Rule {
                 width: parent.width
-                height: 1
-                color: Qt.alpha(Colors.on_surface, 0.06)
+                height: 16 * root.s + 1
             }
-
-            Item { width: 1; height: 4 * root.s }
 
             LinkRow {
                 // Airplane blocks the radio: dim and lock the row out.
@@ -2117,20 +2114,20 @@ PillSurface {
             }
         }
 
-        Rectangle {
+        // Centred between the header's back button (2 above its box bottom)
+        // and the first network's hover box (was 8 above the line, 6 below).
+        Rule {
             id: wifiDivider
             anchors.top: wifiHeader.bottom
-            anchors.topMargin: 8 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 1
-            color: Qt.alpha(Colors.on_surface, 0.06)
+            height: 14 * root.s + 1
+            airAbove: 2 * root.s
         }
 
         ListView {
             id: wifiList
             anchors.top: wifiDivider.bottom
-            anchors.topMargin: 6 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -2574,20 +2571,20 @@ PillSurface {
             }
         }
 
-        Rectangle {
+        // Centred between the header's back button (2 above its box bottom)
+        // and the first network's hover box (was 8 above the line, 6 below).
+        Rule {
             id: btDivider
             anchors.top: btHeader.bottom
-            anchors.topMargin: 8 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 1
-            color: Qt.alpha(Colors.on_surface, 0.06)
+            height: 14 * root.s + 1
+            airAbove: 2 * root.s
         }
 
         ListView {
             id: btList
             anchors.top: btDivider.bottom
-            anchors.topMargin: 6 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -3087,19 +3084,20 @@ PillSurface {
             backHint: "Return to the Wi-Fi list"
         }
 
-        Rectangle {
+        // Centred between the header's back button (2 above its box bottom)
+        // and the action chips (10 into their row): was 10 above, 12 below.
+        Rule {
             id: wifiItemDivider
             anchors.top: wifiItemHeader.bottom
-            anchors.topMargin: 8 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 1
-            color: Qt.alpha(Colors.on_surface, 0.06)
+            height: 10 * root.s + 1
+            airAbove: 2 * root.s
+            airBelow: 10 * root.s
         }
 
         Flickable {
             anchors.top: wifiItemDivider.bottom
-            anchors.topMargin: 2 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -3347,19 +3345,20 @@ PillSurface {
             backHint: "Return to the Bluetooth list"
         }
 
-        Rectangle {
+        // Centred between the header's back button (2 above its box bottom)
+        // and the action chips (10 into their row): was 10 above, 12 below.
+        Rule {
             id: btItemDivider
             anchors.top: btItemHeader.bottom
-            anchors.topMargin: 8 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 1
-            color: Qt.alpha(Colors.on_surface, 0.06)
+            height: 10 * root.s + 1
+            airAbove: 2 * root.s
+            airBelow: 10 * root.s
         }
 
         Flickable {
             anchors.top: btItemDivider.bottom
-            anchors.topMargin: 2 * root.s
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom

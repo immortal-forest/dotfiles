@@ -36,7 +36,7 @@ PillSurface {
     amePoint: Qt.point(width / 2, height - 6 * s)
     // Hug the backlog: header + rule + list (floored for the 静 empty state),
     // capped by Pill.qml's fixed 460.
-    desiredH: hairline.y + 1 + 8 * s
+    desiredH: hairline.y + hairline.height
         + Math.max(Services.Notifications.count === 0 ? 96 * s : 40 * s, notifCol.implicitHeight)
         + 12 * s + beadClear
 
@@ -505,21 +505,22 @@ PillSurface {
         }
     }
 
-    Rectangle {
+    // Centred between the Clear-all chip and the first row's hover box (it
+    // sat 19px under the chip but 14px over the row). The chip's bottom edge
+    // is ~2.5 above the tool row's (measured on screen).
+    Rule {
         id: hairline
         anchors.top: toolRow.bottom
-        anchors.topMargin: 8 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 1
-        color: Qt.alpha(Colors.on_surface, 0.06)
+        height: 16 * root.s + 1
+        airAbove: 2.5 * root.s
     }
 
     // ── grouped backlog ─────────────────────────────────────────────────────
     Flickable {
         id: notifFlick
         anchors.top: hairline.bottom
-        anchors.topMargin: 8 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

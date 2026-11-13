@@ -36,6 +36,17 @@ Item {
     readonly property bool focused: srow.surface ? srow.surface.focusRowItem === srow : false
 
     /**
+     * Device-pixel grid (see PixelSnap). The highlight's insets, the row
+     * height and the divider are whole device pixels measured from a top edge
+     * that `snap` lands on a pixel row, and the bottom inset also clears the
+     * divider's own pixel, so the divider sits exactly midway between the
+     * highlights above and below it. Before, at 1.6 scale, the gap above a
+     * hovered row's highlight came out 1-2px wider than the gap below it.
+     */
+    PixelSnap { id: snap; target: srow }
+    readonly property real inset: snap.px(3 * srow.s)
+
+    /**
      * Screen-reader identity for the row. Every settings page in the shell is
      * built out of these, so labelling the row here labels forty-odd controls
      * at once — and it is the only place that knows both the name and the
@@ -99,7 +110,7 @@ Item {
             easing.bezierCurve: Motion.emphasized
         }
     }
-    height: srow.naturalHeight * srow.shownT
+    height: snap.px(srow.naturalHeight * srow.shownT)
     clip: srow.shownT < 0.999
     visible: srow.shown || srow.opacity > 0.01
     Accessible.ignored: !srow.shown
@@ -205,8 +216,8 @@ Item {
     Rectangle {
         id: rowHighlight
         anchors.fill: parent
-        anchors.topMargin: 3 * srow.s
-        anchors.bottomMargin: 3 * srow.s
+        anchors.topMargin: srow.inset + snap.dy
+        anchors.bottomMargin: srow.inset + (srow.last ? 0 : snap.hair) - snap.dy
         radius: 9 * srow.s
         scale: rowArea.pressed ? 0.985 : 1
         color: rowArea.pressed ? Qt.alpha(Colors.primary, 0.10)
@@ -352,9 +363,10 @@ Item {
 
     Rectangle {
         anchors.bottom: parent.bottom
+        anchors.bottomMargin: -snap.dy
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 1
+        height: snap.hair
         color: Qt.alpha(Colors.on_surface, 0.06)
         visible: !srow.last
     }

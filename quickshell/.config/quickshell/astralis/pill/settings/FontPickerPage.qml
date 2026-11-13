@@ -231,19 +231,22 @@ SettingsPage {
         }
     }
 
-    Rectangle {
+    // Centred between the preview text's baseline (~8.5 above the preview
+    // box's bottom, measured) and the selected row's highlight (~2 into the
+    // list).
+    Rule {
         id: previewLine
         anchors.top: preview.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 1
-        color: Qt.alpha(Colors.on_surface, 0.06)
+        height: 6 * root.s + 1
+        airAbove: 8.5 * root.s
+        airBelow: 2 * root.s
     }
 
     ListView {
         id: list
         anchors.top: previewLine.bottom
-        anchors.topMargin: 6 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

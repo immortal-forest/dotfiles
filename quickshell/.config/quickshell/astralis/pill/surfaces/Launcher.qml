@@ -268,14 +268,14 @@ PillSurface {
         onDismissed: root.requestClose()
     }
 
-    Rectangle {
+    // Centred in the whole gap between the search field and the first
+    // result (it sat 8 below the field but only 6 above the result).
+    Rule {
         id: divider
         anchors.top: search.bottom
-        anchors.topMargin: 8 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 1
-        color: Qt.alpha(Colors.on_surface, 0.06)
+        height: 14 * root.s + 1
     }
 
     // ── calc result row ─────────────────────────────────────────────────────
@@ -289,7 +289,6 @@ PillSurface {
          * opacity, never the animated height.
          */
         anchors.top: divider.bottom
-        anchors.topMargin: 6 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
         height: root.calcActive ? 50 * root.s : 0

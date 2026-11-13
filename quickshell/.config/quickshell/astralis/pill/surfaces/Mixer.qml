@@ -520,14 +520,18 @@ PillSurface {
         }
     }
 
-    Rectangle {
+    // Centred between the header controls and the fader caps (it sat 14px
+    // under the controls but 21px over the caps). The device chip hangs ~1
+    // below the header's box (negative air); the caps start ~1.5 into
+    // their row.
+    Rule {
         id: divider
         anchors.top: header.bottom
-        anchors.topMargin: 9 * root.s
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 1
-        color: Qt.alpha(Colors.on_surface, 0.06)
+        height: 19 * root.s + 1
+        airAbove: -1 * root.s
+        airBelow: 1.5 * root.s
     }
 
     // Outside-click catcher: a press off an open dropdown closes it. Sits
@@ -556,7 +560,7 @@ PillSurface {
         labelOf: (m) => root.deviceLabel(m)
         isCurrent: (m) => m === menu.current
         width: 300 * root.s
-        y: divider.y + 4 * root.s
+        y: divider.y + divider.line.y + 4 * root.s
         x: anchorItem ? Math.max(0, Math.min(root.width - width,
             hdrActions.x + anchorItem.x + anchorItem.width - width)) : root.width - width
         onPicked: root.openPicker = ""
@@ -862,7 +866,6 @@ PillSurface {
     Row {
         id: faderRow
         anchors.top: divider.bottom
-        anchors.topMargin: 10 * root.s
         anchors.horizontalCenter: parent.horizontalCenter
         height: 142 * root.s
         spacing: 0

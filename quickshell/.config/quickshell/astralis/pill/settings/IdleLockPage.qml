@@ -84,9 +84,14 @@ SettingsPage {
         property bool last: false
         default property alias seg: segSlot.data
         readonly property real s: root.s
+        // Device-pixel grid, same as SettingsRow (see PixelSnap): whole-pixel
+        // height, insets and divider from a snapped top edge, so the divider
+        // sits exactly midway between the highlights on either side.
+        PixelSnap { id: snap; target: irow }
+        readonly property real inset: snap.px(3 * irow.s)
 
         width: parent ? parent.width : 0
-        height: col.implicitHeight + 22 * irow.s
+        height: snap.px(col.implicitHeight + 22 * irow.s)
 
         // Same page-enter fade + rise as SettingsRow, so these four rows join
         // the cascade instead of standing fully drawn above their siblings.
@@ -122,8 +127,8 @@ SettingsPage {
 
         Rectangle {
             anchors.fill: parent
-            anchors.topMargin: 3 * irow.s
-            anchors.bottomMargin: 3 * irow.s
+            anchors.topMargin: irow.inset + snap.dy
+            anchors.bottomMargin: irow.inset + (irow.last ? 0 : snap.hair) - snap.dy
             radius: 9 * irow.s
             color: (ih.hovered || root.focusRowItem === irow) ? Colors.surface_container_highest : "transparent"
             Behavior on color { ColorAnimation { duration: Motion.fast } }
@@ -184,9 +189,10 @@ SettingsPage {
 
         Rectangle {
             anchors.bottom: parent.bottom
+            anchors.bottomMargin: -snap.dy
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 1
+            height: snap.hair
             color: Qt.alpha(Colors.on_surface, 0.06)
             visible: !irow.last
         }

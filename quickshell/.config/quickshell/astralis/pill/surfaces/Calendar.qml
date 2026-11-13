@@ -554,10 +554,15 @@ PillSurface {
                 }
             }
 
-            Rectangle {
+            // Centred on the ink: the place/humidity line above leaves ~3.5 of
+            // text air under its box, the outlook labels ~2 above theirs (it
+            // sat 23px under the one and 20px over the other).
+            Rule {
                 width: wxCol.width
                 height: 1
                 color: Qt.alpha(Colors.on_surface, 0.04)
+                airAbove: 3.5 * root.s
+                airBelow: 2 * root.s
             }
 
             // Four-day outlook: Weather.daily stays [] until a fetch lands,

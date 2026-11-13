@@ -286,15 +286,11 @@ PillSurface {
             }
         }
 
-        Item { width: 1; height: 18 * root.s }
-
-        Rectangle {
+        // Centred between the gauges and the stats row (was 18 above, 13 below).
+        Rule {
             width: parent.width
-            height: 1
-            color: Qt.alpha(Colors.on_surface, 0.06)
+            height: 31 * root.s + 1
         }
-
-        Item { width: 1; height: 13 * root.s }
 
         Item {
             width: parent.width
