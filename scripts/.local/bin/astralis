@@ -1,0 +1,1080 @@
+#!/usr/bin/env python3
+"""astralis — the astralis wordmark, live in the terminal.
+
+Outfit SemiBold (the shell's UI font) and a turning crystal star, drawn in block
+sextants and coloured from the live wallpaper palette (the Colors.json matugen
+writes for the shell) over a painted nebula. In a terminal it runs full screen
+until a key is pressed; -o plays the intro inline and exits; -s prints once.
+"""
+import argparse, json, math, os, random, select, shutil, signal, sys, time
+
+COLORS = os.path.expanduser("~/.config/quickshell/astralis/colors/Colors.json")
+WALLPAPER = os.path.expanduser("~/.cache/astralis/current-wallpaper")
+
+# All art is block sextants (2x3 pixels per cell), supersampled and corrected
+# for Obel Mono's 2.08:1 cells so shapes keep their true proportions.
+#
+# Wordmark: Outfit SemiBold (the shell's UI font), caps, tracking .14em (6 rows)
+# .08em (5 rows, fits 80 columns) and .1em (4 rows, fits 66).
+# Icon: a crystal star (see "crystal" below), rendered live, not stored here.
+WORD6 = [
+    '    🬵██🬏        🬵🬻███🬺🬱    ██████████    ██████🬹🬭        🬞██🬓        ██          ██     🬞🬹████🬹🬭',
+    '   🬦█🬝█🬺       ▐██🬀  🬂🬀       ▐██        ██   🬁██▌      🬞🬻█🬬█🬓       ██          ██     ██🬕  🬁🬂',
+    '  🬞██🬀🬨█🬺      🬁🬬█🬺🬹🬱🬭        ▐██        ██🬱🬭🬭🬵██🬀      🬻█🬄🬁██🬏      ██          ██     🬊██🬹🬹🬭🬏',
+    ' 🬞🬻█▌  🬬█🬲       🬁🬂🬊🬬█🬺🬏      ▐██        ██🬎██🬴🬂       🬷█🬕  ▐█🬺      ██          ██       🬂🬂🬎██🬱',
+    ' 🬻█🬝🬎🬎🬎🬎██🬓    🬭🬱🬏  🬞██▌      ▐██        ██ 🬁🬎█🬺🬏     🬵██🬎🬎🬎🬎🬬█🬺     ██🬏         ██    🬞🬵🬭   🬷██',
+    '🬷█🬝     🬁██🬏   🬊🬎████🬎🬆       🬉██        ██   🬁🬬█🬱   🬦██🬀     🬬█▌    ███████▌    ██    🬁🬎🬬███🬝🬎🬀',
+]
+WORD5 = [
+    '   🬦█🬺🬏     🬦🬻███🬹🬓 🬉████████  ▐████🬺🬹🬏     🬦█🬺🬏     ██       ▐█   🬞🬹███🬺🬓',
+    '  🬞█🬝█🬺     ██🬭  🬀      ██     ▐█▌  🬠█▌    🬞█🬝█🬺     ██       ▐█   ▐█🬲  🬁',
+    ' 🬞🬻🬝 🬉█🬲    🬁🬎🬎█🬺🬹🬏     ██     ▐█🬺🬹🬻🬝🬎🬀    🬻🬝 🬉█🬲    ██       ▐█    🬊🬎██🬹🬏',
+    ' 🬻█🬺🬹🬹██🬱   🬭   ▐█▌     ██     ▐█▌🬊🬬🬺🬏    🬻█🬺🬹🬹██🬱   ██       ▐█   🬞🬏  🬁██',
+    '🬷█🬄    🬬█🬓 🬁🬎██🬻█🬎🬀     ██     ▐█▌  🬊█🬱  🬷█🬄    🬨█🬓  ██████▌  ▐█   🬊🬬█🬻█🬎🬀',
+]
+WORD4 = [
+    '  🬞█🬺     🬵🬝🬎🬬🬚  🬎🬎🬬█🬝🬎🬌  █🬝🬎🬎🬺🬓    🬦█🬺     █▌     ▐█  🬞🬹🬝🬎🬬🬚',
+    ' 🬞🬻🬕🬬🬺    🬬🬺🬱🬭     ▐█     █🬲🬭🬭█🬕   🬞█🬆🬬🬲    █▌     ▐█  🬉█🬺🬭🬭',
+    ' 🬻█🬭🬯█🬲    🬁🬂🬬█🬏   ▐█     █🬕🬬█🬐   🬞🬻█🬭🬷█🬓   █▌     ▐█    🬂🬂🬬🬺',
+    '🬷🬝🬂🬂🬂🬊█🬓 🬉🬬🬹🬹🬻🬎    ▐█     █▌ 🬊█🬱  🬻🬝🬂🬂🬂🬊█🬓  █🬺🬹🬹🬹  ▐█  🬉🬬🬹🬹█🬆',
+]
+COMPACT = ["✦  " + " ".join("astralis")]
+
+
+def _blank(rows, cols):
+    return [" " * cols] * rows
+
+
+def _lockup(word):
+    """Crystal beside the wordmark, two rows taller above and below so its
+    spikes reach past the letters."""
+    rows = len(word) + 4
+    cols = round(rows * 2.08)
+    pad = [" " * max(map(len, word))] * 2
+    return [" " * (cols + 4) + w for w in pad + word + pad], (0, 0, rows, cols), 2
+
+
+# name: (art rows, crystal rect (row, col, rows, cols) or None, wordmark's first row)
+ARTS = {
+    "WORD6": (WORD6, None, 0), "WORD5": (WORD5, None, 0), "WORD4": (WORD4, None, 0),
+    "LOCKUP6": _lockup(WORD6), "LOCKUP5": _lockup(WORD5),
+    "ICON16": (_blank(16, 33), (0, 0, 16, 33), 0), "ICON12": (_blank(12, 25), (0, 0, 12, 25), 0),
+    "ICON8": (_blank(8, 17), (0, 0, 8, 17), 0),
+    "COMPACT": (COMPACT, None, 0),
+}
+WORDMARKS = {"WORD6", "WORD5", "WORD4", "LOCKUP6", "LOCKUP5"}   # these get the spark above the S
+# What each --icon/--lockup/--small choice falls back to as the terminal narrows.
+ART_CHOICES = {
+    "wordmark": ["WORD6", "WORD5", "WORD4", "COMPACT"],
+    "lockup": ["LOCKUP6", "LOCKUP5", "WORD5", "WORD4", "COMPACT"],
+    "icon": ["ICON16", "ICON12", "ICON8", "COMPACT"],
+    "small": ["COMPACT"],
+}
+
+
+# Used only when Colors.json is missing (e.g. before the first wallpaper set).
+FALLBACK = {
+    "primary": "#c3c0ff", "primary_fixed": "#e3dfff",
+    "tertiary": "#f0b8d6", "tertiary_fixed": "#ffd8ea",
+    "primary_container": "#433f8f", "tertiary_container": "#6b3a57",
+    "outline": "#918f9a", "outline_variant": "#47464f",
+    "on_surface_variant": "#c8c5d0", "on_surface": "#e4e1e9",
+    "surface": "#131318", "surface_container_lowest": "#0e0e13",
+}
+
+ASPECT = 2.08            # Obel Mono cell height / width
+
+# Timeline, in ms (all scaled by --speed).
+STAR_SPREAD = 1400       # stars start fading in across this window
+STAR_FADE = 800
+LETTER_START = 450       # first letter lights up
+LETTER_STAGGER = 130     # …then one letter every
+LETTER_FADE = 700
+SWEEP_MS = 1500          # a glint crossing the wordmark
+WASH_MS = 1900           # a new wallpaper's colours sweeping the screen
+CHAR_MS = 28             # caption type-on, per character
+DRIFT_MS = 28000         # nonstop: gradient flows one full cycle
+HINT_HOLD = 4500         # "press any key" stays this long
+
+GLINT_W = 5              # bright edge behind a sweep front, in cells
+TILT = math.tan(math.radians(26)) * 2.08   # sweep leans like "/": columns per row
+BOW = 0.18               # …and bows forward in the middle (fraction of its height)
+LEVELS = 16              # brightness steps for stars, text, meteors
+MORPH = ("·", "∗", "✧", "✦", "✶")   # a star opening, glassy to solid; single-width in Obel Mono Lig
+ROT_MS = 20000           # the crystal turns once in this long
+ROT_STEPS = 240          # rendered (and cached) positions per turn
+THETA0 = 0.55            # its resting angle when printed still
+MORPH_MS = 150           # the ✦ spark: per glyph, opening and closing on a loop
+BLOOM_MS = 1300          # a blooming star: open and close once
+TAIL = 10                # shooting-star tail length, in cells
+WHITE = (1.0, 1.0, 1.0)
+BLACK = (0.0, 0.0, 0.0)
+STAR_POOL = [g for g, n in [
+    (("·", "outline_variant"), 34), (("·", "outline"), 20), ((".", "outline"), 12),
+    (("⋆", "outline"), 9), (("✧", "on_surface_variant"), 6), (("·", "on_surface_variant"), 8),
+    (("·", "primary"), 5), (("⋆", "tertiary"), 4), (("✧", "primary"), 2)] for _ in range(n)]
+
+
+# --- colour -----------------------------------------------------------------
+
+def hex_rgb(h):
+    h = h.lstrip("#")
+    if len(h) != 6:
+        raise ValueError(h)
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+def _lin(c):
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _gam(c):
+    c = min(max(c, 0.0), 1.0)
+    return 12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+
+
+def to_oklab(rgb):
+    r, g, b = (_lin(c) for c in rgb)
+    l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1 / 3)
+    m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1 / 3)
+    s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1 / 3)
+    return (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s)
+
+
+def from_oklab(lab):
+    L, a, b = lab
+    l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    return (_gam(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+            _gam(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+            _gam(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s))
+
+
+def mix(a, b, t):
+    """Perceptual (OKLab) blend — for the palette gradient, computed once."""
+    la, lb = to_oklab(a), to_oklab(b)
+    return from_oklab(tuple(x + (y - x) * t for x, y in zip(la, lb)))
+
+
+def lerp(a, b, t):
+    """Plain sRGB blend — cheap enough for every frame."""
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+
+
+_sgr = {}
+
+
+def sgr(rgb, layer):
+    """38 = foreground, 48 = background; cached per 8-bit colour."""
+    k = (layer, int(rgb[0] * 255 + .5), int(rgb[1] * 255 + .5), int(rgb[2] * 255 + .5))
+    s = _sgr.get(k)
+    if s is None:
+        s = _sgr[k] = "\x1b[%d;2;%d;%d;%dm" % k
+    return s
+
+
+def load_roles(strict=False):
+    """Colors.json as {role: rgb}. strict: None on a missing/half-written file."""
+    roles = dict(FALLBACK)
+    try:
+        with open(COLORS) as f:
+            roles.update({k: v for k, v in json.load(f).items() if isinstance(v, str)})
+    except (OSError, ValueError):
+        if strict:
+            return None
+    out = {}
+    for k, v in roles.items():
+        try:
+            out[k] = hex_rgb(v)
+        except ValueError:
+            pass
+    return out
+
+
+def wallpaper_name():
+    try:
+        with open(WALLPAPER) as f:
+            path = f.read().strip()
+    except OSError:
+        return ""
+    name = os.path.splitext(os.path.basename(path))[0]
+    return name.replace("_", " ").replace("-", " ")
+
+
+def default_caption():
+    wp = wallpaper_name()
+    return "quickshell  ·  hyprland" + (f"  ·  {wp}" if wp else "")
+
+
+# --- motion -----------------------------------------------------------------
+
+def bezier(x1, y1, x2, y2, n=512):
+    """CSS-style cubic-bezier easing, tabulated so it's cheap per call."""
+    pts = []
+    for i in range(n + 1):
+        u = i / n
+        pts.append((3 * (1 - u) ** 2 * u * x1 + 3 * (1 - u) * u ** 2 * x2 + u ** 3,
+                    3 * (1 - u) ** 2 * u * y1 + 3 * (1 - u) * u ** 2 * y2 + u ** 3))
+    table, j = [], 0
+    for i in range(n + 1):
+        x = i / n
+        while j < n - 1 and pts[j + 1][0] < x:
+            j += 1
+        (xa, ya), (xb, yb) = pts[j], pts[j + 1]
+        table.append(ya + (yb - ya) * (0.0 if xb == xa else (x - xa) / (xb - xa)))
+
+    def ease(t):
+        if t <= 0:
+            return 0.0
+        if t >= 1:
+            return 1.0
+        p = t * n
+        i = int(p)
+        return table[i] + (table[i + 1] - table[i]) * (p - i)
+    return ease
+
+
+EMPH_DECEL = bezier(0.05, 0.7, 0.1, 1.0)   # M3 emphasized decelerate: things arriving
+SWEEP = bezier(0.45, 0.0, 0.2, 1.0)        # ease in-out: light travelling across
+
+
+def clamp01(x):
+    return 0.0 if x < 0 else 1.0 if x > 1 else x
+
+
+# --- palette ----------------------------------------------------------------
+
+class Palette:
+    """One wallpaper palette resolved for one piece of art: a gradient lookup
+    table indexed by position along the art. Colour varies left to right only;
+    shading by row steps once per cell and reads as horizontal lines."""
+    Q = 128
+
+    def __init__(self, roles, gradient, ah):
+        self.roles = dict(roles)
+        (at, ab), (bt, bb) = (self._ends(g) for g in gradient)
+        self.roles["_spark"] = bb
+        self.lut = []
+        for q in range(self.Q + 1):
+            u = q / self.Q
+            self.lut.append(mix(mix(at, bt, u), mix(ab, bb, u), 0.6))
+
+    def _ends(self, name):
+        """(light top tone, base tone) for a role or #hex."""
+        if name.startswith("#"):
+            base = hex_rgb(name)
+            return mix(base, WHITE, 0.35), base
+        base = self.roles[name]
+        return self.roles.get(name + "_fixed") or mix(base, WHITE, 0.35), base
+
+    def __getitem__(self, role):
+        return self.roles[role]
+
+
+# --- crystal ----------------------------------------------------------------
+
+def _v(a, b, op):
+    return (op(a[0], b[0]), op(a[1], b[1]), op(a[2], b[2]))
+
+
+def _dot(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _unit(a):
+    n = math.sqrt(_dot(a, a)) or 1.0
+    return (a[0] / n, a[1] / n, a[2] / n)
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+
+def crystal_mesh(spike=2.7):
+    """A stellated octahedron: a long pyramid raised on each of the octahedron's
+    eight faces — eight points, 24 triangular facets, wound outward."""
+    tris = []
+    for a in ((1, 0, 0), (-1, 0, 0)):
+        for b in ((0, 1, 0), (0, -1, 0)):
+            for c in ((0, 0, 1), (0, 0, -1)):
+                g = _unit((a[0], b[1], c[2]))
+                apex = (g[0] * spike, g[1] * spike, g[2] * spike)
+                for p, q in ((a, b), (b, c), (c, a)):
+                    n = _cross(_v(q, p, lambda x, y: x - y), _v(apex, p, lambda x, y: x - y))
+                    mid = ((p[0] + q[0] + apex[0]) / 3, (p[1] + q[1] + apex[1]) / 3,
+                           (p[2] + q[2] + apex[2]) / 3)
+                    tris.append((p, q, apex) if _dot(n, mid) > 0 else (q, p, apex))
+    return tris, spike
+
+
+CRYSTAL, CRYSTAL_R = crystal_mesh()
+LIGHT = _unit((-0.5, 0.7, 0.55))          # upper left, in front
+HALF = _unit((LIGHT[0], LIGHT[1], LIGHT[2] + 1))
+
+
+def _rot(theta):
+    """Spin about the crystal's own axis, then a fixed tilt toward the viewer."""
+    ct, st = math.cos(theta), math.sin(theta)
+    ax, az = math.radians(24), math.radians(-18)
+    cx, sx, cz, sz = math.cos(ax), math.sin(ax), math.cos(az), math.sin(az)
+
+    def f(v):
+        x, y, z = v[0] * ct + v[2] * st, v[1], -v[0] * st + v[2] * ct      # spin (y)
+        y, z = y * cx - z * sx, y * sx + z * cx                            # tilt (x)
+        return (x * cz - y * sz, x * sz + y * cz, z)                       # lean (z)
+    return f
+
+
+def render_crystal(rows, cols, theta, pal):
+    """Rasterise the crystal into rows x cols sextant cells, z-buffered, one
+    sample per sextant pixel. Each facet is shaded by its angle to the light:
+    shadowed facets sink toward a deep tone, lit ones take the palette
+    gradient (picked by facet direction, so it shifts like iridescence as it
+    turns), with white specular and rim highlights, and each spike brightening
+    toward its point like glass. {(r, c): (char, rgb)}."""
+    W, H = cols * 2, rows * 3
+    sw, sh = 0.5, ASPECT / 3                  # a sextant pixel, in cell widths
+    scale = min(cols, rows * ASPECT) / 2 * 0.97 / CRYSTAL_R
+    ox, oy = cols / 2, rows * ASPECT / 2
+    rot = _rot(theta)
+    deep = lerp(pal.roles.get("primary_container", pal["primary"]), BLACK, 0.5)
+    zbuf = [[-1e9] * W for _ in range(H)]
+    cbuf = [[None] * W for _ in range(H)]
+    for tri in CRYSTAL:
+        a, b, c = (rot(v) for v in tri)
+        n = _unit(_cross(_v(b, a, lambda x, y: x - y), _v(c, a, lambda x, y: x - y)))
+        if n[2] <= 0:
+            continue                           # facing away
+        diff = max(0.0, _dot(n, LIGHT))
+        spec = max(0.0, _dot(n, HALF)) ** 28
+        rim = (1 - n[2]) ** 3
+        u = clamp01(0.5 + 0.55 * n[0] - 0.35 * n[1])
+        col = lerp(deep, pal.lut[int(u * Palette.Q + 0.5)], 0.1 + 0.9 * diff ** 0.8)
+        col = lerp(col, WHITE, min(1.0, 0.9 * spec + 0.35 * rim))
+        tip = lerp(col, WHITE, 0.25 + 0.35 * diff)     # glass catches light toward the point
+        pts = [((ox + v[0] * scale) / sw, (oy - v[1] * scale) / sh, v[2]) for v in (a, b, c)]
+        (x0, y0, z0), (x1, y1, z1), (x2, y2, z2) = pts
+        area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+        if abs(area) < 1e-9:
+            continue
+        for py in range(max(int(min(y0, y1, y2)), 0), min(int(max(y0, y1, y2)) + 1, H)):
+            yc = py + 0.5
+            for px in range(max(int(min(x0, x1, x2)), 0), min(int(max(x0, x1, x2)) + 1, W)):
+                xc = px + 0.5
+                w0 = ((x1 - xc) * (y2 - yc) - (x2 - xc) * (y1 - yc)) / area
+                w1 = ((x2 - xc) * (y0 - yc) - (x0 - xc) * (y2 - yc)) / area
+                w2 = 1 - w0 - w1
+                if w0 < 0 or w1 < 0 or w2 < 0:
+                    continue
+                z = w0 * z0 + w1 * z1 + w2 * z2
+                if z > zbuf[py][px]:
+                    zbuf[py][px] = z
+                    cbuf[py][px] = lerp(col, tip, w2 * w2) if w2 > 0.3 else col
+    out = {}
+    for r in range(rows):
+        for c in range(cols):
+            bits, acc = 0, []
+            for k in range(6):
+                v = cbuf[r * 3 + k // 2][c * 2 + k % 2]
+                if v is not None:
+                    bits |= 1 << k
+                    acc.append(v)
+            if bits:
+                n = len(acc)
+                rgb = (sum(v[0] for v in acc) / n, sum(v[1] for v in acc) / n,
+                       sum(v[2] for v in acc) / n)
+                out[(r, c)] = (sextant(bits), rgb)
+    return out
+
+
+def sextant(bits):
+    """Block sextant for a 6-bit mask (bit k = pixel k, row-major, 2 wide)."""
+    if bits == 63:
+        return "█"
+    if bits == 21:
+        return "▌"
+    if bits == 42:
+        return "▐"
+    return chr(0x1FB00 + bits - 1 - (bits > 21) - (bits > 42))
+
+
+# --- backdrop ---------------------------------------------------------------
+
+class Noise:
+    """Seeded 2-D value noise + fBm."""
+
+    def __init__(self, seed):
+        rng = random.Random(seed)
+        self.v = [rng.random() for _ in range(256)]
+        self.p = list(range(256))
+        rng.shuffle(self.p)
+
+    def at(self, x, y):
+        ix, iy = math.floor(x), math.floor(y)
+        fx, fy = x - ix, y - iy
+        sx, sy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+        p, v = self.p, self.v
+        r0, r1 = p[ix & 255], p[(ix + 1) & 255]
+        a, b = v[p[(r0 + iy) & 255]], v[p[(r1 + iy) & 255]]
+        c, d = v[p[(r0 + iy + 1) & 255]], v[p[(r1 + iy + 1) & 255]]
+        return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy
+
+    def fbm(self, x, y, octaves):
+        s, amp, norm = 0.0, 1.0, 0.0
+        for _ in range(octaves):
+            s += amp * self.at(x, y)
+            norm += amp
+            amp *= 0.5
+            x, y = x * 2.03 + 17.1, y * 2.03 + 3.7
+        return s / norm
+
+
+def backdrop(w, h, pal, seed):
+    """A dark nebula in the palette's container colours: fBm clouds, denser
+    along a diagonal band, a second noise for the tint, and a vignette.
+    Returns rows of sRGB triples. Kept low-frequency and low-contrast so the
+    step from one cell to the next stays below what the eye picks up."""
+    noise = Noise(seed)
+    base = pal.roles.get("surface_container_lowest", pal["surface"])
+    deep = lerp(base, BLACK, 0.55)
+    ca = pal.roles.get("primary_container", pal["primary"])
+    cb = pal.roles.get("tertiary_container", pal["tertiary"])
+    ang = math.radians(-16)
+    sa, co = math.sin(ang), math.cos(ang)
+    rows = []
+    for r in range(h):
+        Y = (r + 0.5 - h / 2) * ASPECT / w * 2
+        row = []
+        for c in range(w):
+            X = (c + 0.5) / w * 2 - 1
+            band = math.exp(-((co * Y - sa * X) / 0.5) ** 2)
+            n = noise.fbm(X * 0.9 + 3.3, Y * 0.9 + 9.1, 2)
+            dens = clamp01((n - 0.28) / 0.5)
+            dens = dens * dens * (3 - 2 * dens) * (0.3 + 0.7 * band)
+            tint = clamp01((noise.fbm(X * 0.6 + 41.0, Y * 0.6 + 5.0, 2) - 0.3) / 0.4)
+            haze = lerp(ca, cb, tint * tint * (3 - 2 * tint))
+            col = lerp(base, haze, 0.28 * dens)
+            vig = clamp01(X * X * 0.5 + Y * Y * 0.8)
+            row.append(lerp(col, deep, vig * vig * 0.9))
+        rows.append(row)
+    return rows
+
+
+# --- scene ------------------------------------------------------------------
+
+class Star:
+    __slots__ = ("ch", "role", "delay", "period", "phase", "amp", "spark", "bloom")
+
+    def __init__(self, ch, role, delay, period, phase, amp, spark=False, bloom=0.0):
+        self.ch, self.role, self.delay = ch, role, delay
+        self.period, self.phase, self.amp, self.spark = period, phase, amp, spark
+        self.bloom = bloom          # ms between blooms; 0 = twinkles instead
+
+
+class Scene:
+    def __init__(self, cols, rows, opts, roles, fullscreen, rng, intro):
+        self.opts, self.rng, self.colour = opts, rng, opts.colour
+        self.fullscreen = fullscreen
+        self.paint = fullscreen and opts.bg and opts.colour
+        for name in ART_CHOICES[opts.art]:
+            art, crect, self.word_top = ARTS[name]
+            if cols >= max(map(len, art)) + 4 and (not fullscreen or rows >= len(art) + 2):
+                break
+        else:
+            name, (art, crect, self.word_top) = "COMPACT", ARTS["COMPACT"]
+        self.art = [r.ljust(max(map(len, art))) for r in art]
+        self.aw, self.ah = max(map(len, self.art)), len(self.art)
+        cap_rows = 3 if opts.caption else 0
+        if fullscreen:
+            self.w, self.h = cols, rows
+            self.top = max((rows - self.ah - cap_rows) // 2, 0)
+            self.left = max((cols - self.aw) // 2, 0)
+        else:
+            pad = min(12, max((cols - self.aw) // 2, 0))
+            self.w = min(cols, max(self.aw + 2 * pad, len(opts.caption or "") + 4))
+            self.top, self.left = (1 if art is COMPACT else 3), (self.w - self.aw) // 2
+            self.h = self.top + self.ah + (cap_rows or 2)
+        self.ink = {(self.top + ar, self.left + ac): ch
+                    for ar, row in enumerate(self.art)
+                    for ac, ch in enumerate(row)
+                    if ch != " " and self.top + ar < self.h and self.left + ac < self.w}
+
+        # Letters: runs of inked columns separated by blank ones, lit left to right.
+        inked = [any(row[ac] != " " for row in self.art) for ac in range(self.aw)]
+        self.group, g = [], -1
+        for ac in range(self.aw):
+            if inked[ac] and (ac == 0 or not inked[ac - 1]):
+                g += 1
+            self.group.append(max(g, 0))
+        self.ngroups = g + 1
+        self.crystal = None                    # (row, col, rows, cols) on screen
+        if crect:                              # the crystal lights up first, as group 0
+            self.crystal = (self.top + crect[0], self.left + crect[1], crect[2], crect[3])
+            self.group = [x + 1 for x in self.group]
+            self.ngroups += 1
+        self.ccache = {}
+        self.rot = THETA0 / (2 * math.pi)
+        self.stagger = min(LETTER_STAGGER, 1100 / max(self.ngroups - 1, 1))
+
+        self.pal = Palette(roles, opts.gradient, self.ah)
+        self.old = None                        # (palette, backdrop) during a wash
+        self.seed = rng.random()
+        self.base = backdrop(self.w, self.h, self.pal, self.seed) if self.paint else None
+        self.cap = self.hint = {}
+        self._stars(name not in WORDMARKS)     # the crystal is its own star
+        self.set_caption(opts.caption)
+        if fullscreen and intro:
+            self._hint("press any key to exit")
+
+        self.intro, self.live = intro, False
+        last = LETTER_START + (self.ngroups - 1) * self.stagger
+        self.glint_at = last + LETTER_FADE * 0.45
+        self.cap_at = self.glint_at + 250
+        self.spark_at = self.glint_at + SWEEP_MS * 0.55
+        self.intro_end = max(self.cap_at + self.cap_len * CHAR_MS + 150,
+                             self.glint_at + SWEEP_MS, STAR_SPREAD + STAR_FADE)
+        self.hint_at = self.intro_end + 300
+
+        self.t0, self.t = None, 0.0
+        self.front = self.mode = self.sweep = None
+        self.wash_span = None
+        self.in_intro = intro
+        if intro:
+            self.sweep = self._glint(self.glint_at)
+        self.galpha = [1.0] * self.ngroups
+        self.phase = 0.0
+        self.meteors, self.mcells, self.prev_mcells = [], {}, {}
+        self.next_glint = self.next_meteor = None
+
+    # layout ---------------------------------------------------------------
+
+    def _stars(self, no_spark):
+        rng, blocked = self.rng, set()
+        if self.crystal:
+            r0, c0, cr, cc = self.crystal
+            blocked.update((r, c) for r in range(r0 - 1, r0 + cr + 1) for c in range(c0 - 2, c0 + cc + 2))
+        for r, c in self.ink:
+            for dr in (-1, 0, 1):
+                for dc in (-2, -1, 0, 1, 2):
+                    blocked.add((r + dr, c + dc))
+        p = (0.032 if self.fullscreen else 0.045) * self.opts.density
+        self.stars = {}
+        for r in range(self.h):
+            for c in range(self.w):
+                if (r, c) not in blocked and rng.random() < p:
+                    ch, role = rng.choice(STAR_POOL)
+                    bloom = rng.uniform(4000, 12000) if rng.random() < 0.25 else 0.0
+                    amp = 0.0 if bloom or rng.random() < 0.35 else rng.uniform(0.3, 0.9)
+                    self.stars[(r, c)] = Star(ch, role, rng.random(), rng.uniform(2200, 7500),
+                                              rng.uniform(0, 2 * math.pi), amp, bloom=bloom)
+        spark = (self.top + self.word_top - 1, self.left + self.aw - 1)
+        self.spark = None
+        if not no_spark and spark[0] >= 0 and self.opts.density > 0:
+            for dc in (-2, -1, 1, 2):
+                self.stars.pop((spark[0], spark[1] + dc), None)
+            self.stars[spark] = Star("✦", "_spark", 0.0, 4200, 0.0, 0.0, True)
+            self.spark = spark
+        self.twinklers = [k for k, s in self.stars.items() if s.amp or s.bloom or s.spark]
+
+    def _text_row(self, r, text):
+        """Centre text on row r, clearing stars around it. {cell: (ch, index)}."""
+        text = text[:self.w]
+        c0 = max((self.w - len(text)) // 2, 0)
+        for c in range(c0 - 2, c0 + len(text) + 2):
+            if (r, c) in self.stars:
+                del self.stars[(r, c)]
+        self.twinklers = [k for k in self.twinklers if k in self.stars]
+        return {(r, c0 + i): (ch, i) for i, ch in enumerate(text) if ch != " "}
+
+    def set_caption(self, text):
+        self.cap, self.cap_len = {}, len(text or "")
+        r = self.top + self.ah + 2
+        if text and r < self.h:
+            self.cap = self._text_row(r, text)
+
+    def _hint(self, text):
+        r = self.h - 2
+        if r > self.top + self.ah + 3:
+            self.hint = self._text_row(r, text)
+
+    def repaint(self, roles):
+        """Wallpaper changed: sweep the new colours across the whole screen."""
+        self.old = (self.pal, self.base)
+        self.pal = Palette(roles, self.opts.gradient, self.ah)
+        self.ccache = {k: v for k, v in self.ccache.items() if k[1] == id(self.old[0])}
+        if self.paint:
+            self.base = backdrop(self.w, self.h, self.pal, self.seed)
+        half = self.h / 2
+        pad = half * TILT + BOW * self.h + 2 * GLINT_W
+        self.sweep = (self.t, "wash", -pad, self.w + pad, WASH_MS, half, half)
+
+    def _glint(self, start):
+        half = self.ah / 2
+        pad = half * TILT + BOW * self.ah + GLINT_W
+        return (start, "glint", self.left - pad, self.left + self.aw + pad, SWEEP_MS,
+                self.top + half, half)
+
+    def front_at(self, r):
+        """Where the sweep front is on row r: leaning like "/" and bowed
+        forward through the middle, not a straight vertical line."""
+        y = (r + 0.5 - self.sweep_mid) / max(self.sweep_half, 1)
+        return self.front - y * self.sweep_half * TILT + BOW * 2 * self.sweep_half * (1 - y * y)
+
+    # time ---------------------------------------------------------------
+
+    def frame(self, now):
+        if self.t0 is None:
+            self.t0 = now
+        t = self.t = now - self.t0
+        intro = self.intro and t < self.intro_end
+        self.in_intro = intro
+
+        self.galpha = ([EMPH_DECEL(clamp01((t - LETTER_START - i * self.stagger) / LETTER_FADE))
+                        for i in range(self.ngroups)] if intro else [1.0] * self.ngroups)
+
+        prev = self.front
+        self.front = self.mode = None
+        self.wash_span = None
+        if self.sweep:
+            start, kind, a, b, dur, self.sweep_mid, self.sweep_half = self.sweep
+            p = (t - start) / dur
+            lean = self.sweep_half * TILT + BOW * 2 * self.sweep_half + 2
+            if p >= 1:
+                self.sweep = None
+                self.old = None
+                if kind == "wash":               # finish the columns it hadn't reached
+                    self.wash_span = (int((prev if prev is not None else a) - lean), self.w)
+            elif p >= 0:
+                self.front, self.mode = a + SWEEP(p) * (b - a), kind
+                if kind == "wash":
+                    self.wash_span = (int((prev if prev is not None else a) - lean),
+                                      int(self.front + lean) + 1)
+
+        if self.live:
+            self.phase = (t / DRIFT_MS) % 1.0
+            self.rot = (THETA0 / (2 * math.pi) + t / ROT_MS) % 1.0
+
+        self.prev_mcells = self.mcells
+        if self.live:
+            self._schedule(t)
+            self._meteors(t)
+
+    def _schedule(self, t):
+        if self.intro and t < self.intro_end:
+            return
+        rng = self.rng
+        if self.next_glint is None:
+            self.next_glint = t + rng.uniform(5000, 8000)
+            self.next_meteor = t + rng.uniform(1200, 4000)
+        if self.sweep is None and t >= self.next_glint:
+            self.sweep = self._glint(t)
+            self.next_glint = t + SWEEP_MS + rng.uniform(7000, 11000)
+        if t >= self.next_meteor:
+            d = rng.choice((-1, 1))
+            self.meteors.append((t, rng.uniform(0, self.w), rng.uniform(0, self.h * 0.55),
+                                 d, rng.uniform(0.25, 0.5), rng.uniform(0.055, 0.085),
+                                 rng.uniform(22, 55)))
+            self.next_meteor = t + rng.uniform(3000, 8000)
+
+    def _meteors(self, t):
+        """Shooting stars: fade in, streak, fade out. Behind the wordmark."""
+        cells, alive = {}, []
+        for m in self.meteors:
+            t0, x0, y0, d, slope, v, length = m
+            dist = (t - t0) * v
+            if dist > length:
+                continue
+            alive.append(m)
+            fade = clamp01(dist / 5) * clamp01((length - dist) / (0.4 * length))
+            hx, hy = x0 + d * dist, y0 + slope * dist
+            for k in range(TAIL):
+                cell = (round(hy - slope * k), round(hx - d * k))
+                if not (0 <= cell[0] < self.h and 0 <= cell[1] < self.w):
+                    continue
+                a = fade * (1 - k / TAIL) ** 1.7
+                if a > 0.03 and a > cells.get(cell, ("", 0, 0))[1]:
+                    cells[cell] = ("•" if k == 0 else "·", a, k / TAIL)
+        self.meteors, self.mcells = alive, cells
+
+    def busy(self):
+        return self.front is not None or self.mcells or self.in_intro
+
+    # drawing ------------------------------------------------------------
+
+    def _layer(self, r, c):
+        """(palette, backdrop) for a cell — the old ones ahead of a wash."""
+        if self.old is not None and self.front is not None and c > self.front_at(r):
+            return self.old
+        return self.pal, self.base
+
+    def bg_at(self, r, c, base, pal):
+        if not self.paint:
+            return None
+        col = base[r][c]
+        m = self.mcells.get((r, c))
+        if m:                                    # a shooting star lights the sky it crosses
+            col = lerp(col, pal["on_surface"], 0.08 * m[1])
+        return col
+
+    def _q(self, ac, phase=None):
+        """Gradient position for art column ac: a triangle wave, so the drift
+        flows primary → tertiary → primary without a seam."""
+        x = (ac / (self.aw - 1) if self.aw > 1 else 0.0) / 2 + (self.phase if phase is None else phase)
+        x %= 1.0
+        x = 2 * x if x < 0.5 else 2 - 2 * x
+        return int(x * Palette.Q + 0.5)
+
+    def cell(self, r, c):
+        """(char, fg rgb | None, bg rgb | None) for one cell this frame."""
+        k = (r, c)
+        pal, base = self._layer(r, c)
+        bgc = self.bg_at(r, c, base, pal)
+        under = bgc or pal["surface"]            # what a fading glyph fades from
+        blank = (" ", None, bgc)
+        cr = self.crystal
+        if cr and cr[0] <= r < cr[0] + cr[2] and cr[1] <= c < cr[1] + cr[3]:
+            a = self.galpha[0]
+            v = self._crystal(pal).get((r - cr[0], c - cr[1])) if a > 0.02 else None
+            if not v:
+                return blank
+            ch, col = v
+            if a < 1:
+                col = lerp(lerp(under, col, a), WHITE, 0.45 * math.sin(math.pi * a) * a)
+            f = self.front
+            if f is not None and self.mode == "glint":
+                gl = math.exp(-((self.front_at(r) - c - 1.5) / 2.4) ** 2)
+                if gl > 0.01:
+                    col = lerp(col, WHITE, 0.6 * gl)
+            return ch, col, bgc
+        ch = self.ink.get(k)
+        if ch is not None:
+            ar, ac = r - self.top, c - self.left
+            a = self.galpha[self.group[ac]]
+            if a <= 0.02:
+                return blank
+            col = pal.lut[self._q(ac)]
+            if a < 1:                            # lighting up: a brief flash
+                col = lerp(lerp(under, col, a), WHITE, 0.45 * math.sin(math.pi * a) * a)
+            f = self.front
+            if f is not None and self.mode == "glint":
+                gl = math.exp(-((self.front_at(r) - c - 1.5) / 2.4) ** 2)
+                if gl > 0.01:
+                    col = lerp(col, WHITE, 0.72 * gl)
+            return ch, col, bgc
+        cap = self.cap.get(k)
+        if cap is not None:
+            a = 1.0
+            if self.in_intro:
+                a = clamp01(((self.t - self.cap_at) / CHAR_MS - cap[1]) / 4)
+            if a <= 0.02:
+                return blank
+            return cap[0], lerp(under, pal["outline"], a), bgc
+        hint = self.hint.get(k)
+        if hint is not None:
+            t = self.t - self.hint_at
+            a = clamp01(t / 600) * clamp01((HINT_HOLD - t) / 900) if self.intro else 0.0
+            if a > 0.02:
+                return hint[0], lerp(under, pal["outline_variant"], a), bgc
+            return blank
+        m = self.mcells.get(k)
+        if m:
+            col = lerp(pal["on_surface"], pal["tertiary"], m[2] * 0.7)
+            return m[0], lerp(under, col, m[1]), bgc
+        s = self.stars.get(k)
+        if s:
+            t, glyph, a = self.t, s.ch, 1.0
+            if s.spark:
+                glyph, a = self._spark(t)
+            else:
+                if self.intro:
+                    a = EMPH_DECEL(clamp01((t - s.delay * STAR_SPREAD) / STAR_FADE))
+                if self.live and s.bloom:        # rests as a dim dot, now and then opens
+                    q = (t + s.phase / (2 * math.pi) * s.bloom) % s.bloom
+                    e = math.sin(math.pi * q / BLOOM_MS) if q < BLOOM_MS and not self.in_intro else 0.0
+                    glyph = MORPH[int(e * (len(MORPH) - 1) + 0.5)]
+                    a *= 0.45 + 0.55 * e
+                elif self.live and s.amp:
+                    a *= 1 - s.amp * (0.5 + 0.5 * math.sin(t * 2 * math.pi / s.period + s.phase))
+                    if s.ch == "✧" and a > 0.93:
+                        glyph = "✦"              # bright stars flare at their peak
+            if a > 0.03 and (self.colour or a > 0.4):
+                return glyph, lerp(under, pal[s.role], round(a * LEVELS) / LEVELS), bgc
+        return blank
+
+    def _crystal(self, pal):
+        step = int(self.rot * ROT_STEPS) % ROT_STEPS
+        key = (step, id(pal))
+        if key not in self.ccache:
+            self.ccache[key] = render_crystal(self.crystal[2], self.crystal[3],
+                                              step / ROT_STEPS * 2 * math.pi, pal)
+        return self.ccache[key]
+
+    def _spark(self, t):
+        """The star above the S: opens through MORPH once in the intro, then
+        (nonstop) keeps opening and closing; settles as ✦ when printed still."""
+        n = len(MORPH)
+        if not self.intro and not self.live:
+            return "✦", 1.0
+        if self.intro and t < self.spark_at:
+            return " ", 0.0
+        open_ms = MORPH_MS * (n - 1)
+        since = t - self.spark_at if self.intro else t + open_ms
+        if since < open_ms:
+            i = int(since / MORPH_MS)
+            return MORPH[i], 0.4 + 0.6 * i / (n - 1)
+        if not self.live:
+            return "✦", 1.0
+        k = (n - 1 + int((since - open_ms) / MORPH_MS)) % (2 * n - 2)
+        i = k if k < n else 2 * n - 2 - k
+        return MORPH[i], 0.55 + 0.45 * i / (n - 1)
+
+    def lines(self):
+        """The whole scene as text lines (inline modes: no painted background)."""
+        out = []
+        for r in range(self.h):
+            parts, last = [], None
+            for c in range(self.w):
+                ch, col, _ = self.cell(r, c)
+                if col is not None and self.colour:
+                    code = sgr(col, 38)
+                    if code != last:
+                        parts.append(code)
+                        last = code
+                parts.append(ch)
+            out.append("".join(parts).rstrip() + ("\x1b[0m" if self.colour else ""))
+        return out
+
+    def dirty(self):
+        """Cells that may have changed this frame."""
+        keys = list(self.ink)
+        if self.crystal:
+            r0, c0, cr, cc = self.crystal
+            keys += [(r, c) for r in range(r0, min(r0 + cr, self.h)) for c in range(c0, min(c0 + cc, self.w))]
+        keys += self.cap
+        keys += self.hint
+        keys += self.stars if self.in_intro else self.twinklers
+        keys += self.mcells
+        keys += self.prev_mcells
+        if self.wash_span:                       # columns the wash crossed
+            lo, hi = self.wash_span
+            keys += [(r, c) for c in range(max(lo, 0), min(hi, self.w)) for r in range(self.h)]
+        return keys
+
+
+# --- terminal output -------------------------------------------------------
+
+class Screen:
+    """Tracks what's on the terminal and writes only cells that changed."""
+
+    def __init__(self, out, colour):
+        self.out, self.colour = out, colour
+        self.cells = {}
+        self.fg = self.bg = None
+
+    def emit(self, scene, keys):
+        buf, pos, cells = [], None, self.cells
+        for k in sorted(set(keys)):
+            v = scene.cell(*k)
+            if cells.get(k) == v:
+                continue
+            cells[k] = v
+            ch, fgc, bgc = v
+            if pos != k:
+                buf.append("\x1b[%d;%dH" % (k[0] + 1, k[1] + 1))
+            if self.colour:
+                b = sgr(bgc, 48) if bgc is not None else "\x1b[49m"
+                if b != self.bg:
+                    buf.append(b)
+                    self.bg = b
+                if fgc is not None and ch != " ":
+                    f = sgr(fgc, 38)
+                    if f != self.fg:
+                        buf.append(f)
+                        self.fg = f
+            buf.append(ch)
+            pos = (k[0], k[1] + 1)
+        if buf:
+            self.out.write("".join(buf))
+            self.out.flush()
+
+    def full(self, scene):
+        self.cells, self.fg, self.bg = {}, None, None
+        self.out.write("\x1b[0m\x1b[2J")
+        self.emit(scene, [(r, c) for r in range(scene.h) for c in range(scene.w)])
+
+
+# --- modes ------------------------------------------------------------------
+
+def inline(opts, roles, rng, animate):
+    cols, rows = shutil.get_terminal_size((80, 24))
+    scene = Scene(cols, rows, opts, roles, False, rng, intro=animate)
+    out = sys.stdout
+    if animate and rows <= scene.h + 2:
+        animate = scene.intro = False
+        scene.sweep = None
+    if not animate:
+        scene.frame(0)
+        out.write("\n" + "\n".join(scene.lines()) + "\n\n")
+        return 0
+
+    n = scene.h
+    out.write("\n\x1b[?25l" + "\n" * n)       # hide cursor, reserve the rows
+
+    def draw():
+        out.write(f"\x1b[{n}F" + "".join("\x1b[2K" + l + "\n" for l in scene.lines()))
+        out.flush()
+
+    try:
+        t0 = time.monotonic()
+        while True:
+            now = (time.monotonic() - t0) * 1000 * opts.speed
+            scene.frame(now)
+            if now >= scene.intro_end:
+                break
+            draw()
+            time.sleep(1 / 60)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        scene.intro, scene.sweep = False, None
+        scene.frame((scene.t0 or 0.0) + scene.t)
+        draw()
+        out.write("\x1b[0m\x1b[?25h\n")
+        out.flush()
+    return 0
+
+
+def nonstop(opts, roles, rng):
+    """Full screen, live until any key."""
+    import termios, tty
+    out = sys.stdout
+    fd = sys.stdin.fileno() if sys.stdin.isatty() else None
+    saved = termios.tcgetattr(fd) if fd is not None else None
+    state = {"resize": True}
+    signal.signal(signal.SIGWINCH, lambda *_: state.update(resize=True))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    try:
+        mtime = os.stat(COLORS).st_mtime_ns
+    except OSError:
+        mtime = None
+    scene, screen, next_check = None, Screen(out, opts.colour), 0.0
+    t0 = time.monotonic()
+    try:
+        if fd is not None:
+            tty.setcbreak(fd)
+        out.write("\x1b[?1049h\x1b[?25l")
+        while True:
+            real = time.monotonic() - t0
+            now = real * 1000 * opts.speed
+            if state["resize"]:
+                state["resize"] = False
+                cols, rows = shutil.get_terminal_size()
+                scene = Scene(cols, rows, opts, roles, True, rng, intro=scene is None)
+                scene.live = True
+                scene.frame(now)
+                screen.full(scene)
+            if real >= next_check:                    # wallpaper changed?
+                next_check = real + 1.0
+                try:
+                    m = os.stat(COLORS).st_mtime_ns
+                except OSError:
+                    m = mtime
+                if m != mtime:
+                    new = load_roles(strict=True)
+                    if new:                           # else half-written; retry
+                        mtime, roles = m, new
+                        scene.repaint(new)
+                        if opts.caption_default:
+                            opts.caption = default_caption()
+                            scene.set_caption(opts.caption)
+
+            scene.frame(now)
+            screen.emit(scene, scene.dirty())
+
+            timeout = 1 / 60 if scene.busy() else 1 / 24
+            if fd is None:
+                time.sleep(timeout)
+            elif select.select([fd], [], [], timeout)[0]:
+                os.read(fd, 64)
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        out.write("\x1b[0m\x1b[?25h\x1b[?1049l")
+        out.flush()
+        if saved is not None:
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+    return 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(
+        prog="astralis", description=__doc__.split("\n\n")[1].replace("\n", " "),
+        epilog="NO_COLOR=1 disables colour.")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("-n", "--nonstop", action="store_true",
+                      help="full screen and live until any key (the default in a terminal)")
+    mode.add_argument("-o", "--once", action="store_true",
+                      help="play the intro inline, then exit (for a shell greeting)")
+    mode.add_argument("-s", "--static", action="store_true",
+                      help="print the final frame, no motion (the default when piped)")
+    ap.add_argument("--no-bg", dest="bg", action="store_false",
+                    help="nonstop: keep the terminal's own background instead of the painted nebula")
+    ap.add_argument("-c", "--caption", metavar="TEXT",
+                    help='line under the wordmark; "" hides it '
+                         "(default: quickshell · hyprland · <wallpaper>)")
+    ap.add_argument("-g", "--gradient", metavar="A,B", default="primary,tertiary",
+                    help="two Colors.json roles or #hex colours to fade between "
+                         "(default: primary,tertiary)")
+    ap.add_argument("-d", "--density", type=float, default=1.0, metavar="N",
+                    help="star density multiplier (default 1; 0 = no stars)")
+    ap.add_argument("--speed", type=float, default=1.0, metavar="N",
+                    help="motion speed multiplier (default 1)")
+    ap.add_argument("--seed", type=int, metavar="N", help="repeat a starfield")
+    what = ap.add_mutually_exclusive_group()
+    what.add_argument("-i", "--icon", dest="art", action="store_const", const="icon",
+                      help="the crystal star on its own (it turns, in nonstop) instead of the wordmark")
+    what.add_argument("-l", "--lockup", dest="art", action="store_const", const="lockup",
+                      help="the crystal beside the wordmark (needs ~100 columns)")
+    what.add_argument("--small", dest="art", action="store_const", const="small",
+                      help="one-line wordmark")
+    ap.set_defaults(art="wordmark")
+    opts = ap.parse_args(argv)
+
+    roles = load_roles()
+    grad = [g.strip() for g in opts.gradient.split(",")]
+    if len(grad) != 2:
+        ap.error("--gradient takes two colours, e.g. primary,tertiary")
+    for g in grad:
+        if g.startswith("#"):
+            try:
+                hex_rgb(g)
+            except ValueError:
+                ap.error(f"--gradient: {g!r} is not a #rrggbb colour")
+        elif g not in roles:
+            ap.error(f"--gradient: unknown role {g!r}; roles: "
+                     + ", ".join(sorted(k for k in roles if not k.startswith("_"))))
+    if opts.density < 0:
+        ap.error("--density must be 0 or more")
+    if opts.speed <= 0:
+        ap.error("--speed must be more than 0")
+    opts.gradient = grad
+    opts.colour = "NO_COLOR" not in os.environ
+    opts.caption_default = opts.caption is None
+    if opts.caption_default:
+        opts.caption = default_caption()
+
+    rng = random.Random(opts.seed)
+    tty_out = sys.stdout.isatty()
+    if opts.static or not tty_out:
+        return inline(opts, roles, rng, animate=False)
+    if opts.once:
+        return inline(opts, roles, rng, animate=True)
+    return nonstop(opts, roles, rng)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -21,6 +21,9 @@ fi
 # spicetify
 export PATH="$PATH:$HOME/.local/share/spotify-launcher/install/usr/share/spotify/"
 
+# stowed scripts (astralis, setwall, …)
+[[ ":$PATH:" == *":$HOME/.local/bin:"* ]] || export PATH="$PATH:$HOME/.local/bin"
+
 
 # Set the zinit home directory
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
