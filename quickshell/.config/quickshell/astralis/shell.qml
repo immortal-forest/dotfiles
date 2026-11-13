@@ -1,4 +1,9 @@
 //@ pragma UseQApplication
+// Hinted, pixel-snapped glyphs for every Text that doesn't pick its own
+// renderType. The distance-field default renders soft, colour-fringed text at
+// this panel's 1.6 scale. Text that scales, rotates or is traced by a
+// PathText (lyrics, depth clock, cover ring) pins Text.QtRendering itself.
+//@ pragma NativeTextRendering
 
 import QtQuick
 import Quickshell

@@ -461,6 +461,7 @@ PanelWindow {
                                 width: dimText.implicitWidth + (modelData.space ? spaceM.advanceWidth(" ") : 0)
                                 height: dimText.implicitHeight
                                 Text {
+                                    renderType: Text.QtRendering
                                     id: dimText
                                     y: -word.lift
                                     text: word.modelData.text
@@ -508,6 +509,7 @@ PanelWindow {
                                     readonly property color ink: win.mix(win.litA, win.litB,
                                                                          twin ? Math.min(1, (twin.x + twin.width / 2) / Math.max(1, dimFlow.width * 0.8)) : 0)
                                     Text {
+                                        renderType: Text.QtRendering
                                         visible: !line.writing
                                         y: parent.twin ? -parent.twin.lift : 0
                                         text: parent.modelData.text
@@ -543,6 +545,7 @@ PanelWindow {
                                             clip: true
                                             visible: p > 0
                                             Text {
+                                                renderType: Text.QtRendering
                                                 x: -cell.x
                                                 y: (1 - cell.p) * 0.12 * win.fontPx
                                                 opacity: Math.min(1, cell.p * 1.6)
@@ -598,6 +601,7 @@ PanelWindow {
 
                     // ── romanization under the line ("below") ──────────────
                     Text {
+                        renderType: Text.QtRendering
                         id: romanText
                         visible: line.rtext.length > 0
                         y: dimFlow.height + 4 * win.s

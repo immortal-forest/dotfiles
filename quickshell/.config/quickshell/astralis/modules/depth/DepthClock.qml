@@ -205,6 +205,7 @@ PanelWindow {
 
         // Size master; never drawn.
         Text {
+            renderType: Text.QtRendering
             id: metric
             visible: false
             text: tl.text
@@ -225,6 +226,7 @@ PanelWindow {
             visible: false
             layer.enabled: win.cfg.fill !== "solid" || win.effect === "echo"
             Text {
+                renderType: Text.QtRendering
                 x: tl.pad
                 y: tl.pad
                 text: tl.text
@@ -239,6 +241,7 @@ PanelWindow {
         Repeater {
             model: win.effect === "extrude" ? win.extrudeSteps : 0
             Text {
+                renderType: Text.QtRendering
                 required property int index
                 /** 1 = the back copy (drawn first) … 1/steps = right behind the face. */
                 readonly property real k: (win.extrudeSteps - index) / win.extrudeSteps
@@ -311,6 +314,7 @@ PanelWindow {
             height: glyphMask.height
 
             Text {
+                renderType: Text.QtRendering
                 x: tl.pad
                 y: tl.pad
                 text: tl.text
@@ -456,6 +460,7 @@ PanelWindow {
     }
 
     component DateLine: Text {
+        renderType: Text.QtRendering
         anchors.left: win.cfg.align === "left" ? parent?.left : undefined
         anchors.right: win.cfg.align === "right" ? parent?.right : undefined
         anchors.horizontalCenter: win.cfg.align === "center" ? parent?.horizontalCenter : undefined

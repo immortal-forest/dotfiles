@@ -182,6 +182,7 @@ Item {
                 : align === "center" ? Text.AlignHCenter : align === "end" ? Text.AlignRight : Text.AlignLeft
 
             Text {
+                renderType: Text.QtRendering
                 width: parent.width
                 visible: root.cfg.infoLabel ?? false
                 horizontalAlignment: stack.hAlign
@@ -196,6 +197,7 @@ Item {
                 bottomPadding: 2 * root.s
             }
             Text {
+                renderType: Text.QtRendering
                 width: parent.width
                 horizontalAlignment: stack.hAlign
                 text: root.cased(root.snap.title)
@@ -212,6 +214,7 @@ Item {
             Repeater {
                 model: root.details
                 Text {
+                    renderType: Text.QtRendering
                     required property string modelData
                     width: stack.width
                     horizontalAlignment: stack.hAlign
