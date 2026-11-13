@@ -83,6 +83,9 @@ SettingsPage {
         { item: depthCutRow, kind: "toggle", get: function () { return Widgets.depth.cut; }, set: function (v) { Widgets.set("depth", "cut", v); } },
         { item: cutoffRow, kind: "scrub", bump: function (d) { cutoffScrub.bump(d); } },
         { item: featherRow, kind: "scrub", bump: function (d) { featherScrub.bump(d); } },
+        { item: castRow, kind: "scrub", bump: function (d) { castScrub.bump(d); } },
+        { item: castDistRow, kind: "scrub", bump: function (d) { castDistScrub.bump(d); } },
+        { item: castSoftRow, kind: "scrub", bump: function (d) { castSoftScrub.bump(d); } },
         { item: clockLayoutRow, kind: "seg", vals: root.layoutOptions.map(o => o.value), get: function () { return Widgets.depth.layout; }, set: function (v) { Widgets.set("depth", "layout", v); } },
         { item: clockFontRow, kind: "nav", surface: "clockfont" },
         { item: clockFillRow, kind: "seg", vals: root.fillOptions.map(o => o.value), get: function () { return Widgets.depth.fill; }, set: function (v) { root.setClockFill(v); } },
@@ -439,6 +442,8 @@ SettingsPage {
                 id: featherRow
                 surface: root
                 name: "Edge softness"
+                sub: "Fade where the scene drifts through the cutoff, like a curtain"
+                captionOnFocus: true
                 icon: "sparkles"
                 shown: Widgets.depth.on && Widgets.depth.cut
 
@@ -452,6 +457,69 @@ SettingsPage {
                     step: 1
                     unit: "%"
                     onEdited: v => Widgets.set("depth", "feather", v / 100)
+                }
+            }
+            SettingsRow {
+                id: castRow
+                surface: root
+                name: "Cast shadow"
+                sub: "The scene in front shades the numerals · 0 turns it off"
+                captionOnFocus: true
+                icon: "sun"
+                shown: Widgets.depth.on && Widgets.depth.cut
+
+                ScrubValue {
+                    id: castScrub
+                    s: root.s
+                    value: Math.round(Widgets.depth.castStrength * 100)
+                    openValue: 40
+                    from: 0
+                    to: 100
+                    step: 5
+                    unit: "%"
+                    onEdited: v => Widgets.set("depth", "castStrength", v / 100)
+                }
+            }
+            SettingsRow {
+                id: castDistRow
+                surface: root
+                name: "Shadow distance"
+                sub: "How far it falls from what casts it, × the clock size"
+                captionOnFocus: true
+                icon: "scaling"
+                shown: Widgets.depth.on && Widgets.depth.cut && Widgets.depth.castStrength > 0
+
+                ScrubValue {
+                    id: castDistScrub
+                    s: root.s
+                    value: Widgets.depth.castDistance
+                    openValue: 4
+                    from: 0
+                    to: 20
+                    step: 1
+                    unit: "%"
+                    onEdited: v => Widgets.set("depth", "castDistance", v)
+                }
+            }
+            SettingsRow {
+                id: castSoftRow
+                surface: root
+                name: "Shadow softness"
+                sub: "Blur of its edge, × the clock size"
+                captionOnFocus: true
+                icon: "droplet"
+                shown: Widgets.depth.on && Widgets.depth.cut && Widgets.depth.castStrength > 0
+
+                ScrubValue {
+                    id: castSoftScrub
+                    s: root.s
+                    value: Widgets.depth.castSoftness
+                    openValue: 7
+                    from: 1
+                    to: 15
+                    step: 1
+                    unit: "%"
+                    onEdited: v => Widgets.set("depth", "castSoftness", v)
                 }
             }
             SettingsRow {
@@ -662,7 +730,7 @@ SettingsPage {
             SettingsRow {
                 id: clockShadowRow
                 surface: root
-                name: "Shadow"
+                name: "Drop shadow"
                 sub: Widgets.depth.effect === "glow" ? "Not drawn under Glow — it carries its own light" : "Lifts the numerals off bright wallpapers"
                 captionOnFocus: true
                 icon: "sparkles"

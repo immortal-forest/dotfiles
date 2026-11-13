@@ -153,6 +153,18 @@ PanelWindow {
     /** Halo reach of the glow (px), scaled with the clock. */
     readonly property int haloMax: Math.max(16, Math.min(64, Math.round(px * 0.16)))
 
+    // Cast shadow: the foreground's silhouette falls on the numerals, pushed
+    // down-right (light from the top-left, like extrude/echo). Strength,
+    // distance and softness are settings (distance/softness × the time size).
+    readonly property bool castShadow: cfg.cut && cfg.castStrength > 0 && cut.length > 0
+    readonly property real castReach: px * cfg.castDistance / 100
+    readonly property int castBlur: Math.max(2, Math.min(64, Math.round(px * cfg.castSoftness / 100)))
+    /** The face's own hue, deep and saturated: black over a light ink reads as mud. */
+    readonly property color castTint: {
+        var c = cfg.fill === "gradient" ? mix(ink, ink2, 0.5) : ink;
+        return c.hslHue < 0 ? Qt.hsla(0, 0, 0.1, 1) : Qt.hsla(c.hslHue, Math.min(1, c.hslSaturation * 0.8 + 0.3), 0.14, 1);
+    }
+
     // Glass: the wallpaper, screen-aligned like the cut-out (skwd-paper's
     // centred cover crop), at quarter resolution — it is only ever shown
     // frosted. Never drawn itself; each glass line samples it.
@@ -513,6 +525,75 @@ PanelWindow {
                 }
 
                 DateLine { visible: win.dateOn && win.cfg.layout === "below" }
+            }
+        }
+
+        // What the clock draws (fills, extrusion, date), in window coordinates:
+        // the cast shadow's mask, so it lands on the numerals and never on the
+        // wallpaper around them.
+        ShaderEffectSource {
+            id: faceTex
+            width: parent.width
+            height: parent.height
+            visible: false
+            hideSource: false
+            sourceItem: win.castShadow ? stack : null
+            sourceRect: Qt.rect(-(face.x + stack.x), -(face.y + stack.y), width, height)
+        }
+
+        // The cast shadow: the tint, cut to the foreground's silhouette (the
+        // cut-out at quarter resolution — it is only ever seen blurred),
+        // shifted, then blurred and masked by the face.
+        Rectangle {
+            id: castInk
+            width: 4
+            height: 4
+            visible: false
+            color: win.castTint
+            layer.enabled: win.castShadow
+        }
+        Image {
+            id: castSil
+            width: win.sw
+            height: win.sh
+            visible: false
+            source: win.castShadow ? cutImg.source : ""
+            sourceSize: Qt.size(Math.round(win.sw * win.dpr / 4), Math.round(win.sh * win.dpr / 4))
+            fillMode: Image.Stretch
+            asynchronous: true
+            retainWhileLoading: true
+            cache: false
+            smooth: true
+            layer.enabled: win.castShadow
+            layer.textureSize: sourceSize
+        }
+        Item {
+            anchors.fill: parent
+            visible: win.castShadow && castSil.status === Image.Ready
+            opacity: win.cfg.castStrength * face.opacity * cutImg.opacity
+            layer.enabled: visible
+            layer.effect: MultiEffect {
+                autoPaddingEnabled: false
+                blurEnabled: true
+                blur: 1
+                blurMax: win.castBlur
+                maskEnabled: true
+                maskSource: faceTex
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1
+            }
+
+            MultiEffect {
+                x: cutImg.x + win.castReach * win.fxDx
+                y: cutImg.y + win.castReach * win.fxDy
+                width: win.sw
+                height: win.sh
+                source: castInk
+                autoPaddingEnabled: false
+                maskEnabled: true
+                maskSource: castSil
+                maskThresholdMin: 0.5
+                maskSpreadAtMin: 1
             }
         }
 

@@ -48,11 +48,14 @@ Singleton {
         // (gradient color → color2; glass = the wallpaper frosted inside the numerals);
         // effect none|glow|extrude|echo (echo ghosts in color2); dateFormat long|short|off; dateSize = % of the time size;
         // hour auto|24|12 (auto follows Flags.time12h); tracking = letter spacing in % of size.
+        // shadow = drop shadow under the clock; castStrength (0..1, 0 = off) = the cut-out's
+        // shadow falling on the numerals, castDistance / castSoftness in % of the time size.
         depth: { on: true, x: 0.33, y: 0.17, w: 0.34, h: 0.22, align: "center",
                  layout: "classic", font: "", fill: "solid", effect: "none", color: "primary", color2: "tertiary",
                  dateColor: "on_surface", dateFormat: "long", dateSize: 16, hour: "auto",
                  weight: 700, tracking: -3, opacity: 1, shadow: true,
-                 cut: true, threshold: 0.3, feather: 0.08 }
+                 cut: true, threshold: 0.3, feather: 0.08,
+                 castStrength: 0.4, castDistance: 4, castSoftness: 7 }
     })
 
     property var data: JSON.parse(JSON.stringify(defaults))
