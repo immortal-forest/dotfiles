@@ -105,16 +105,26 @@ var glyphs = ({
     "trash": { d: "M3 6h18 M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6 M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2 M10 11v6 M14 11v6", fill: false },
     "copy": { d: "M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2", fill: false },
     "return": { d: "M20 6v6a3 3 0 0 1-3 3H5 M9 11l-4 4 4 4", fill: false },
-    "wifi": { d: "M4 9.5C9 4.8 15 4.8 20 9.5 M7 13c3-2.8 7-2.8 10 0 M11 16.8a1.4 1.4 0 1 0 2 0a1.4 1.4 0 1 0-2 0", fill: false },
-    // Signal-strength wedges (Material signal_wifi_N): concentric 90° sectors
-    // fanning from (12,21). Drawn as a dim wifi-4 track with the live level
-    // filled over it, so strength reads as bars, not as an icon's opacity.
-    "wifi-4": { d: "M12 21L0 9A17 17 0 0 1 24 9Z", fill: true },
-    "wifi-3": { d: "M12 21L2.81 11.81A13 13 0 0 1 21.19 11.81Z", fill: true },
-    "wifi-2": { d: "M12 21L5.28 14.28A9.5 9.5 0 0 1 18.72 14.28Z", fill: true },
-    "wifi-1": { d: "M12 21L7.76 16.76A6 6 0 0 1 16.24 16.76Z", fill: true },
+    // Wi-Fi: a dot and three arcs, all concentric on (12,18.4) and spanning
+    // ±45°, stroked like every other icon here. wifi-N is cumulative (1 = the
+    // dot, 4 = the whole fan) so WifiSignal can lay the live level over a dim
+    // wifi-4 track in one shared 24x24 frame and strength reads as bars. These
+    // were filled Material wedges, a solid blob beside the outlined bluetooth
+    // rune; the dot is a real r=.55 circle (the old one's arcs had a 2-unit
+    // chord on a 1.4 radius and drew a smudged figure-8).
+    "wifi": { d: "M11.45 18.4a.55 .55 0 1 0 1.1 0a.55 .55 0 1 0-1.1 0 M8.75 15.15A4.6 4.6 0 0 1 15.25 15.15 M5.64 12.04A9 9 0 0 1 18.36 12.04 M2.52 8.92A13.4 13.4 0 0 1 21.48 8.92", fill: false },
+    "wifi-4": { d: "M11.45 18.4a.55 .55 0 1 0 1.1 0a.55 .55 0 1 0-1.1 0 M8.75 15.15A4.6 4.6 0 0 1 15.25 15.15 M5.64 12.04A9 9 0 0 1 18.36 12.04 M2.52 8.92A13.4 13.4 0 0 1 21.48 8.92", fill: false },
+    "wifi-3": { d: "M11.45 18.4a.55 .55 0 1 0 1.1 0a.55 .55 0 1 0-1.1 0 M8.75 15.15A4.6 4.6 0 0 1 15.25 15.15 M5.64 12.04A9 9 0 0 1 18.36 12.04", fill: false },
+    "wifi-2": { d: "M11.45 18.4a.55 .55 0 1 0 1.1 0a.55 .55 0 1 0-1.1 0 M8.75 15.15A4.6 4.6 0 0 1 15.25 15.15", fill: false },
+    "wifi-1": { d: "M11.45 18.4a.55 .55 0 1 0 1.1 0a.55 .55 0 1 0-1.1 0", fill: false },
+    // The same fan with a slash; arcs are cut back 0.9 clear of the slash's
+    // edge (a knockout, not an overdraw) and the cut-off stubs are dropped.
+    "wifi-off": { d: "M11.45 18.4a.55 .55 0 1 0 1.1 0a.55 .55 0 1 0-1.1 0 M12.22 9.4A9 9 0 0 1 18.36 12.04 M8.34 5.51A13.4 13.4 0 0 1 21.48 8.92 M3.5 4.5L20 21", fill: false },
     "ethernet": { d: "M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5v-8A1.5 1.5 0 0 1 5 5z M8 19h8 M12 16v3 M8 8.5v3.5 M12 8.5v3.5 M16 8.5v3.5", fill: false },
-    "bluetooth": { d: "M12 2.8v18.4 M12 2.8l5.2 4.6-10.4 9 M12 21.2l5.2-4.6-10.4-9", fill: false },
+    // One continuous stroke (so the tips get round joins, not two butted
+    // lines), arms parallel and crossing exactly on the spine at y=12.
+    "bluetooth": { d: "M6.5 7.5 17.5 16.5 12 21V3l5.5 4.5L6.5 16.5", fill: false },
+    "bluetooth-connected": { d: "M6.5 7.5 17.5 16.5 12 21V3l5.5 4.5L6.5 16.5 M3 12a.5 .5 0 1 0 1 0a.5 .5 0 1 0-1 0 M20 12a.5 .5 0 1 0 1 0a.5 .5 0 1 0-1 0", fill: false },
     // Airplane mode. Lived as a hand-written Shape inside surfaces/Link.qml
     // ("PlaneGlyph") because this table had no plane — a second, parallel
     // icon-drawing path in a file that also uses GlyphIcon. Same 24x24 stroked

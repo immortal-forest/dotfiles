@@ -1247,6 +1247,7 @@ PillSurface {
             anchors.fill: lrowGlyph
             visible: lrow.strength >= 0
             strength: lrow.strength
+            stroke: 1.7
             color: lrow.glyphLit ? Colors.primary : Colors.on_surface_variant
         }
 
@@ -1715,7 +1716,7 @@ PillSurface {
                 enabled: !root.airplaneOn
                 opacity: root.airplaneOn ? 0.4 : 1
                 Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
-                glyph: root.wired ? "ethernet" : "wifi"
+                glyph: root.wired ? "ethernet" : (root.wifiOn ? "wifi" : "wifi-off")
                 strength: (!root.wired && root.wifiOn) ? (root.wifiActive ? root.pct(root.wifiActive) : 0) : -1
                 glyphLit: root.wired || (root.wifiOn && root.wifiActive !== null)
                 label: "Network"
@@ -1735,7 +1736,7 @@ PillSurface {
                 enabled: !root.airplaneOn
                 opacity: root.airplaneOn ? 0.4 : 1
                 Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
-                glyph: "bluetooth"
+                glyph: root.btConnected.length > 0 ? "bluetooth-connected" : "bluetooth"
                 glyphLit: root.btConnected.length > 0
                 label: "Bluetooth"
                 subText: root.btSubText
@@ -2221,6 +2222,7 @@ PillSurface {
                         width: 16 * root.s
                         height: 16 * root.s
                         strength: root.pct(netItem.modelData)
+                        stroke: 1.7
                         // Association lands asynchronously; the bars light into
                         // the accent rather than flicking the instant nmcli
                         // reports back.

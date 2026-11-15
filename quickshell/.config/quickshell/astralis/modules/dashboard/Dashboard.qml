@@ -247,6 +247,17 @@ PanelWindow {
                 names.push(devs[i].name || devs[i].deviceName || "Device");
         return names.length === 0 ? "On" : names.length === 1 ? names[0] : names.length + " devices";
     }
+    /** A device is connected: the Bluetooth tile shows the rune with its link dots. */
+    readonly property bool btLinked: {
+        var a = Bluetooth.defaultAdapter;
+        if (!a || !a.enabled)
+            return false;
+        var devs = Bluetooth.devices ? Bluetooth.devices.values : [];
+        for (var i = 0; i < devs.length; i++)
+            if (devs[i] && devs[i].connected === true)
+                return true;
+        return false;
+    }
 
     Connections {
         target: Hyprland
@@ -1221,7 +1232,7 @@ PanelWindow {
                                 spacing: qsGrid.gap
                                 QsTile {
                                     width: (qsGrid.width - 2 * qsGrid.gap) / 3
-                                    icon: Networking.wifiEnabled ? "wifi" : "wifi-1"
+                                    icon: Networking.wifiEnabled ? "wifi" : "wifi-off"
                                     label: "Wi-Fi"
                                     enter: qsBox.seg(0)
                                     sub: root.wifiSub
@@ -1230,7 +1241,7 @@ PanelWindow {
                                 }
                                 QsTile {
                                     width: (qsGrid.width - 2 * qsGrid.gap) / 3
-                                    icon: "bluetooth"
+                                    icon: root.btLinked ? "bluetooth-connected" : "bluetooth"
                                     label: "Bluetooth"
                                     enter: qsBox.seg(1)
                                     sub: root.btSub
