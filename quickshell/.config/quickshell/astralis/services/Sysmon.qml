@@ -36,24 +36,57 @@ Singleton {
      * histStep ms, histLen samples (4 min). Sampled even while nothing is
      * open — the fast probe runs once per step in the background — so the
      * graph already has a past when the dashboard appears.
+     *
+     * A CPU sample is the load AVERAGED over its whole step (its own
+     * /proc/stat delta since the previous sample), not whatever the 500 ms
+     * live reading happened to be at that instant, and the very first probe
+     * only records the counters: it used to push the not-yet-computed 0, so
+     * every graph opened on a cliff from the floor at its left edge.
      */
     readonly property int histLen: 60
     readonly property int histStep: 4000
     property var cpuHist: []
     property var memHist: []
     property real lastHistT: 0
-    function pushHist() {
+    property real histCpuTotal: 0
+    property real histCpuIdle: 0
+    function pushHist(total, idle) {
         var now = Date.now();
         if (now - lastHistT < histStep - 250)
             return;
+        if (histCpuTotal <= 0 || total <= histCpuTotal) {
+            histCpuTotal = total;
+            histCpuIdle = idle;
+            return;
+        }
+        var dt = total - histCpuTotal, di = idle - histCpuIdle;
+        histCpuTotal = total;
+        histCpuIdle = idle;
         lastHistT = now;
         var c = cpuHist.slice(), m = memHist.slice();
-        c.push(cpu);
+        c.push(Math.max(0, Math.min(100, 100 * (dt - di) / dt)));
         m.push(memPct);
         if (c.length > histLen) c.shift();
         if (m.length > histLen) m.shift();
         cpuHist = c;
         memHist = m;
+    }
+
+    /**
+     * Network rates in the unit that keeps a reading meaningful: KB/s while
+     * both directions are under 1 MB/s (ordinary browsing read "0.0" in
+     * MB/s), MB/s from there. One unit for both directions so ↓ and ↑ compare.
+     */
+    readonly property bool netKb: Math.max(netDown, netUp) < 1
+    readonly property string netUnit: netKb ? "KB/s" : "MB/s"
+    function fmtNet(v) {
+        if (netKb)
+            return Math.round(v * 1024).toString();
+        return v >= 10 ? Math.round(v).toString() : v.toFixed(1);
+    }
+    /** GB with one decimal under 10 (a 512 MB carve-out read "1" at toFixed(0)), whole above. */
+    function fmtGb(v) {
+        return v < 10 ? v.toFixed(1) : v.toFixed(0);
     }
 
     property int cpu: 0
@@ -75,6 +108,8 @@ Singleton {
 
     property real netDown: 0
     property real netUp: 0
+    /** 1-minute load average. */
+    property real load1: 0
 
     property int diskPct: 0
     property string uptime: ""
@@ -156,16 +191,18 @@ Singleton {
             "read -r _ a b c d e f g h _ < /proc/stat; echo \"CPU $((a+b+c+d+e+f+g+h)) $((d+e))\"; "
             + "awk '/^MemTotal:/{mt=$2}/^MemAvailable:/{ma=$2}/^SwapTotal:/{st=$2}/^SwapFree:/{sf=$2}END{print \"MEM\",mt,ma,st,sf}' /proc/meminfo; "
             + "awk 'NR>2{gsub(\":\",\" \");if($1!=\"lo\"){rx+=$2;tx+=$10}}END{print \"NET\",rx+0,tx+0}' /proc/net/dev; "
+            + "read -r l1 _ < /proc/loadavg; echo \"LOAD $l1\"; "
             + "if [ -n \"$1\" ] && [ -r \"$1\" ]; then echo \"TMP $(cat \"$1\")\"; else echo 'TMP -'; fi",
             "_", root.tempPath]
         stdout: StdioCollector {
             onStreamFinished: {
                 var lines = this.text.split("\n");
+                var total = -1, idle = -1;
                 for (var i = 0; i < lines.length; i++) {
                     var p = lines[i].trim().split(/\s+/);
                     if (p[0] === "CPU") {
-                        var total = parseFloat(p[1]);
-                        var idle = parseFloat(p[2]);
+                        total = parseFloat(p[1]);
+                        idle = parseFloat(p[2]);
                         if (root.prevCpuTotal > 0) {
                             var dt = total - root.prevCpuTotal;
                             var di = idle - root.prevCpuIdle;
@@ -181,8 +218,6 @@ Singleton {
                         root.memTotalGb = mt / 1048576;
                         root.memUsedGb = (mt - ma) / 1048576;
                         root.memPct = mt > 0 ? Math.round(100 * (mt - ma) / mt) : 0;
-                        if (root.prevCpuTotal > 0)
-                            root.pushHist();
                         root.swapUsedGb = (st - sf) / 1048576;
                     } else if (p[0] === "NET") {
                         var rx = parseFloat(p[1]);
@@ -196,10 +231,14 @@ Singleton {
                         root.prevRx = rx;
                         root.prevTx = tx;
                         root.prevNetTime = now;
+                    } else if (p[0] === "LOAD") {
+                        root.load1 = parseFloat(p[1]) || 0;
                     } else if (p[0] === "TMP") {
                         root.cpuTemp = p[1] === "-" ? -1 : Math.round(parseFloat(p[1]) / 1000);
                     }
                 }
+                if (total > 0)
+                    root.pushHist(total, idle);
             }
         }
     }

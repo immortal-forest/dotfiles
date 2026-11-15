@@ -10,9 +10,19 @@ import "../../config"
 /**
  * astralis — month calendar surface (Ricelin Calendar.qml layout, now with
  * its events). To the left, Ricelin's weather glance: the condition glyph
- * beside the current temperature and its label, the city (tap to type — sets
- * Flags.weatherCity and re-geocodes; blank it for auto IP detection) with
- * humidity, then a four-day outlook strip. The network flakes on this box,
+ * beside the current temperature and its label with the next-24 h high/low
+ * at the right, the city (tap to type — sets Flags.weatherCity and
+ * re-geocodes; blank it for auto IP detection) with humidity. Then the next
+ * 12 hours in five 3-hourly steps — hour, condition glyph, temperature — so
+ * the rain shows WHEN it comes (a bare temperature line only ever said
+ * "21 → 18" in a staircase of whole degrees). At the foot, four days as
+ * rows: name, glyph, low, and the day's low→high range as a capsule on one
+ * scale shared by all four (so a cold day sits left of a warm one), shaded
+ * by temperature along that scale (tertiary → primary), with a bead on
+ * today's at the temperature right now; the capsules grow out from their
+ * low end once the open morph settles. (Tried as 筆 ink strokes first: at
+ * 5 px the entry press and dry head turned a 1° range into a smudge.)
+ * The network flakes on this box,
  * so until Weather.ready the panel shows dim "—" placeholders — never an
  * error. Then a hairline seam and the month grid: "暦 <MONTH YEAR>" header
  * with ‹ › nav squares, a hairline divider, narrow Monday-first weekday
@@ -87,6 +97,38 @@ PillSurface {
 
     // Dim placeholder tone for the weather glance before the first clean fetch.
     readonly property color wxFaint: Qt.alpha(Colors.on_surface_variant, 0.65)
+    /** Next 12 hours in 3-hour steps: now, +3, +6, +9, +12. */
+    readonly property var steps: [0, 3, 6, 9, 12].filter(i => i < Weather.hourly.length).map(i => Weather.hourly[i])
+    /** Shared temperature scale for the outlook's range strokes. */
+    readonly property var weekRange: {
+        var d = Weather.daily.slice(0, 4), lo = 999, hi = -999;
+        for (var i = 0; i < d.length; i++) {
+            lo = Math.min(lo, d[i].lo !== undefined ? d[i].lo : d[i].temp);
+            hi = Math.max(hi, d[i].temp);
+        }
+        return d.length ? { lo: lo, hi: Math.max(hi, lo + 1) } : null;
+    }
+    function tempRange(h) {
+        var lo = 999, hi = -999;
+        for (var i = 0; i < h.length; i++) {
+            lo = Math.min(lo, h[i].temp);
+            hi = Math.max(hi, h[i].temp);
+        }
+        return h.length ? { lo: lo, hi: hi } : null;
+    }
+    /** Next-24 h high/low (the dashboard weather tile's reading). */
+    readonly property var wxRange: tempRange(Weather.hourly)
+    /** A temperature's shade on the outlook's shared scale: tertiary (coolest) → primary (warmest). */
+    function tempTint(t) {
+        var r = root.weekRange;
+        var f = r ? Math.max(0, Math.min(1, (t - r.lo) / (r.hi - r.lo))) : 1;
+        return Qt.tint(Colors.tertiary, Qt.alpha(Colors.primary, f));
+    }
+    /** Outlook capsules' draw-in: waits for the open morph to settle, like the 系 ensō. */
+    property real wxDraw: root.settled ? 1 : 0
+    Behavior on wxDraw {
+        NumberAnimation { duration: Math.round(Motion.largeDur * 1.2); easing.type: Motion.easeStandard }
+    }
     // Hairline (Ricelin Theme.hair).
     readonly property color hair: Qt.alpha(Colors.on_surface, 0.06)
 
@@ -395,7 +437,12 @@ PillSurface {
             anchors.rightMargin: 6 * root.s
             spacing: 9 * root.s
 
+            Item {
+                width: parent.width
+                height: nowRow.height
+
             Row {
+                id: nowRow
                 spacing: 9 * root.s
 
                 GlyphIcon {
@@ -425,6 +472,41 @@ PillSurface {
                         font.weight: Font.Medium
                     }
                 }
+            }
+
+            // next-24 h high over low, as the dashboard weather tile reads it
+            Column {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.wxRange !== null
+                spacing: 2 * root.s
+                Repeater {
+                    model: root.wxRange ? [["arrow-up", root.wxRange.hi, Colors.on_surface], ["arrow-down", root.wxRange.lo, Colors.on_surface_variant]] : []
+                    Row {
+                        id: hlRow
+                        required property var modelData
+                        anchors.right: parent.right
+                        spacing: 1 * root.s
+                        GlyphIcon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 13 * root.s
+                            height: 13 * root.s
+                            name: hlRow.modelData[0]
+                            color: root.wxFaint
+                            stroke: 1.6
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: hlRow.modelData[1] + "°"
+                            color: hlRow.modelData[2]
+                            font.family: Appearance.font.family
+                            font.pixelSize: 10.5 * root.s
+                            font.weight: Font.DemiBold
+                            font.features: ({ "tnum": 1 })
+                        }
+                    }
+                }
+            }
             }
 
             Row {
@@ -555,8 +637,8 @@ PillSurface {
             }
 
             // Centred on the ink: the place/humidity line above leaves ~3.5 of
-            // text air under its box, the outlook labels ~2 above theirs (it
-            // sat 23px under the one and 20px over the other).
+            // text air under its box, the curve's temperature labels ~2 above
+            // theirs.
             Rule {
                 width: wxCol.width
                 height: 1
@@ -564,72 +646,190 @@ PillSurface {
                 airAbove: 3.5 * root.s
                 airBelow: 2 * root.s
             }
+        }
 
-            // Four-day outlook: Weather.daily stays [] until a fetch lands,
-            // so the strip is simply blank while the network is down.
-            Row {
-                width: wxCol.width
+        // Next 12 hours, 3-hourly, centred in the room between the header
+        // and the outlook.
+        Row {
+            id: hourly
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.rightMargin: 6 * root.s
+            y: wxCol.y + wxCol.height + Math.max(0, (outlook.y - wxCol.y - wxCol.height - height) / 2)
+            visible: root.steps.length > 0
 
-                Repeater {
-                    model: Weather.daily.slice(0, 4)
+            Repeater {
+                model: root.steps
+                Column {
+                    id: step
+                    required property var modelData
+                    required property int index
+                    readonly property bool now: index === 0
+                    readonly property int hr: parseInt(modelData.hour, 10)
+                    width: hourly.width / 5
+                    spacing: 5 * root.s
 
-                    Column {
-                        id: dayCol
-                        required property var modelData
-                        width: wxCol.width / 4
-                        spacing: 5 * root.s
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: step.now ? "Now" : step.modelData.hour
+                        color: step.now ? Colors.on_surface_variant : root.wxFaint
+                        font.family: Appearance.font.family
+                        font.pixelSize: 9 * root.s
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.5 * root.s
+                        font.features: ({ "tnum": 1 })
+                    }
+                    GlyphIcon {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 17 * root.s
+                        height: 17 * root.s
+                        name: Weather.glyphFor(step.modelData.code, step.now ? Weather.isDay : (step.hr >= 6 && step.hr < 19))
+                        color: step.now ? Colors.primary : Colors.on_surface_variant
+                        stroke: 1.7
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: step.modelData.temp + "°"
+                        color: step.now ? Colors.on_surface : Qt.alpha(Colors.on_surface, 0.85)
+                        font.family: Appearance.font.family
+                        font.pixelSize: 11 * root.s
+                        font.weight: step.now ? Font.Bold : Font.DemiBold
+                        font.features: ({ "tnum": 1 })
+                    }
+                }
+            }
+        }
 
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: dayCol.modelData.day
-                            color: root.wxFaint
-                            font.family: Appearance.font.family
-                            font.pixelSize: 9 * root.s
-                            font.weight: Font.DemiBold
-                            font.capitalization: Font.AllUppercase
-                            font.letterSpacing: 0.5 * root.s
+        // Four days, pinned to the column's foot: Weather.daily stays [] until
+        // a fetch lands, so the rows are simply absent while the network is down.
+        Column {
+            id: outlook
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.rightMargin: 6 * root.s
+            anchors.bottom: parent.bottom
+            spacing: 4 * root.s
+
+            Rule {
+                width: parent.width
+                height: 1
+                color: Qt.alpha(Colors.on_surface, 0.04)
+                airAbove: 0
+                airBelow: 4 * root.s
+            }
+
+            Repeater {
+                model: Weather.daily.slice(0, 4)
+
+                Item {
+                    id: day
+                    required property var modelData
+                    required property int index
+                    readonly property bool today: index === 0
+                    readonly property int lo: modelData.lo !== undefined ? modelData.lo : modelData.temp
+                    readonly property int hi: modelData.temp
+                    width: outlook.width
+                    height: 22 * root.s
+
+                    Text {
+                        id: dayName
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 34 * root.s
+                        text: day.today ? "Today" : day.modelData.day
+                        color: day.today ? Colors.on_surface_variant : root.wxFaint
+                        font.family: Appearance.font.family
+                        font.pixelSize: 9 * root.s
+                        font.weight: Font.DemiBold
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: 0.5 * root.s
+                    }
+                    GlyphIcon {
+                        id: dayGlyph
+                        anchors.left: dayName.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 15 * root.s
+                        height: 15 * root.s
+                        name: Weather.glyphFor(day.modelData.code, true)
+                        color: day.today ? Colors.primary : Colors.on_surface_variant
+                        stroke: 1.7
+                    }
+                    Text {
+                        id: loText
+                        anchors.left: dayGlyph.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 22 * root.s
+                        horizontalAlignment: Text.AlignRight
+                        text: day.lo + "°"
+                        color: root.wxFaint
+                        font.family: Appearance.font.family
+                        font.pixelSize: 10 * root.s
+                        font.weight: Font.Medium
+                        font.features: ({ "tnum": 1 })
+                    }
+                    Text {
+                        id: hiText
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 20 * root.s
+                        horizontalAlignment: Text.AlignRight
+                        text: day.hi + "°"
+                        color: Colors.on_surface
+                        font.family: Appearance.font.family
+                        font.pixelSize: 10.5 * root.s
+                        font.weight: Font.DemiBold
+                        font.features: ({ "tnum": 1 })
+                    }
+
+                    // the range on the shared scale, as a capsule over a faint track
+                    Item {
+                        id: track
+                        anchors.left: loText.right
+                        anchors.leftMargin: 7 * root.s
+                        anchors.right: hiText.left
+                        anchors.rightMargin: 6 * root.s
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 14 * root.s
+
+                        readonly property var r: root.weekRange
+                        function xOf(t) { return r ? (t - r.lo) / (r.hi - r.lo) * width : 0; }
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width
+                            height: 4 * root.s
+                            radius: height / 2
+                            color: Qt.alpha(Colors.on_surface, 0.07)
                         }
-                        GlyphIcon {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 15 * root.s
-                            height: 15 * root.s
-                            name: Weather.glyphFor(dayCol.modelData.code, true)
-                            color: Colors.on_surface_variant
-                            stroke: 1.7
+                        Rectangle {
+                            readonly property real x0: track.xOf(day.lo)
+                            readonly property real full: Math.max(track.xOf(day.hi) - x0, height)
+                            x: x0
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.max(height, full * root.wxDraw)
+                            height: 5 * root.s
+                            radius: height / 2
+                            opacity: Math.min(1, root.wxDraw * 3)
+                            gradient: Gradient {
+                                orientation: Gradient.Horizontal
+                                GradientStop { position: 0; color: root.tempTint(day.lo) }
+                                GradientStop { position: 1; color: root.tempTint(day.hi) }
+                            }
                         }
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: dayCol.modelData.temp + "°"
+                        // today: where the temperature is right now
+                        Rectangle {
+                            visible: day.today && Weather.ready
+                            readonly property real cx: track.xOf(Math.max(day.lo, Math.min(day.hi, Weather.tempNow)))
+                            x: cx - width / 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 7 * root.s
+                            height: width
+                            radius: width / 2
                             color: Colors.on_surface
-                            font.family: Appearance.font.family
-                            font.pixelSize: 11 * root.s
-                            font.weight: Font.Medium
-                            font.features: ({ "tnum": 1 })
-                        }
-                        Row {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            spacing: 2 * root.s
-
-                            GlyphIcon {
-                                anchors.verticalCenter: parent.verticalCenter
-                                // 13·s — see pill/Toast.qml's dismiss icon
-                                // note; 9·s was well below the floor where a
-                                // stroked glyph stays legible.
-                                width: 13 * root.s
-                                height: 13 * root.s
-                                name: "droplet"
-                                color: root.wxFaint
-                                stroke: 1.6
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: dayCol.modelData.rh + "%"
-                                color: root.wxFaint
-                                font.family: Appearance.font.family
-                                font.pixelSize: 9.5 * root.s
-                                font.weight: Font.Medium
-                                font.features: ({ "tnum": 1 })
-                            }
+                            border.width: 1.5 * root.s
+                            border.color: Colors.surface_container
+                            opacity: root.wxDraw
                         }
                     }
                 }

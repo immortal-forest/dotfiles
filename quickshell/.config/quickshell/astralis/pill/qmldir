@@ -26,3 +26,4 @@ DropMenu 1.0 DropMenu.qml
 SettingsDrop 1.0 SettingsDrop.qml
 PixelSnap 1.0 PixelSnap.qml
 Rule 1.0 Rule.qml
+InkRing 1.0 InkRing.qml

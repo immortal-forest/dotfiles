@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.UPower
 
 /**
@@ -52,22 +53,79 @@ Singleton {
     }
 
     /**
-     * Charge history for the dashboard curve: one {pct, chg} sample a minute,
-     * the last 3 h. Recorded from shell start, so it begins empty after a
-     * relaunch.
+     * Wear, straight from sysfs: UPower reports `healthSupported` false on
+     * this firmware, but the kernel has energy_full / energy_full_design and
+     * cycle_count. -1 = unknown. Re-read every 30 min (both move slowly).
      */
-    readonly property int histLen: 180
-    property var hist: []
-    function sample() {
-        if (!present)
-            return;
-        var h = hist.slice();
-        h.push({ pct: pct, chg: charging });
-        if (h.length > histLen)
-            h.shift();
-        hist = h;
+    property int wearPct: -1
+    property int cycles: -1
+    Process {
+        id: wearProc
+        command: ["sh", "-c", "for b in /sys/class/power_supply/BAT*; do echo \"$(cat \"$b/energy_full\" 2>/dev/null || echo 0) $(cat \"$b/energy_full_design\" 2>/dev/null || echo 0) $(cat \"$b/cycle_count\" 2>/dev/null || echo -1)\"; break; done"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var p = this.text.trim().split(/\s+/);
+                var full = parseFloat(p[0]) || 0, design = parseFloat(p[1]) || 0;
+                root.wearPct = design > 0 && full > 0 ? Math.round(100 * full / design) : -1;
+                var c = parseInt(p[2], 10);
+                root.cycles = isNaN(c) || c < 0 ? -1 : c;
+            }
+        }
     }
-    onPresentChanged: if (present && hist.length === 0) sample()
+    Timer {
+        interval: 1800000
+        running: root.present
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: wearProc.running = true
+    }
+
+    /**
+     * Charge history for the dashboard curve: one {t, pct, chg} sample a
+     * minute over the last histSpan ms (3 h), with its timestamp so the curve
+     * can sit on a real time axis and leave gaps where the machine slept.
+     * Saved to the cache on every sample and reloaded at start, so a shell
+     * restart no longer wipes it (the curve used to read "LAST 2 MIN" of one
+     * flat line after every reload).
+     */
+    readonly property real histSpan: 3 * 3600 * 1000
+    property var hist: []
+    /** The saved history is loaded; `present` can flip during init, before the file's path is bound. */
+    property bool loaded: false
+    function sample() {
+        if (!present || !loaded)
+            return;
+        var now = Date.now();
+        var h = hist.filter(function (e) { return now - e.t <= root.histSpan; });
+        // a reload or a state echo inside the minute adds nothing new
+        var last = h.length ? h[h.length - 1] : null;
+        if (last && now - last.t < 50000 && last.pct === pct && last.chg === charging)
+            return;
+        h.push({ t: now, pct: pct, chg: charging });
+        hist = h;
+        histFile.setText(JSON.stringify(h));
+    }
+    FileView {
+        id: histFile
+        path: Quickshell.env("HOME") + "/.cache/astralis/battery-hist.json"
+        blockLoading: true
+        printErrors: false
+    }
+    Component.onCompleted: {
+        try {
+            var now = Date.now();
+            var h = JSON.parse(histFile.text());
+            if (Array.isArray(h))
+                root.hist = h.filter(function (e) {
+                    return e && typeof e.t === "number" && typeof e.pct === "number" && now - e.t <= root.histSpan && e.t <= now;
+                });
+        } catch (e) {}
+        root.loaded = true;
+        root.sample();
+    }
+    onPresentChanged: if (present) sample()
+    // a state flip lands at once rather than on the next minute
+    onChargingChanged: if (present) sample()
     Timer {
         interval: 60000
         running: root.present

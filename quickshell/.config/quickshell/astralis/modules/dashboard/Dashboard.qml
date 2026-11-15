@@ -101,10 +101,6 @@ PanelWindow {
     function fmtTime(d) {
         return Qt.formatTime(d, Flags.time12h ? "h:mm AP" : "HH:mm");
     }
-    /** MB/s for a narrow stat column: one decimal while small, whole numbers from 10 up. */
-    function fmtRate(v) {
-        return v >= 10 ? Math.round(v).toString() : v.toFixed(1);
-    }
     readonly property string greeting: {
         var h = root.now.getHours();
         return h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
@@ -445,7 +441,6 @@ PanelWindow {
                         Layout.preferredHeight: 172 * root.s
                         accessibleName: "Weather, " + (Weather.ready ? Weather.tempNow + " degrees, " + Weather.labelFor(Weather.codeNow) : "loading")
 
-                        readonly property var next12: Weather.hourly.slice(0, 13)
                         readonly property var range: {
                             var h = Weather.hourly, lo = 999, hi = -999;
                             for (var i = 0; i < h.length; i++) {
@@ -501,110 +496,56 @@ PanelWindow {
                             }
                         }
 
-                        Item {
-                            id: wxCurveBox
+                        // Next 12 hours, 2-hourly: hour, condition glyph, temperature —
+                        // the pill calendar's strip, wider. Replaces a temperature line
+                        // that drew whole degrees as a staircase and never showed rain.
+                        Row {
+                            id: wxSteps
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.margins: 20 * root.s
                             anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 12 * root.s
-                            height: 74 * root.s
-                            visible: wxTile.next12.length >= 2
-                            // band the curve occupies between the temp labels and the hour labels
-                            readonly property real bandTop: 18 * root.s
-                            readonly property real bandBot: height - 18 * root.s
-                            function px(i) { return 6 * root.s + i * (width - 12 * root.s) / Math.max(1, wxTile.next12.length - 1); }
-                            function py(t) {
-                                var r = wxTile.range;
-                                if (!r || r.hi === r.lo) return (bandTop + bandBot) / 2;
-                                return bandBot - (t - r.lo) / (r.hi - r.lo) * (bandBot - bandTop);
-                            }
-
-                            // the curve draws in left→right with the tile's reveal
-                            Item {
-                                width: parent.width * wxTile.reveal
-                                height: parent.height
-                                clip: true
-                            Canvas {
-                                id: wxCurve
-                                width: wxCurveBox.width
-                                height: wxCurveBox.height
-                                readonly property var pts: wxTile.next12
-                                readonly property color tint: Colors.primary
-                                onPtsChanged: requestPaint()
-                                onTintChanged: requestPaint()
-                                onWidthChanged: requestPaint()
-                                onPaint: {
-                                    var ctx = getContext("2d");
-                                    ctx.reset();
-                                    var p = pts;
-                                    if (p.length < 2) return;
-                                    function X(i) { return wxCurveBox.px(i); }
-                                    function Y(i) { return wxCurveBox.py(p[i].temp); }
-                                    // smooth path through the samples (midpoint quadratic)
-                                    function trace() {
-                                        ctx.moveTo(X(0), Y(0));
-                                        for (var i = 1; i < p.length - 1; i++)
-                                            ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 1)) / 2, (Y(i) + Y(i + 1)) / 2);
-                                        ctx.lineTo(X(p.length - 1), Y(p.length - 1));
-                                    }
-                                    ctx.beginPath();
-                                    trace();
-                                    ctx.lineTo(X(p.length - 1), wxCurveBox.bandBot);
-                                    ctx.lineTo(X(0), wxCurveBox.bandBot);
-                                    ctx.closePath();
-                                    var g = ctx.createLinearGradient(0, wxCurveBox.bandTop, 0, wxCurveBox.bandBot);
-                                    g.addColorStop(0, Qt.alpha(tint, 0.22));
-                                    g.addColorStop(1, Qt.alpha(tint, 0));
-                                    ctx.fillStyle = g;
-                                    ctx.fill();
-                                    ctx.beginPath();
-                                    trace();
-                                    ctx.lineWidth = 2 * root.s;
-                                    ctx.lineCap = "round";
-                                    ctx.lineJoin = "round";
-                                    ctx.strokeStyle = tint;
-                                    ctx.stroke();
-                                }
-                            }
-                            }
+                            anchors.bottomMargin: 14 * root.s
+                            readonly property var steps: [0, 2, 4, 6, 8, 10, 12].filter(i => i < Weather.hourly.length).map(i => Weather.hourly[i])
+                            visible: steps.length > 0
                             Repeater {
-                                model: wxTile.next12.length >= 2 ? [0, 3, 6, 9, 12].filter(i => i < wxTile.next12.length) : []
-                                Item {
-                                    id: wxMark
-                                    required property int modelData
-                                    readonly property var h: wxTile.next12[modelData]
-                                    readonly property real cx: wxCurveBox.px(modelData)
-                                    readonly property real cy: wxCurveBox.py(h.temp)
-                                    opacity: Math.max(0, Math.min(1, (wxTile.reveal * wxCurveBox.width - cx + 12 * root.s) / (24 * root.s)))
-                                    Rectangle {
-                                        x: wxMark.cx - width / 2
-                                        y: wxMark.cy - height / 2
-                                        width: (wxMark.modelData === 0 ? 8 : 6) * root.s
-                                        height: width
-                                        radius: width / 2
-                                        color: wxMark.modelData === 0 ? Colors.primary : Colors.surface_container
-                                        border.width: 1.5 * root.s
-                                        border.color: Colors.primary
-                                    }
+                                model: wxSteps.steps
+                                Column {
+                                    id: wxStep
+                                    required property var modelData
+                                    required property int index
+                                    readonly property bool now: index === 0
+                                    readonly property int hr: parseInt(modelData.hour, 10)
+                                    width: wxSteps.width / 7
+                                    spacing: 5 * root.s
+                                    opacity: wxTile.seg(1 + index * 0.35)
+                                    transform: Translate { y: (1 - wxTile.seg(1 + wxStep.index * 0.35)) * 6 * root.s }
                                     Text {
-                                        x: Math.max(0, Math.min(wxCurveBox.width - width, wxMark.cx - width / 2))
-                                        y: wxMark.cy - height - 4 * root.s
-                                        text: wxMark.h.temp + "°"
-                                        color: Colors.on_surface
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: wxStep.now ? "Now" : wxStep.modelData.hour
+                                        color: wxStep.now ? Colors.on_surface_variant : Qt.alpha(Colors.on_surface_variant, 0.65)
                                         font.family: Appearance.font.family
-                                        font.pixelSize: 11 * root.s
+                                        font.pixelSize: 9.5 * root.s
                                         font.weight: Font.DemiBold
+                                        font.capitalization: Font.AllUppercase
+                                        font.letterSpacing: 0.5 * root.s
                                         font.features: ({ "tnum": 1 })
                                     }
+                                    GlyphIcon {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: 18 * root.s
+                                        height: 18 * root.s
+                                        name: Weather.glyphFor(wxStep.modelData.code, wxStep.now ? Weather.isDay : (wxStep.hr >= 6 && wxStep.hr < 19))
+                                        color: wxStep.now ? Colors.primary : Colors.on_surface_variant
+                                        stroke: 1.7
+                                    }
                                     Text {
-                                        x: Math.max(0, Math.min(wxCurveBox.width - width, wxMark.cx - width / 2))
-                                        y: wxCurveBox.height - height
-                                        text: wxMark.modelData === 0 ? "now" : wxMark.h.hour
-                                        color: Colors.on_surface_variant
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: wxStep.modelData.temp + "°"
+                                        color: wxStep.now ? Colors.on_surface : Qt.alpha(Colors.on_surface, 0.85)
                                         font.family: Appearance.font.family
-                                        font.pixelSize: 10 * root.s
-                                        font.weight: Font.Medium
+                                        font.pixelSize: 11.5 * root.s
+                                        font.weight: wxStep.now ? Font.Bold : Font.DemiBold
                                         font.features: ({ "tnum": 1 })
                                     }
                                 }
@@ -1662,18 +1603,22 @@ PanelWindow {
                         accessibleName: "System, CPU " + Sysmon.cpu + " percent, memory " + Sysmon.memPct + " percent"
 
                         TileLabel { kanji: "系"; text: "System" }
+                        // Uptime, as the 系 pill surface shows it. The CPU
+                        // temperature used to sit here alone and unlabelled;
+                        // it now reads under the CPU value it belongs to.
                         Text {
                             anchors.right: parent.right
                             anchors.rightMargin: 20 * root.s
                             y: 14 * root.s
                             height: 24 * root.s
                             verticalAlignment: Text.AlignVCenter
-                            visible: Sysmon.cpuTemp >= 0
-                            text: Sysmon.cpuTemp + "°"
-                            color: Sysmon.cpuTemp >= 90 ? Colors.error : Colors.on_surface_variant
+                            text: Sysmon.uptime
+                            opacity: sysBox.seg(0.5)
+                            color: Qt.alpha(Colors.on_surface_variant, 0.8)
                             font.family: Appearance.font.family
-                            font.pixelSize: 11 * root.s
+                            font.pixelSize: 9.5 * root.s
                             font.weight: Font.Bold
+                            font.letterSpacing: 1.1 * root.s
                             font.features: ({ "tnum": 1 })
                         }
                         Column {
@@ -1683,24 +1628,40 @@ PanelWindow {
                             anchors.rightMargin: 20 * root.s
                             y: 46 * root.s
                             spacing: 8 * root.s
+                            // Each line draws itself in from its oldest sample with its
+                            // reading counting up alongside, and its now-bead lands
+                            // with a pop; RAM follows CPU a beat later.
                             Spark {
+                                id: cpuSpark
                                 label: "CPU"
                                 value: Sysmon.cpu
-                                valueText: Sysmon.cpu + "%"
+                                valueText: Math.round(Sysmon.cpu * cpuSpark.draw) + "%"
+                                sub: Sysmon.cpuTemp >= 0 ? Sysmon.cpuTemp + "°" : ""
+                                subColor: Sysmon.cpuTemp >= 90 ? Colors.error : Colors.on_surface_variant
                                 hist: Sysmon.cpuHist
                                 enter: sysBox.seg(0)
+                                draw: sysBox.drawAt(20, 680)
+                                pop: sysBox.popAt(20 + 300)
+                                ripple: sysBox.rippleAt(20 + 300)
                                 tint: Colors.primary
                             }
                             Spark {
+                                id: memSpark
                                 label: "RAM"
                                 value: Sysmon.memPct
-                                valueText: Sysmon.memUsedGb.toFixed(1) + " GB"
+                                valueText: (Sysmon.memUsedGb * memSpark.draw).toFixed(1) + " GB"
+                                sub: "of " + Sysmon.memTotalGb.toFixed(0)
                                 hist: Sysmon.memHist
                                 enter: sysBox.seg(1)
+                                draw: sysBox.drawAt(20 + Motion.cascadeStep * 1.5, 680)
+                                pop: sysBox.popAt(20 + Motion.cascadeStep * 1.5 + 300)
+                                ripple: sysBox.rippleAt(20 + Motion.cascadeStep * 1.5 + 300)
                                 tint: Colors.tertiary
                             }
                         }
-                        // live readings under the graphs, one even column each
+                        // live readings under the graphs, one even column each:
+                        // caption + value, no meters — only GPU and Disk had
+                        // one, so the row read as two gauges and two orphans
                         Row {
                             id: sysStats
                             anchors.left: parent.left
@@ -1719,15 +1680,13 @@ PanelWindow {
                                 enter: sysBox.seg(2)
                                 value: Sysmon.gpu + "%"
                                 aside: Sysmon.gpuTemp >= 0 ? Sysmon.gpuTemp + "°" : ""
-                                frac: Sysmon.gpu / 100
                             }
                             Stat {
                                 width: sysStats.colW
                                 caption: "Disk"
                                 enter: sysBox.seg(2.6)
                                 value: Sysmon.diskPct + "%"
-                                frac: Sysmon.diskPct / 100
-                                tint: Sysmon.diskPct >= 90 ? Colors.error : Colors.secondary
+                                valueColor: Sysmon.diskPct >= 90 ? Colors.error : Colors.on_surface
                             }
                             Stat {
                                 visible: Sysmon.swapUsedGb > 0.05
@@ -1739,10 +1698,10 @@ PanelWindow {
                             }
                             Stat {
                                 width: sysStats.colW
-                                caption: "Net"
+                                caption: "Net · " + Sysmon.netUnit
                                 enter: sysBox.seg(3.8)
-                                value: "↓ " + root.fmtRate(Sysmon.netDown)
-                                aside: "↑ " + root.fmtRate(Sysmon.netUp)
+                                value: "↓ " + Sysmon.fmtNet(Sysmon.netDown)
+                                aside: "↑ " + Sysmon.fmtNet(Sysmon.netUp)
                             }
                         }
                     }
@@ -2009,6 +1968,16 @@ PanelWindow {
         readonly property int drawDur: Math.round(Motion.largeDur * 1.4)
         readonly property real reveal: Motion.ease(tile.clock / tile.drawDur, Motion.standardCurve)
         function seg(i) { return Motion.ease((tile.clock - i * Motion.cascadeStep) / Motion.normalDur, Motion.standardCurve); }
+        /**
+         * Graph entrance, on the same clock: a line draws from its oldest
+         * sample to "now" from t0 over dur ms (emphasized-decelerate: quick
+         * off the mark, long settle into the present); pop is the now-bead
+         * landing (expressive fast-spatial, so it overshoots and settles) and
+         * ripple the one ring it throws as it lands.
+         */
+        function drawAt(t0, dur) { return Motion.ease((tile.clock - t0) / dur, Motion.emphasizedDecel); }
+        function popAt(t0) { return Motion.ease((tile.clock - t0) / Motion.normalDur, Motion.expressiveFastSpatial); }
+        function rippleAt(t0) { return Motion.ease((tile.clock - t0) / Motion.largeDur, Motion.standardCurve); }
 
         radius: 24 * root.s
         color: Qt.alpha(Colors.surface_container, 0.94)
@@ -2422,15 +2391,28 @@ PanelWindow {
         property string label: ""
         property real value: 0
         property string valueText: ""
+        /** Small second line under the value (CPU temperature, memory total). */
+        property string sub: ""
+        property color subColor: Colors.on_surface_variant
         property var hist: []
         property color tint: Colors.primary
-        /** Entrance, 0→1: the graph draws in left→right. */
+        /** Entrance, 0→1: the row fades up into place. */
         property real enter: 1
+        /** Entrance, 0→1: how much of the line has drawn, oldest sample → now. */
+        property real draw: 1
+        /** The now-bead landing (overshoots past 1, settles at 1). */
+        property real pop: 1
+        /** The landing ring, 0→1 (gone at 1). */
+        property real ripple: 1
         width: parent ? parent.width : 0
         height: 38 * root.s
         opacity: Math.min(1, sp.enter * 3)
+        transform: Translate { y: (1 - sp.enter) * 6 * root.s }
         onHistChanged: graph.requestPaint()
         onTintChanged: graph.requestPaint()
+        onDrawChanged: graph.requestPaint()
+        onPopChanged: graph.requestPaint()
+        onRippleChanged: graph.requestPaint()
 
         Text {
             id: spLabel
@@ -2451,10 +2433,22 @@ PanelWindow {
             anchors.rightMargin: 10 * root.s
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            Item {
-                width: parent.width * sp.enter
-                height: parent.height
-                clip: true
+        /**
+         * A fixed time axis: the newest sample sits at the right edge and
+         * each step is 1/(histLen-1) of the width, so a young history fills
+         * in from the right. It used to stretch whatever existed across the
+         * whole width — a minute of samples drew as a 4-minute plateau, and
+         * the shape kept rescaling as it filled. The line runs through the
+         * sample midpoints as quadratic curves (no zig-zag kinks), the area
+         * under it fades out toward the floor, and a dot marks "now".
+         *
+         * Entrance: only the first `draw` of the line is traced (the head
+         * interpolated between samples), the fill fades in with it, and the
+         * bead rides the head as a small pen tip, then lands — swelling past
+         * its size and settling (`pop`) as one ring spreads out and fades
+         * (`ripple`). Was: a left→right clip wipe, which crossed the empty
+         * left of a young history first, so the line only appeared at the end.
+         */
         Canvas {
             id: graph
             width: graphBox.width
@@ -2465,54 +2459,112 @@ PanelWindow {
                 ctx.reset();
                 var h = sp.hist;
                 var n = Sysmon.histLen;
+                var W = width, H = height;
                 // baseline + 50% guide so a fresh graph still reads as a graph
-                ctx.fillStyle = Qt.alpha(Colors.on_surface, 0.07);
-                ctx.fillRect(0, Math.round(height / 2), width, 1);
+                ctx.fillStyle = Qt.alpha(Colors.on_surface, 0.06);
+                ctx.fillRect(0, Math.round(H / 2), W, 1);
                 ctx.fillStyle = Qt.alpha(Colors.on_surface, 0.12);
-                ctx.fillRect(0, height - 1, width, 1);
+                ctx.fillRect(0, H - 1, W, 1);
                 if (!h || h.length < 2)
                     return;
                 if (h.length > n)
                     h = h.slice(h.length - n);
-                var W = width, H = height, pad = 2 * root.s;
-                // stretch what exists across the width; settles at histLen
-                var step = W / (Math.max(2, Math.min(n, h.length)) - 1);
-                var x0 = 0;
-                function yOf(v) { return pad + (H - 2 * pad) * (1 - Math.max(0, Math.min(100, v)) / 100); }
-                ctx.beginPath();
-                ctx.moveTo(x0, H);
+                var dotR = 2.6 * root.s, pad = dotR + 1 * root.s;
+                var right = W - dotR - 1 * root.s;
+                var step = right / (n - 1);
+                var pts = [];
                 for (var i = 0; i < h.length; i++)
-                    ctx.lineTo(x0 + i * step, yOf(h[i]));
-                ctx.lineTo(W, H);
-                ctx.closePath();
-                ctx.fillStyle = Qt.alpha(sp.tint, 0.16);
-                ctx.fill();
-                ctx.beginPath();
-                for (var j = 0; j < h.length; j++) {
-                    if (j === 0) ctx.moveTo(x0, yOf(h[0]));
-                    else ctx.lineTo(x0 + j * step, yOf(h[j]));
+                    pts.push({
+                        x: right - (h.length - 1 - i) * step,
+                        y: pad + (H - 1 - 2 * pad) * (1 - Math.max(0, Math.min(100, h[i])) / 100)
+                    });
+                var dl = Math.max(0, Math.min(1, sp.draw));
+                if (dl <= 0)
+                    return;
+                var m = (pts.length - 1) * dl, ki = Math.floor(m), kf = m - ki;
+                var all = pts;
+                pts = all.slice(0, ki + 1);
+                if (ki < all.length - 1 && kf > 1e-3)
+                    pts.push({ x: all[ki].x + (all[ki + 1].x - all[ki].x) * kf, y: all[ki].y + (all[ki + 1].y - all[ki].y) * kf });
+                var last = pts[pts.length - 1];
+                function trace() {
+                    ctx.moveTo(pts[0].x, pts[0].y);
+                    for (var k = 1; k < pts.length - 1; k++)
+                        ctx.quadraticCurveTo(pts[k].x, pts[k].y, (pts[k].x + pts[k + 1].x) / 2, (pts[k].y + pts[k + 1].y) / 2);
+                    ctx.lineTo(last.x, last.y);
                 }
+                // Gradient stops get rgba() strings: a translucent color value
+                // serializes to #aarrggbb, which the Canvas misreads.
+                function rgba(c, a) {
+                    return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + a + ")";
+                }
+                ctx.beginPath();
+                trace();
+                ctx.lineTo(last.x, H - 1);
+                ctx.lineTo(pts[0].x, H - 1);
+                ctx.closePath();
+                var g = ctx.createLinearGradient(0, 0, 0, H);
+                g.addColorStop(0, rgba(sp.tint, 0.30 * dl));
+                g.addColorStop(1, rgba(sp.tint, 0.02 * dl));
+                ctx.fillStyle = g;
+                if (pts.length >= 2)
+                    ctx.fill();
+                ctx.beginPath();
+                trace();
                 ctx.lineWidth = 1.8 * root.s;
                 ctx.lineJoin = "round";
                 ctx.lineCap = "round";
                 ctx.strokeStyle = sp.tint;
-                ctx.stroke();
+                if (pts.length >= 2)
+                    ctx.stroke();
+                // now: a solid bead on a soft halo; a pen tip while drawing
+                var pop = Math.max(0, sp.pop), rip = Math.max(0, Math.min(1, sp.ripple));
+                if (rip > 0 && rip < 1) {
+                    ctx.beginPath();
+                    ctx.arc(last.x, last.y, dotR + 9 * root.s * rip, 0, 2 * Math.PI);
+                    ctx.lineWidth = 1.3 * root.s;
+                    ctx.strokeStyle = Qt.alpha(sp.tint, 0.55 * (1 - rip));
+                    ctx.stroke();
+                }
+                ctx.beginPath();
+                ctx.arc(last.x, last.y, dotR + 2 * root.s * Math.min(1, pop), 0, 2 * Math.PI);
+                ctx.fillStyle = Qt.alpha(sp.tint, 0.22 * Math.min(1, pop));
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(last.x, last.y, dotR * (0.65 + 0.35 * pop), 0, 2 * Math.PI);
+                ctx.fillStyle = sp.tint;
+                ctx.fill();
             }
         }
-            }
         }
-        Text {
+        Column {
             id: spVal
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             width: 58 * root.s
-            horizontalAlignment: Text.AlignRight
-            text: sp.valueText
-            color: Colors.on_surface
-            font.family: Appearance.font.family
-            font.pixelSize: 13 * root.s
-            font.weight: Font.Bold
-            font.features: ({ "tnum": 1 })
+            spacing: 1 * root.s
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignRight
+                text: sp.valueText
+                color: Colors.on_surface
+                font.family: Appearance.font.family
+                font.pixelSize: 13 * root.s
+                font.weight: Font.Bold
+                font.features: ({ "tnum": 1 })
+            }
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignRight
+                visible: sp.sub.length > 0
+                opacity: sp.draw
+                text: sp.sub
+                color: sp.subColor
+                font.family: Appearance.font.family
+                font.pixelSize: 9.5 * root.s
+                font.weight: Font.DemiBold
+                font.features: ({ "tnum": 1 })
+            }
         }
     }
 
@@ -2543,6 +2595,7 @@ PanelWindow {
             height: 24 * root.s
             verticalAlignment: Text.AlignVCenter
             text: Battery.stateLabel
+            opacity: bt.seg(0.5)
             color: bt.tint
             font.family: Appearance.font.family
             font.pixelSize: 11 * root.s
@@ -2721,7 +2774,11 @@ PanelWindow {
                 id: pctText
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: Battery.pct + "%"
+                // counts up as the level pours in (same reveal as the ink and the
+                // well), fading in as it starts rather than holding "0%" while
+                // the tile is still rising
+                text: Math.round(Battery.pct * bt.reveal) + "%"
+                opacity: Math.min(1, bt.reveal * 5)
                 color: Battery.low ? Colors.error : Colors.on_surface
                 font.family: Appearance.font.family
                 font.pixelSize: 38 * root.s
@@ -2740,6 +2797,7 @@ PanelWindow {
             // blank line is left under the gauge; eased so the curve below
             // glides rather than jumps.
             height: text.length > 0 ? timeLineFm.height : 0
+            opacity: bt.seg(1)
             Behavior on height { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.standardCurve } }
             FontMetrics { id: timeLineFm; font: timeLine.font }
             elide: Text.ElideRight
@@ -2769,14 +2827,30 @@ PanelWindow {
                 id: histLabel
                 anchors.left: parent.left
                 anchors.top: parent.top
-                text: Battery.hist.length >= 2
-                    ? "LAST " + (Battery.hist.length >= 120 ? Math.round(Battery.hist.length / 60) + "H" : Battery.hist.length + " MIN")
-                    : "HISTORY"
+                opacity: bt.seg(1.2)
+                text: "LAST 3 HOURS"
                 color: Colors.on_surface_variant
                 font.family: Appearance.font.family
                 font.pixelSize: 9.5 * root.s
                 font.weight: Font.Bold
                 font.letterSpacing: 1.2 * root.s
+            }
+            // range the curve actually spans, so a flat line still says something
+            Text {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                visible: Battery.hist.length >= 2
+                opacity: bt.seg(1.6)
+                text: {
+                    var lo = 101, hi = -1;
+                    Battery.hist.forEach(function (e) { lo = Math.min(lo, e.pct); hi = Math.max(hi, e.pct); });
+                    return lo === hi ? "Steady at " + hi + "%" : lo + " – " + hi + "%";
+                }
+                color: Qt.alpha(Colors.on_surface_variant, 0.8)
+                font.family: Appearance.font.family
+                font.pixelSize: 9.5 * root.s
+                font.weight: Font.DemiBold
+                font.features: ({ "tnum": 1 })
             }
             Text {
                 anchors.centerIn: curve
@@ -2786,6 +2860,14 @@ PanelWindow {
                 font.family: Appearance.font.family
                 font.pixelSize: 10.5 * root.s
             }
+            /**
+             * Charge over a fixed 3 h window: x is real time (now at the right
+             * edge), so a short history sits at the right instead of being
+             * stretched across the width, and a stretch with no samples (the
+             * machine asleep or off) is left as a gap rather than bridged.
+             * Faint hour lines are labelled along the floor; the area under
+             * each run fades out toward it, with a bead at the latest reading.
+             */
             Canvas {
                 id: curve
                 anchors.left: parent.left
@@ -2795,9 +2877,24 @@ PanelWindow {
                 anchors.bottom: parent.bottom
                 readonly property var h: Battery.hist
                 readonly property color tint: bt.tint
-                // unrolls from the left with the tile's reveal
-                opacity: Math.min(1, bt.reveal * 3)
-                transform: Scale { xScale: bt.reveal }
+                /*
+                 * Entrance: the guides and hour labels fade in first, then the
+                 * charge line draws itself along its own time span (oldest
+                 * reading → now; the head interpolated, the wash fading in
+                 * behind it) and the bead lands with a pop and one ring.
+                 * Was a horizontal Scale on the whole canvas, which squashed
+                 * the labels and slid the data in from the left distorted.
+                 */
+                readonly property real grid: bt.seg(1.2)
+                readonly property real draw: bt.drawAt(Motion.cascadeStep * 2, 760)
+                // emphasized-decelerate has the head ~95% there by ~40% of the
+                // draw, so the bead lands there, not at the end of the tail
+                readonly property real pop: bt.popAt(Motion.cascadeStep * 2 + 330)
+                readonly property real ripple: bt.rippleAt(Motion.cascadeStep * 2 + 330)
+                onGridChanged: requestPaint()
+                onDrawChanged: requestPaint()
+                onPopChanged: requestPaint()
+                onRippleChanged: requestPaint()
                 onHChanged: requestPaint()
                 onTintChanged: requestPaint()
                 onWidthChanged: requestPaint()
@@ -2806,40 +2903,104 @@ PanelWindow {
                     var ctx = getContext("2d");
                     ctx.reset();
                     var W = width, H = height;
-                    // 20% / 50% / 80% guides
-                    ctx.strokeStyle = Qt.alpha(Colors.on_surface, 0.07);
-                    ctx.lineWidth = 1;
-                    [0.2, 0.5, 0.8].forEach(function (g) {
-                        ctx.beginPath();
-                        ctx.moveTo(0, Math.round(H * (1 - g)) + 0.5);
-                        ctx.lineTo(W, Math.round(H * (1 - g)) + 0.5);
-                        ctx.stroke();
-                    });
-                    if (h.length < 2)
+                    var span = Battery.histSpan, now = Date.now();
+                    var dotR = 3 * root.s;
+                    var right = W - dotR - 1 * root.s;
+                    var top = dotR + 1 * root.s, floor = H - 1;
+                    function xOf(t) { return right * (1 - (now - t) / span); }
+                    function yOf(p) { return top + (floor - top) * (1 - p / 100); }
+                    function rgba(c, a) {
+                        return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + a + ")";
+                    }
+                    // 50% guide, floor, and the hour lines with their labels
+                    ctx.globalAlpha = Math.max(0, Math.min(1, grid));
+                    ctx.fillStyle = Qt.alpha(Colors.on_surface, 0.06);
+                    ctx.fillRect(0, Math.round(yOf(50)), W, 1);
+                    ctx.fillStyle = Qt.alpha(Colors.on_surface, 0.12);
+                    ctx.fillRect(0, floor, W, 1);
+                    ctx.font = "600 " + Math.round(9 * root.s) + "px '" + Appearance.font.family + "'";
+                    ctx.textBaseline = "bottom";
+                    for (var hr = 1; hr <= 2; hr++) {
+                        var gx = Math.round(xOf(now - hr * 3600000));
+                        ctx.fillStyle = Qt.alpha(Colors.on_surface, 0.06);
+                        ctx.fillRect(gx, 0, 1, floor);
+                        ctx.fillStyle = Qt.alpha(Colors.on_surface_variant, 0.75);
+                        ctx.fillText("−" + hr + "h", gx + 4 * root.s, floor - 3 * root.s);
+                    }
+                    ctx.globalAlpha = 1;
+                    if (h.length < 2 || draw <= 0)
                         return;
-                    var step = W / (h.length - 1);
-                    function yOf(p) { return 2 + (H - 4) * (1 - p / 100); }
-                    ctx.beginPath();
-                    ctx.moveTo(0, H);
-                    for (var i = 0; i < h.length; i++)
-                        ctx.lineTo(i * step, yOf(h[i].pct));
-                    ctx.lineTo(W, H);
-                    ctx.closePath();
-                    var g = ctx.createLinearGradient(0, 0, 0, H);
-                    g.addColorStop(0, Qt.alpha(tint, 0.28));
-                    g.addColorStop(1, Qt.alpha(tint, 0.0));
-                    ctx.fillStyle = g;
-                    ctx.fill();
+                    // drawn so far: readings up to the head time, the head itself
+                    // interpolated between the two readings it falls between
+                    var dl = Math.min(1, draw);
+                    var tHead = h[0].t + (h[h.length - 1].t - h[0].t) * dl;
+                    var hd = [];
+                    for (var q = 0; q < h.length && h[q].t <= tHead; q++)
+                        hd.push(h[q]);
+                    if (q < h.length && q > 0) {
+                        var a = h[q - 1], b = h[q], f = (tHead - a.t) / Math.max(1, b.t - a.t);
+                        hd.push({ t: tHead, pct: a.pct + (b.pct - a.pct) * f, chg: b.chg });
+                    }
+                    // contiguous runs: a hole of over 3 min is time with no reading
+                    var runs = [], run = [];
+                    for (var i = 0; i < hd.length; i++) {
+                        if (run.length && hd[i].t - run[run.length - 1].t > 180000) {
+                            runs.push(run);
+                            run = [];
+                        }
+                        run.push(hd[i]);
+                    }
+                    runs.push(run);
+                    var g = ctx.createLinearGradient(0, top, 0, floor);
+                    g.addColorStop(0, rgba(tint, 0.24 * dl));
+                    g.addColorStop(1, rgba(tint, 0.0));
                     ctx.lineWidth = 2.2 * root.s;
                     ctx.lineJoin = "round";
                     ctx.lineCap = "round";
-                    for (var j = 1; j < h.length; j++) {
+                    runs.forEach(function (r) {
+                        if (r.length < 2) {
+                            ctx.beginPath();
+                            ctx.arc(xOf(r[0].t), yOf(r[0].pct), 1.6 * root.s, 0, 2 * Math.PI);
+                            ctx.fillStyle = r[0].chg ? Colors.tertiary : tint;
+                            ctx.fill();
+                            return;
+                        }
                         ctx.beginPath();
-                        ctx.strokeStyle = h[j].chg ? Colors.tertiary : tint;
-                        ctx.moveTo((j - 1) * step, yOf(h[j - 1].pct));
-                        ctx.lineTo(j * step, yOf(h[j].pct));
+                        ctx.moveTo(xOf(r[0].t), floor);
+                        r.forEach(function (e) { ctx.lineTo(xOf(e.t), yOf(e.pct)); });
+                        ctx.lineTo(xOf(r[r.length - 1].t), floor);
+                        ctx.closePath();
+                        ctx.fillStyle = g;
+                        ctx.fill();
+                        for (var j = 1; j < r.length; j++) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = r[j].chg ? Colors.tertiary : tint;
+                            ctx.moveTo(xOf(r[j - 1].t), yOf(r[j - 1].pct));
+                            ctx.lineTo(xOf(r[j].t), yOf(r[j].pct));
+                            ctx.stroke();
+                        }
+                    });
+                    // the head: a pen tip while drawing, then it lands — swells
+                    // past its size and settles while one ring spreads and fades
+                    var e = hd[hd.length - 1];
+                    var lc = e.chg ? Colors.tertiary : tint;
+                    var ex = xOf(e.t), ey = yOf(e.pct);
+                    var pp = Math.max(0, pop), rp = Math.max(0, Math.min(1, ripple));
+                    if (rp > 0 && rp < 1) {
+                        ctx.beginPath();
+                        ctx.arc(ex, ey, dotR + 10 * root.s * rp, 0, 2 * Math.PI);
+                        ctx.lineWidth = 1.4 * root.s;
+                        ctx.strokeStyle = Qt.alpha(lc, 0.55 * (1 - rp));
                         ctx.stroke();
                     }
+                    ctx.beginPath();
+                    ctx.arc(ex, ey, dotR + 2 * root.s * Math.min(1, pp), 0, 2 * Math.PI);
+                    ctx.fillStyle = Qt.alpha(lc, 0.22 * Math.min(1, pp));
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(ex, ey, dotR * (0.65 + 0.35 * pp), 0, 2 * Math.PI);
+                    ctx.fillStyle = lc;
+                    ctx.fill();
                 }
             }
         }
@@ -2856,21 +3017,25 @@ PanelWindow {
             anchors.bottom: profileSeg.visible ? profileSeg.top : parent.bottom
             anchors.bottomMargin: profileSeg.visible ? 14 * root.s : 16 * root.s
             spacing: 14 * root.s
-            readonly property int n: Battery.healthSupported ? 3 : 2
+            // Health comes from UPower when it reports it, else from sysfs
+            // (energy_full / design). On the charger with nothing flowing the
+            // rate is 0 W by definition, so that cell shows charge cycles.
+            readonly property int healthPct: Battery.healthSupported ? Battery.health : Battery.wearPct
+            readonly property bool flowing: Battery.charging || Battery.discharging
+            readonly property int n: healthPct >= 0 ? 3 : 2
             readonly property real colW: (width - (n - 1) * spacing) / n
             Stat {
                 width: battStats.colW
-                caption: Battery.charging ? "Charging" : (Battery.discharging ? "Draw" : "Idle")
-                value: Math.abs(Battery.rateW).toFixed(1)
-                aside: "W"
+                caption: battStats.flowing ? (Battery.charging ? "Charging" : "Draw") : (Battery.cycles >= 0 ? "Cycles" : "Rate")
+                value: battStats.flowing || Battery.cycles < 0 ? Math.abs(Battery.rateW).toFixed(1) : "" + Battery.cycles
+                aside: battStats.flowing || Battery.cycles < 0 ? "W" : ""
             }
             Stat {
-                visible: Battery.healthSupported
+                visible: battStats.healthPct >= 0
                 width: battStats.colW
                 caption: "Health"
-                value: Battery.health + "%"
-                frac: Battery.health / 100
-                tint: Battery.health < 70 ? Colors.error : Colors.secondary
+                value: battStats.healthPct + "%"
+                valueColor: battStats.healthPct < 70 ? Colors.error : Colors.on_surface
             }
             Stat {
                 width: battStats.colW
@@ -3129,6 +3294,7 @@ PanelWindow {
         /** 0..1 fills the meter; < 0 hides it. */
         property real frac: -1
         property color tint: Colors.primary
+        property color valueColor: Colors.on_surface
         /** Entrance, 0→1: fades up, the meter fills from empty. */
         property real enter: 1
         spacing: 4 * root.s
@@ -3152,7 +3318,7 @@ PanelWindow {
                 width: Math.min(implicitWidth, stat.width)
                 elide: Text.ElideRight
                 text: stat.value
-                color: Colors.on_surface
+                color: stat.valueColor
                 font.family: Appearance.font.family
                 font.pixelSize: 14 * root.s
                 font.weight: Font.Bold
@@ -3176,7 +3342,8 @@ PanelWindow {
             height: 3 * root.s
             radius: height / 2
             color: Qt.alpha(Colors.on_surface, 0.08)
-            opacity: stat.frac >= 0 ? 1 : 0
+            // no meter, no reserved line under the value
+            visible: stat.frac >= 0
             Rectangle {
                 width: Math.max(parent.height, parent.width * Math.max(0, Math.min(1, stat.frac)) * stat.enter)
                 height: parent.height
