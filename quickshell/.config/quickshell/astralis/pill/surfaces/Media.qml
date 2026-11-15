@@ -618,7 +618,7 @@ PillSurface {
     }
 
     // ── progress: 筆 ink brush stroke (InkStroke) ────────────────────────────
-    // elapsed · [ink body ≡ dry-brush · hairline ┊ ┊ ┊ ▕] · length
+    // elapsed · [ink body ≡ dry-brush · grayed-out rest of the stroke] · length
     Text {
         id: elapsedText
         anchors.left: parent.left

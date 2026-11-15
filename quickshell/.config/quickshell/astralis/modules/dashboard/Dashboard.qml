@@ -2672,7 +2672,7 @@ PanelWindow {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     height: 34 * root.s
-                    s: root.s * 1.8
+                    s: root.s * 2.2
                     // Opening the dashboard draws the stroke with the tile's
                     // reveal; it used to sit fully inked (bead already
                     // running) while the tile was still rising.
@@ -2681,27 +2681,18 @@ PanelWindow {
                     inkStops: [Colors.error, Colors.tertiary, Colors.primary]
                     wet: 1
                     paper: Colors.surface_container
-                }
-                Rectangle {
-                    id: bead
-                    property real t: 0
-                    readonly property real run: Math.max(0, acInk.headX - acInk.inset - 26 * root.s)
-                    visible: acGauge.visible && acGauge.sweep >= 1 && bt.reveal >= 1 && run > 8 * root.s && !Motion.reduceMotion
-                    x: acInk.x + acInk.inset + bead.t * bead.run - width / 2
-                    anchors.verticalCenter: acInk.verticalCenter
-                    width: 30 * root.s
-                    height: 7 * root.s
-                    radius: height / 2
-                    // fades in off the entry press and out before the dry head
-                    opacity: Math.min(1, bead.t * 5, (1 - bead.t) * 4)
-                    gradient: Gradient {
-                        orientation: Gradient.Horizontal
-                        GradientStop { position: 0.0; color: Qt.alpha(Colors.on_primary, 0) }
-                        GradientStop { position: 0.7; color: Qt.alpha(Colors.on_primary, 0.55) }
-                        GradientStop { position: 1.0; color: Qt.alpha(Colors.on_primary, 0) }
-                    }
-                    SequentialAnimation on t {
-                        running: bead.visible && root.open
+
+                    // The flowing charge: a glint lighting the ink itself,
+                    // from the entry press to just short of the dry head;
+                    // fades in off the press and out before the head.
+                    property real beadT: 0
+                    readonly property real beadRun: Math.max(0, headX - inset - 20 * root.s)
+                    readonly property bool beadOn: acGauge.visible && acGauge.sweep >= 1 && bt.reveal >= 1 && beadRun > 8 * root.s && !Motion.reduceMotion
+                    glintX: inset + 6 * root.s + beadT * beadRun
+                    glint: beadOn ? Math.min(1, beadT * 5, (1 - beadT) * 4) : 0
+
+                    SequentialAnimation on beadT {
+                        running: acInk.beadOn && root.open
                         loops: Animation.Infinite
                         NumberAnimation {
                             from: 0
