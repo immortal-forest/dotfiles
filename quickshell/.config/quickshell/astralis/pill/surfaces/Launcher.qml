@@ -165,7 +165,43 @@ PillSurface {
         list.positionViewAtIndex(selectedIndex, ListView.Contain);
     }
 
-    function activate() {
+    /**
+     * NVIDIA (PRIME render offload) launch. The shell itself runs with glvnd's
+     * EGL vendor pinned to Mesa (autostart.lua), and every child inherits that
+     * pin — prime-run only sets the GLX/Vulkan variables, so without dropping
+     * the EGL pin a native-Wayland GL app would still land on the AMD iGPU.
+     * Same argv and working directory `DesktopEntry.execute()` uses; the
+     * directory goes through `env -C` because the context-object overload of
+     * execDetached ({command, workingDirectory}) fails to convert on this
+     * Quickshell build and would drop the launch.
+     */
+    function launchOnNvidia(entry) {
+        var cmd = ["env", "-u", "__EGL_VENDOR_LIBRARY_FILENAMES"];
+        if (entry.workingDirectory)
+            cmd.push("-C", entry.workingDirectory);
+        cmd.push("prime-run");
+        var src = entry.command;
+        for (var i = 0; i < src.length; i++)
+            cmd.push(src[i]);
+        Quickshell.execDetached(cmd);
+    }
+
+    function isGpuApp(entry) {
+        return !!(entry && !entry.action && entry.id && Flags.gpuApps[entry.id]);
+    }
+
+    /** Ctrl+G / press-and-hold: pin or unpin the selected app to the dGPU. */
+    function toggleGpu(index) {
+        if (root.calcActive || index < 0 || index >= results.length)
+            return;
+        var entry = results[index];
+        if (!entry || entry.action || !entry.id)
+            return;
+        Flags.setGpuApp(entry.id, !root.isGpuApp(entry));
+    }
+
+    /** `nvidia` = Ctrl+Enter: this one launch on the dGPU, pinned or not. */
+    function activate(nvidia) {
         if (root.calcActive) {
             root.copyResult();
             return;
@@ -188,7 +224,10 @@ PillSurface {
                 root.usage[entry.id] = (root.usage[entry.id] || 0) + 1;
                 root.saveUsage();
             }
-            entry.execute();
+            if ((nvidia === true || root.isGpuApp(entry)) && !entry.runInTerminal)
+                root.launchOnNvidia(entry);
+            else
+                entry.execute();
         }
         root.requestClose();
     }
@@ -264,6 +303,17 @@ PillSurface {
             root.selectedIndex = 0;
         }
         onMoved: (d) => root.move(d)
+        onKeyPressed: (e) => {
+            if (!(e.modifiers & Qt.ControlModifier))
+                return;
+            if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                root.activate(true);
+                e.accepted = true;
+            } else if (e.key === Qt.Key_G) {
+                root.toggleGpu(root.selectedIndex);
+                e.accepted = true;
+            }
+        }
         onAccepted: root.activate()
         onDismissed: root.requestClose()
     }
@@ -447,6 +497,7 @@ PillSurface {
 
             readonly property var entry: root.results[index]
             readonly property bool selected: index === root.selectedIndex
+            readonly property bool onNvidia: root.isGpuApp(entry)
 
             readonly property string secondary: {
                 if (!entry)
@@ -512,10 +563,17 @@ PillSurface {
                 pressScale: 0.96
                 minTarget: 0
                 accessibleName: appRow.entry ? appRow.entry.name : ""
-                accessibleDescription: appRow.secondary
+                accessibleDescription: appRow.onNvidia
+                    ? appRow.secondary + " · runs on NVIDIA" : appRow.secondary
                 onClicked: {
                     root.selectedIndex = appRow.index;
                     root.activate();
+                }
+                // A held press never also clicks (MouseArea drops the click
+                // once pressAndHold fired), so holding only flips the pin.
+                onPressAndHold: {
+                    root.selectedIndex = appRow.index;
+                    root.toggleGpu(appRow.index);
                 }
             }
 
@@ -596,10 +654,44 @@ PillSurface {
                     Behavior on color { ColorAnimation { duration: Motion.fast } }
                 }
 
+                /**
+                 * "Runs on NVIDIA" mark for a pinned app (Ctrl+G / hold). Keyed
+                 * on the pin, never the selection, so moving through the list
+                 * does not reflow anything; a pin change slides the slot open
+                 * and fades the chip in. Neutral ink like the category label —
+                 * the one accent stays on the `return` glyph.
+                 */
+                Item {
+                    id: gpuSlot
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: sec.visible ? sec.left : ret.left
+                    // Chip + its 6px gap to the label; at 0 the name's own 8px
+                    // margin is the whole gap, exactly as before the slot.
+                    width: appRow.onNvidia ? 13 * root.s + 6 * root.s : 0
+                    height: 13 * root.s
+                    clip: true
+                    Behavior on width { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+
+                    GlyphIcon {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 13 * root.s
+                        height: 13 * root.s
+                        name: "chip"
+                        stroke: 1.8
+                        color: appRow.selected ? Colors.on_surface_variant
+                            : Qt.alpha(Colors.on_surface_variant, 0.65)
+                        opacity: appRow.onNvidia ? 1 : 0
+                        visible: opacity > 0.01
+                        Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                        Behavior on color { ColorAnimation { duration: Motion.fast } }
+                    }
+                }
+
                 Text {
                     anchors.left: iconBg.right
                     anchors.leftMargin: 10 * root.s
-                    anchors.right: sec.visible ? sec.left : ret.left
+                    anchors.right: gpuSlot.left
                     anchors.rightMargin: 8 * root.s
                     anchors.verticalCenter: parent.verticalCenter
                     text: appRow.entry ? appRow.entry.name : ""

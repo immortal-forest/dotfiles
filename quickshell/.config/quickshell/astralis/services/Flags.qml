@@ -29,6 +29,8 @@ Singleton {
     property alias notifPopup: adapter.notifPopup
     property alias notifSound: adapter.notifSound
     property alias notifApps: adapter.notifApps
+    /** Launcher apps that always start on the NVIDIA dGPU ({ desktopId: true }). */
+    property alias gpuApps: adapter.gpuApps
     property alias airplane: adapter.airplane
     property alias time12h: adapter.time12h
     property alias clockSeconds: adapter.clockSeconds
@@ -99,6 +101,16 @@ Singleton {
         else
             delete m[app];
         adapter.notifApps = m;
+    }
+
+    /** Pin (or unpin) a desktop entry to the NVIDIA dGPU for launcher starts. */
+    function setGpuApp(id, on) {
+        var m = Object.assign({}, adapter.gpuApps);
+        if (on)
+            m[id] = true;
+        else
+            delete m[id];
+        adapter.gpuApps = m;
     }
     // Colourfulness (Settings → Appearance): map the string pref onto the
     // Colors singleton's numeric vibrancy so the whole shell recolours live.
@@ -235,6 +247,7 @@ Singleton {
             property string notifPopup: "normal"
             property bool notifSound: false
             property var notifApps: ({})
+            property var gpuApps: ({})
             property bool airplane: false
             property bool time12h: false
             property bool clockSeconds: false

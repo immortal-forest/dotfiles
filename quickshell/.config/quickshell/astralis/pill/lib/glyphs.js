@@ -139,6 +139,7 @@ var glyphs = ({
     "video": { d: "M3 7.5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 15 7.5v9A1.5 1.5 0 0 1 13.5 18h-9A1.5 1.5 0 0 1 3 16.5z M15 10l6-3v10l-6-3z", fill: false },
     "record": { d: "M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16z", fill: true },
     "stop": { d: "M7.6 6h8.8A1.6 1.6 0 0 1 18 7.6v8.8a1.6 1.6 0 0 1-1.6 1.6H7.6A1.6 1.6 0 0 1 6 16.4V7.6A1.6 1.6 0 0 1 7.6 6z", fill: true },
+    "chip": { d: "M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z M10 10h4v4h-4z M10 2v4 M14 2v4 M10 18v4 M14 18v4 M2 10h4 M2 14h4 M18 10h4 M18 14h4", fill: false },
     "gamepad": { d: "M7 11h4 M9 9v4 M15.5 10h.01 M17.5 13h.01 M17 7H7a5 5 0 0 0-5 5l-.9 4.5A2.4 2.4 0 0 0 5.7 18L8 15h8l2.3 3a2.4 2.4 0 0 0 4.6-1.5L22 12a5 5 0 0 0-5-5z", fill: false },
     // Added to retire the raw Unicode characters the shell was using as icons
     // (− + ↓ ⇪ ▾ ✕ ↵). A text glyph borrowed from the UI font renders at the
