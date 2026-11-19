@@ -90,9 +90,114 @@ Singleton {
     /** What every view should treat as "silenced": manual DND or quiet hours. */
     readonly property bool quiet: root.dnd || root.inQuietHours
 
+    function validMode(m) {
+        return m === "silent" || m === "off" ? m : "";
+    }
+
+    /**
+     * Mode for a sender label: its installed app's rule ("@<desktop id>",
+     * set from that app's Settings row) when the label belongs to one, else
+     * a rule on the label itself (scripts, the shell's own senders).
+     */
     function modeFor(app) {
-        var m = root.appRules[app];
-        return m === "silent" || m === "off" ? m : "alert";
+        var id = root.labelEntryId(app);
+        var m = id.length ? root.validMode(root.appRules["@" + id]) : "";
+        if (!m.length) m = root.validMode(root.appRules[app]);
+        return m.length ? m : "alert";
+    }
+
+    /** Same rule as modeFor, for a Settings app row ({ key, labels }). */
+    function rowMode(row) {
+        if (!row) return "alert";
+        var m = root.validMode(root.appRules[row.key]);
+        for (var i = 0; !m.length && i < row.labels.length; i++)
+            m = root.validMode(root.appRules[row.labels[i]]);
+        return m.length ? m : "alert";
+    }
+
+    /** Labels the shell gives senders itself; never an installed app's. */
+    readonly property var shellLabels: ["System", "Hyprland", "Screenshot", "astralis"]
+
+    /**
+     * The installed app (desktop-entry id) a notification comes from, or "":
+     * the desktop-entry hint, else the sender name. A nameless sender only
+     * counts when its label IS the hinted app (Ghostty), so a sender named in
+     * the text ("Claude" via a terminal) keeps its own row.
+     */
+    function entryIdOf(n, label) {
+        if (!n || root.shellLabels.indexOf(label) !== -1) return "";
+        var k = root.kindOf(n);
+        if (k === "screenshot" || k === "shell" || k === "recording") return "";
+        var e = root.entryFor(n.desktopEntry);
+        if (k === "system")
+            return e && e.name === label ? e.id : "";
+        if (!e) e = root.entryFor(label);
+        return e ? e.id : "";
+    }
+
+    /** Entry id for a seen label: stored on arrival, else looked up by name (older cache rows). */
+    function labelEntryId(label) {
+        var kn = root.knownApps[label];
+        if (kn && kn.entry !== undefined) return kn.entry;
+        if (root.shellLabels.indexOf(label) !== -1) return "";
+        var e = root.entryFor(label);
+        return e ? e.id : "";
+    }
+
+    /** A content image picked up as an icon (hyprshot's shot, as image://icon//path) isn't the app's. */
+    function rowIcon(icon) {
+        var s = String(icon || "");
+        return s.indexOf("image://icon//") === 0 ? "" : s;
+    }
+
+    /**
+     * The Settings app list: every installed GUI app (a terminal tool
+     * notifies as its terminal), each folding in the senders seen from it,
+     * plus senders that aren't an installed app (scripts, Screenshot,
+     * System). Alphabetical. A row is { key, name, icon, glyph, labels }:
+     * key "@<desktop id>" for an app, else the sender label.
+     */
+    function appRows() {
+        var rows = {};
+        function addEntry(e) {
+            var key = "@" + e.id;
+            if (!rows[key])
+                rows[key] = { key: key, name: e.name || e.id, icon: e.icon ? Quickshell.iconPath(e.icon, true) : "", glyph: "inbox", labels: [] };
+            return rows[key];
+        }
+        var apps = DesktopEntries.applications.values;
+        for (var i = 0; i < apps.length; i++) {
+            var a = apps[i];
+            if (a && !a.noDisplay && !a.runInTerminal) addEntry(a);
+        }
+        var labels = {};
+        for (var l in root.knownApps) labels[l] = true;
+        for (var r in root.appRules) if (r.charAt(0) !== "@") labels[r] = true;
+        var gs = root.groups;
+        for (var g = 0; g < gs.length; g++) if (gs[g].app) labels[gs[g].app] = true;
+        for (var lab in labels) {
+            var id = root.labelEntryId(lab);
+            var e = id.length ? DesktopEntries.byId(id) : null;
+            if (e) {
+                addEntry(e).labels.push(lab);
+                continue;
+            }
+            var kn = root.knownApps[lab];
+            rows[lab] = { key: lab, name: lab, icon: root.rowIcon(kn ? kn.icon : ""), glyph: (kn && kn.glyph) || "inbox", labels: [lab] };
+        }
+        // A rule on an app since uninstalled keeps its row, so it can be reset.
+        for (var rk in root.appRules) {
+            if (rk.charAt(0) !== "@" || rows[rk]) continue;
+            var ge = DesktopEntries.byId(rk.substring(1));
+            if (ge) addEntry(ge);
+            else rows[rk] = { key: rk, name: rk.substring(1), icon: "", glyph: "inbox", labels: [] };
+        }
+        var out = [];
+        for (var k in rows) out.push(rows[k]);
+        out.sort(function (x, y) {
+            return x.name.toLowerCase().localeCompare(y.name.toLowerCase()) || x.key.localeCompare(y.key);
+        });
+        return out;
     }
 
     /**
@@ -110,31 +215,11 @@ Singleton {
         var now = Date.now();
         var icon = root.appIconFor(n);
         if (!icon.length && cur) icon = cur.icon || "";
-        if (cur && cur.icon === icon && now - (cur.last || 0) < 60000) return;
+        var entry = root.entryIdOf(n, app);
+        if (cur && cur.icon === icon && cur.entry === entry && now - (cur.last || 0) < 60000) return;
         var m = Object.assign({}, root.knownApps);
-        m[app] = { icon: icon, glyph: root.glyphFor(n), last: now };
+        m[app] = { icon: icon, glyph: root.glyphFor(n), entry: entry, last: now };
         root.knownApps = m;
-    }
-
-    /** Labels for the Settings app list: known ∪ ruled ∪ in the centre, most recent first. */
-    function appKeys() {
-        var seen = {};
-        var out = [];
-        var lastOf = {};
-        function add(a, t) {
-            if (!a || !a.length) return;
-            lastOf[a] = Math.max(lastOf[a] || 0, t || 0);
-            if (!seen[a]) { seen[a] = true; out.push(a); }
-        }
-        var k = root.knownApps;
-        for (var a in k) add(a, k[a].last);
-        for (var r in root.appRules) add(r, 0);
-        var gs = root.groups;
-        for (var i = 0; i < gs.length; i++) add(gs[i].app, gs[i].t);
-        out.sort(function(x, y) {
-            return (lastOf[y] - lastOf[x]) || x.localeCompare(y);
-        });
-        return out;
     }
 
     /** Freedesktop chime via PipeWire (PulseAudio fallback); honours suppress-sound / sound-file / sound-name. */

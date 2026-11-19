@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import Quickshell
 import ".."
 import "../../colors"
 import "../../services"
@@ -10,19 +11,24 @@ import "../../config"
 /**
  * astralis — 報 NOTIFICATIONS settings page: the phone-style notification
  * controls. Do Not Disturb with daily quiet hours and an urgent bypass, how
- * long a popup stays, an optional chime, and one row per app that has ever
- * notified with Alert / Silent / Off — Alert pops up (and chimes), Silent
- * goes straight to the centre, Off drops the app's notifications outright.
+ * long a popup stays, an optional chime, and a searchable list of apps, each
+ * with Alert / Silent / Off — Alert pops up (and chimes), Silent goes
+ * straight to the centre, Off drops the app's notifications outright.
  *
  * Everything persists through Flags (flags.json) and is pushed into the
- * Notifications service by Flags' Bindings; the app list itself comes from
- * the service's seen-apps cache (notif-apps.json) so a blocked app stays
- * listed and can be let back in.
+ * Notifications service by Flags' Bindings. The app list (service appRows)
+ * is every installed app, so one can be silenced before it ever notifies,
+ * plus senders that aren't an installed app (scripts, Screenshot, System)
+ * from the seen-apps cache (notif-apps.json), so a blocked one stays listed
+ * and can be let back in.
  */
 SettingsPage {
     id: root
 
     contentY: flick.contentY
+
+    /** Up/Down/Enter/Escape leaving the search field: Settings hands keys back to its row nav. */
+    signal releaseKeys()
 
     readonly property var notifs: Services.Notifications
 
@@ -57,32 +63,87 @@ SettingsPage {
             if (!it) continue;
             out.push({
                 item: it, kind: "seg", vals: root.modeVals,
-                get: (function (a) { return function () { return root.notifs.modeFor(a); }; })(it.app),
-                set: (function (a) { return function (v) { Flags.setNotifApp(a, v); }; })(it.app)
+                get: (function (r) { return function () { return root.notifs.rowMode(r); }; })(it.row),
+                set: (function (r) { return function (v) { Flags.setNotifApp(r.key, v, r.labels); }; })(it.row)
             });
         }
         root.appRowEntries = out;
     }
 
     /**
-     * The app list is a plain array of labels, refreshed on page entry and
-     * otherwise only when an app joins: a Repeater rebuilds every delegate on
-     * any model reassignment, so re-sorting on each arrival would blink the
-     * list while you're looking at it. Captions stay live per row.
+     * The app rows, reassigned only when the set itself changes (an app
+     * installed, a new sender): a Repeater rebuilds every delegate on any
+     * model reassignment, so rebuilding on each arrival would blink the list
+     * while you're looking at it. The search filters by collapsing rows,
+     * never by changing the model.
      */
     property var appList: []
-    function refreshApps() {
-        var k = root.notifs.appKeys();
-        if (k.length === root.appList.length && k.every(function (a) { return root.appList.indexOf(a) !== -1; }))
-            return;
-        root.appList = k;
+    function rowSig(list) {
+        return list.map(function (r) { return r.key + "|" + r.name + "|" + r.icon + "|" + r.labels.join(","); }).join("\n");
     }
-    onActiveChanged: if (active) refreshApps()
+    function refreshApps() {
+        var rows = root.notifs.appRows();
+        if (root.rowSig(rows) !== root.rowSig(root.appList))
+            root.appList = rows;
+    }
+    onActiveChanged: {
+        if (active)
+            refreshApps();
+        else
+            search.text = "";
+    }
     Component.onCompleted: refreshApps()
     Connections {
         target: root.notifs
         function onKnownAppsChanged() { root.refreshApps(); }
         function onAppRulesChanged() { root.refreshApps(); }
+    }
+    Connections {
+        target: DesktopEntries
+        function onApplicationsChanged() { root.refreshApps(); }
+    }
+
+    property string query: ""
+    function matches(row) {
+        var q = root.query.trim().toLowerCase();
+        if (!q.length || row.name.toLowerCase().indexOf(q) !== -1)
+            return true;
+        for (var i = 0; i < row.labels.length; i++)
+            if (row.labels[i].toLowerCase().indexOf(q) !== -1)
+                return true;
+        return false;
+    }
+    /** Indices of the rows the search keeps. */
+    readonly property var shownIdx: {
+        var out = [];
+        for (var i = 0; i < root.appList.length; i++)
+            if (root.matches(root.appList[i]))
+                out.push(i);
+        return out;
+    }
+    readonly property int lastShown: root.shownIdx.length ? root.shownIdx[root.shownIdx.length - 1] : -1
+
+    /** Hand keys back to the row nav; Down/Enter land on the first app shown, Up on the row above. */
+    function leaveSearch(d) {
+        root.releaseKeys();
+        var target = null;
+        if (d > 0 && root.shownIdx.length)
+            target = appRep.itemAt(root.shownIdx[0]);
+        else if (d < 0)
+            target = soundRow;
+        if (target) {
+            root.kbIndex = root.rowIndexOf(target);
+            root.focusRowItem = target;
+        }
+    }
+
+    /** What the app's choice does, not what it sent. */
+    function modeCaption(mode) {
+        if (mode === "off")
+            return "Blocked, nothing is kept";
+        if (mode === "silent")
+            return "Straight to the centre, no popup";
+        return Flags.notifSound ? "Pops up in the pill and chimes" : "Pops up in the pill";
     }
 
     function pad2(n) { return (n < 10 ? "0" : "") + n; }
@@ -93,30 +154,6 @@ SettingsPage {
         return root.pad2(h) + ":" + root.pad2(m);
     }
 
-    function ago(t) {
-        void root.notifs.tick;
-        void root.notifs.nowMin;
-        if (!t) return "";
-        var m = Math.floor((Date.now() - t) / 60000);
-        if (m < 1) return "just now";
-        if (m < 60) return m + "m ago";
-        if (m < 1440) return Math.floor(m / 60) + "h ago";
-        return Math.floor(m / 1440) + "d ago";
-    }
-
-    function captionFor(app) {
-        var known = root.notifs.knownApps[app];
-        var last = known ? known.last : 0;
-        if (root.notifs.modeFor(app) === "off")
-            return last ? "Blocked · last tried " + root.ago(last) : "Blocked";
-        var gs = root.notifs.groups;
-        for (var i = 0; i < gs.length; i++) {
-            if (gs[i].app === app)
-                return gs[i].count + " in the centre · " + root.ago(gs[i].t);
-        }
-        return last ? "Last one " + root.ago(last) : "Nothing recent";
-    }
-
     readonly property string dndCaption: {
         if (root.notifs.dnd)
             return "On until you turn it off";
@@ -125,15 +162,14 @@ SettingsPage {
         return "Hold popups; the centre still collects everything";
     }
 
-    /** One app: its icon, name, a live caption, and the Alert / Silent / Off strip. */
+    /** One app: its icon, name, what its choice does, and the Alert / Silent / Off strip. */
     component AppRow: Item {
         id: arow
-        required property string modelData
+        required property var modelData
         required property int index
-        readonly property string app: arow.modelData
-        readonly property var known: root.notifs.knownApps[arow.app]
-        readonly property string iconSrc: arow.known ? (arow.known.icon || "") : ""
-        readonly property string mode: root.notifs.modeFor(arow.app)
+        readonly property var row: arow.modelData
+        readonly property string iconSrc: arow.row.icon || ""
+        readonly property string mode: root.notifs.rowMode(arow.row)
         readonly property bool hot: ah.hovered || root.focusRowItem === arow
         readonly property real s: root.s
         // Device-pixel grid, same as SettingsRow (see PixelSnap): whole-pixel
@@ -141,10 +177,24 @@ SettingsPage {
         // sits exactly midway between the highlights on either side.
         PixelSnap { id: snap; target: arow }
         readonly property real inset: snap.px(3 * arow.s)
-        readonly property bool divided: arow.index < root.appList.length - 1
+        readonly property bool divided: arow.index < root.lastShown
+
+        // Search collapses non-matches like a SettingsRow's `shown` (kbMove skips them).
+        readonly property bool shown: root.matches(arow.row)
+        property real shownT: arow.shown ? 1 : 0
+        Behavior on shownT {
+            enabled: root.hoverArmed
+            NumberAnimation {
+                duration: arow.shown ? Motion.normalDur : Motion.expressiveFastSpatialDur
+                easing.type: Motion.easeBezier
+                easing.bezierCurve: Motion.emphasized
+            }
+        }
+        clip: arow.shownT < 0.999
+        visible: arow.shown || arow.shownT > 0.01
 
         width: parent ? parent.width : 0
-        height: snap.px(Math.max(textCol.implicitHeight + 24 * arow.s, appSeg.height + 10 * arow.s))
+        height: snap.px(Math.max(textCol.implicitHeight + 24 * arow.s, appSeg.height + 10 * arow.s) * arow.shownT)
 
         property bool entered: false
         function playEnter() {
@@ -164,7 +214,7 @@ SettingsPage {
             interval: Motion.rowStagger * Math.min(Math.max(root.rowIndexOf(arow), 0), 10)
             onTriggered: arow.entered = true
         }
-        opacity: arow.entered ? 1 : 0
+        opacity: arow.entered && arow.shown ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
         transform: Translate {
             y: arow.entered ? 0 : 10 * arow.s
@@ -212,7 +262,7 @@ SettingsPage {
                 width: 17 * arow.s
                 height: 17 * arow.s
                 visible: appImg.status !== Image.Ready
-                name: arow.known && arow.known.glyph ? arow.known.glyph : "inbox"
+                name: arow.row.glyph || "inbox"
                 color: arow.hot ? Colors.on_surface : Colors.on_surface_variant
                 stroke: 1.8
             }
@@ -229,7 +279,7 @@ SettingsPage {
 
             Text {
                 width: parent.width
-                text: arow.app
+                text: arow.row.name
                 elide: Text.ElideRight
                 color: arow.mode === "off" ? Colors.on_surface_variant : Colors.on_surface
                 Behavior on color { ColorAnimation { duration: Motion.fast } }
@@ -239,7 +289,7 @@ SettingsPage {
             }
             Text {
                 width: parent.width
-                text: root.captionFor(arow.app)
+                text: root.modeCaption(arow.mode)
                 elide: Text.ElideRight
                 color: Qt.alpha(Colors.on_surface_variant, 0.85)
                 font.family: Appearance.font.family
@@ -255,7 +305,7 @@ SettingsPage {
             s: arow.s
             options: root.modeOptions
             value: arow.mode
-            onPicked: (v) => Flags.setNotifApp(arow.app, v)
+            onPicked: (v) => Flags.setNotifApp(arow.row.key, v, arow.row.labels)
         }
 
         Rectangle {
@@ -437,6 +487,34 @@ SettingsPage {
                 title: "Apps"
                 key: "notifications/apps"
 
+                Item {
+                    width: parent.width
+                    height: search.height + 8 * root.s
+
+                    SearchField {
+                        id: search
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12 * root.s
+                        anchors.right: parent.right
+                        anchors.rightMargin: 14 * root.s
+                        s: root.s
+                        kanji: "探"
+                        placeholder: "Search apps"
+                        count: root.shownIdx.length
+                        total: root.appList.length
+                        onTextChanged: root.query = text
+                        onMoved: (d) => root.leaveSearch(d)
+                        onAccepted: root.leaveSearch(1)
+                        onDismissed: {
+                            if (text.length > 0)
+                                text = "";
+                            else
+                                root.leaveSearch(0);
+                        }
+                    }
+                }
+
                 Repeater {
                     id: appRep
                     model: root.appList
@@ -446,28 +524,15 @@ SettingsPage {
                 }
 
                 Text {
-                    visible: root.appList.length === 0
+                    visible: root.shownIdx.length === 0
                     topPadding: 6 * root.s
                     leftPadding: 12 * root.s
                     rightPadding: 12 * root.s
                     width: parent.width
-                    text: "Apps show up here after they send their first notification."
+                    text: root.query.trim().length ? "No app matches “" + root.query.trim() + "”" : "No apps found"
                     color: Qt.alpha(Colors.on_surface_variant, 0.85)
                     font.family: Appearance.font.family
                     font.pixelSize: 10.5 * root.s
-                    wrapMode: Text.WordWrap
-                }
-
-                Text {
-                    topPadding: 12 * root.s
-                    leftPadding: 12 * root.s
-                    rightPadding: 12 * root.s
-                    width: parent.width
-                    text: "Alert pops up in the pill (and chimes, if Sound is on). Silent skips the popup and goes straight to the centre. Off drops that app's notifications entirely — nothing is kept."
-                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                    font.family: Appearance.font.family
-                    font.pixelSize: 9.5 * root.s
-                    font.weight: Font.Medium
                     wrapMode: Text.WordWrap
                 }
             }

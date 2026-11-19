@@ -677,6 +677,7 @@ PillSurface {
                 active: root.page === "notifications" && root.open
                 onRequestPage: (name) => root.openPage(name)
                 onBack: root.requestClose()
+                onReleaseKeys: kbNav.forceActiveFocus()
             }
         }
 

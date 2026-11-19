@@ -103,8 +103,12 @@ Singleton {
     Binding { target: Notifications; property: "appRules"; value: adapter.notifApps }
 
     /** Per-app notification mode: "alert" (default, drops the key) | "silent" | "off". */
-    function setNotifApp(app, mode) {
+    function setNotifApp(app, mode, aliases) {
         var m = Object.assign({}, adapter.notifApps);
+        // An app row's rule lives on its own key ("@<desktop id>"); the
+        // per-sender rules it folds in are cleared so one place decides.
+        for (var i = 0; aliases && i < aliases.length; i++)
+            if (aliases[i] !== app) delete m[aliases[i]];
         if (mode === "silent" || mode === "off")
             m[app] = mode;
         else
