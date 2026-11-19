@@ -51,6 +51,7 @@ SettingsPage {
             { item: vizRow, kind: "toggle", get: function () { return Flags.musicViz; }, set: function (v) { Flags.musicViz = v; } },
             { item: vizLayoutRow, kind: "seg", vals: root.vizLayouts.map(function (o) { return o.value; }), get: function () { return Flags.vizLayout; }, set: function (v) { Flags.vizLayout = v; } },
             { item: vizCycleRow, kind: "toggle", get: function () { return Flags.vizColorCycle; }, set: function (v) { Flags.vizColorCycle = v; } },
+            { item: vizFillRow, kind: "seg", vals: ["transparent", "opaque"], get: function () { return Flags.vizFill; }, set: function (v) { Flags.vizFill = v; } },
             { item: glyphRow, kind: "toggle", get: function () { return Flags.showGlyphs; }, set: function (v) { Flags.showGlyphs = v; } },
             { item: scaleRow, kind: "seg", vals: [0.9, 1.0, 1.1, 1.25], get: function () { return Flags.uiScale; }, set: function (v) { Flags.uiScale = v; } },
             { item: dashScaleRow, kind: "seg", vals: [0.7, 0.8, 0.9, 1.0], get: function () { return Flags.dashScale; }, set: function (v) { Flags.dashScale = v; } },
@@ -251,7 +252,6 @@ SettingsPage {
 
                 SettingsRow {
                     id: vizCycleRow
-                    last: true
                     surface: root
                     name: "Visualizer colour cycle"
                     sub: "Full-screen wave drifts through every colour in the wallpaper palette"
@@ -263,6 +263,23 @@ SettingsPage {
                         accessibleName: vizCycleRow.name
                         on: Flags.vizColorCycle
                         onToggled: Flags.vizColorCycle = !Flags.vizColorCycle
+                    }
+                }
+
+                SettingsRow {
+                    id: vizFillRow
+                    last: true
+                    surface: root
+                    name: "Visualizer fill"
+                    sub: "Glass the wallpaper shows through, or one solid wave"
+                    captionOnFocus: true
+                    icon: "eye"
+
+                    SettingsSeg {
+                        s: root.s
+                        options: [{ label: "Transparent", value: "transparent" }, { label: "Opaque", value: "opaque" }]
+                        value: Flags.vizFill
+                        onPicked: (v) => Flags.vizFill = v
                     }
                 }
             }

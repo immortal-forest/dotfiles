@@ -3,17 +3,16 @@ pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
-import QtQuick.Shapes
 import "../../colors"
 import "../../services"
 
 /**
  * astralis — the full-screen visualizer's surface (see Visualizer.qml): one
- * transparent, click-through WlrLayer.Bottom window covering the screen, with
- * three GPU Shapes per edge path — backmost the lower ridge (other spectrum
- * arrangement, 0.65 amp, deeper gradient, 0.5 alpha), then the main wave's
- * stretched shadow (0.25 alpha), then the main wave. Path strings are rebuilt
- * whenever the scope's `levels` change (cava's 30fps).
+ * transparent, click-through WlrLayer.Bottom window covering the screen, and
+ * one ShaderEffect painting the edge wave (shaders/edgewave.frag). The scope's
+ * eased levels and falling peaks go in as packed matrices each cava frame;
+ * once the music stops and everything has sunk, nothing changes and the
+ * surface stops repainting.
  */
 PanelWindow {
     id: vizLayer
@@ -33,59 +32,24 @@ PanelWindow {
 
     readonly property bool cycling: Flags.vizColorCycle
     readonly property real ph: viz.cyclePhase
+    /** Live wave, bass → treble. */
     readonly property var mainStops: cycling
         ? [viz.ringColor(ph), viz.ringColor(ph + 0.5), viz.ringColor(ph + 1)]
         : [Colors.primary, Colors.tertiary, Colors.secondary]
-    readonly property var lowStops: cycling
+    /** The peak veil behind it, a step deeper. */
+    readonly property var veilStops: cycling
         ? [viz.ringColor(ph + 2), viz.ringColor(ph + 2.5), viz.ringColor(ph + 3)]
-        : [Colors.tertiary, Colors.tertiary_container, Colors.secondary]
+        : [Colors.primary_container, Colors.tertiary, Colors.secondary_container]
 
-    component WavePass: Shape {
-        id: pass
-        property var path
-        property var stops
-        property string d
-        readonly property var vs: pass.path.verts
-        // Straight edge: gradient runs along it (as the original did).
-        // Bent / looped: conical sweep round the screen centre,
-        // symmetric so there's no seam and colours mirror like the data.
-        readonly property bool bent: vs.length > 2
-
-        anchors.fill: parent
-        // Geometry renderer, triangulated on a worker thread: the path changes
-        // 30×/s, and CurveRenderer's per-change preprocessing ran on the GUI
-        // thread (it slowed every other surface, e.g. opening Settings).
-        preferredRendererType: Shape.GeometryRenderer
-        asynchronous: true
-        antialiasing: true
-
-        ShapePath {
-            strokeColor: "transparent"
-            strokeWidth: 0
-            fillRule: pass.path.closed ? ShapePath.OddEvenFill : ShapePath.WindingFill
-            fillGradient: pass.bent ? conical : linear
-            PathSvg { path: pass.d }
-        }
-
-        LinearGradient {
-            id: linear
-            x1: pass.vs[0].x; y1: pass.vs[0].y
-            x2: pass.vs[pass.vs.length - 1].x; y2: pass.vs[pass.vs.length - 1].y
-            GradientStop { position: 0.0; color: pass.stops[0] }
-            GradientStop { position: 0.5; color: pass.stops[1] }
-            GradientStop { position: 1.0; color: pass.stops[2] }
-        }
-        ConicalGradient {
-            id: conical
-            centerX: vizLayer.viz.sw / 2
-            centerY: vizLayer.viz.sh / 2
-            angle: 270
-            GradientStop { position: 0.0; color: pass.stops[0] }
-            GradientStop { position: 0.25; color: pass.stops[1] }
-            GradientStop { position: 0.5; color: pass.stops[2] }
-            GradientStop { position: 0.75; color: pass.stops[1] }
-            GradientStop { position: 1.0; color: pass.stops[0] }
-        }
+    /** 16 values from `a` at `base` as a matrix4x4 (missing → 0). */
+    function pack(a, base) {
+        const m = new Array(16);
+        for (let i = 0; i < 16; i++)
+            m[i] = a[base + i] || 0;
+        return Qt.matrix4x4(m);
+    }
+    function rail(r) {
+        return Qt.vector4d(r[0], r[1], r[2], 0);
     }
 
     /** Everything drawn (a plain Item so a dev harness can grabToImage it). */
@@ -94,39 +58,51 @@ PanelWindow {
     Item {
         id: drawRoot
         anchors.fill: parent
-        // Gated on OPACITY (never visible) so the Shapes keep painting.
+        // Gated on OPACITY (never visible) so the shader keeps painting.
         opacity: vizLayer.viz.fade
 
-        Repeater {
-            model: vizLayer.viz.paths
+        ShaderEffect {
+            id: fx
+            anchors.fill: parent
+            blending: true
+            fragmentShader: Qt.resolvedUrl("shaders/edgewave.frag.qsb") + "?v=2"
 
-            Item {
-                id: pathItem
-                required property var modelData
-                anchors.fill: parent
+            readonly property var rails: vizLayer.viz.rails
+            readonly property var lv: vizLayer.viz.levels
+            readonly property var pk: vizLayer.viz.peaks
 
-                readonly property var levels: vizLayer.viz.levels
-                readonly property var mainData: vizLayer.viz.arrange(levels, modelData.sym, false)
-                readonly property var lowData: vizLayer.viz.arrange(levels, modelData.sym, true)
+            readonly property vector2d res: Qt.vector2d(width, height)
+            // one device pixel, in the logical px the shader works in
+            readonly property real aa: 1 / Math.max(1, (vizLayer.screen && vizLayer.screen.devicePixelRatio) || 1)
+            readonly property real bands: Math.max(2, Math.min(48, fx.lv.length))
 
-                WavePass {
-                    path: pathItem.modelData
-                    opacity: 0.5
-                    stops: vizLayer.lowStops
-                    d: vizLayer.viz.svgFor(pathItem.modelData, pathItem.lowData, 0.65, 1)
-                }
-                WavePass {
-                    path: pathItem.modelData
-                    opacity: 0.25
-                    stops: vizLayer.mainStops
-                    d: vizLayer.viz.svgFor(pathItem.modelData, pathItem.mainData, 1.05, 1.02)
-                }
-                WavePass {
-                    path: pathItem.modelData
-                    stops: vizLayer.mainStops
-                    d: vizLayer.viz.svgFor(pathItem.modelData, pathItem.mainData, 1, 1)
-                }
-            }
+            readonly property matrix4x4 lv0: vizLayer.pack(fx.lv, 0)
+            readonly property matrix4x4 lv1: vizLayer.pack(fx.lv, 16)
+            readonly property matrix4x4 lv2: vizLayer.pack(fx.lv, 32)
+            readonly property matrix4x4 pk0: vizLayer.pack(fx.pk, 0)
+            readonly property matrix4x4 pk1: vizLayer.pack(fx.pk, 16)
+            readonly property matrix4x4 pk2: vizLayer.pack(fx.pk, 32)
+
+            readonly property vector4d eTop: vizLayer.rail(fx.rails.top)
+            readonly property vector4d eRight: vizLayer.rail(fx.rails.right)
+            readonly property vector4d eBottom: vizLayer.rail(fx.rails.bottom)
+            readonly property vector4d eLeft: vizLayer.rail(fx.rails.left)
+
+            readonly property real sym: fx.rails.sym
+            readonly property real closed: fx.rails.closed
+            readonly property real taper: fx.rails.taper
+            readonly property real depth: vizLayer.viz.depth * fx.rails.scale
+            readonly property real glowPx: 12 * vizLayer.viz.s
+            readonly property real energy: vizLayer.viz.energy
+            // Settings → Appearance → Visualizer fill
+            readonly property real solid: Flags.vizFill === "opaque" ? 1 : 0
+
+            readonly property color c0: vizLayer.mainStops[0]
+            readonly property color c1: vizLayer.mainStops[1]
+            readonly property color c2: vizLayer.mainStops[2]
+            readonly property color d0: vizLayer.veilStops[0]
+            readonly property color d1: vizLayer.veilStops[1]
+            readonly property color d2: vizLayer.veilStops[2]
         }
     }
 }

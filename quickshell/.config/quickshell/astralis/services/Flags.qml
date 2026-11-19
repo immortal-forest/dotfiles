@@ -74,6 +74,7 @@ Singleton {
     property alias musicViz: adapter.musicViz
     property alias vizColorCycle: adapter.vizColorCycle
     property alias vizLayout: adapter.vizLayout
+    property alias vizFill: adapter.vizFill
     property alias nightLightMode: adapter.nightLightMode
     property alias nightLightTemp: adapter.nightLightTemp
     property alias nightLightOnMin: adapter.nightLightOnMin
@@ -333,6 +334,9 @@ Singleton {
             // topHalf (top, bleeding ~40% down the sides) | topSides (one wave up, across and down, round the top corners) |
             // all (one loop round the whole screen).
             property string vizLayout: "topBottom"
+            // Full-screen visualizer body: "transparent" (glass that fades
+            // toward the screen edge) | "opaque" (one solid fill, the old look).
+            property string vizFill: "transparent"
             property string nightLightMode: "off"
             property int nightLightTemp: 4000
             property int nightLightOnMin: 1260

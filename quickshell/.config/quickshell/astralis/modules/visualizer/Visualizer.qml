@@ -7,28 +7,28 @@ import "../../colors"
 import "../../services"
 
 /**
- * astralis — full-screen music visualizer, one per screen (ported from
- * ~/shell components/Visualizer.qml). Draws a smoothed quadratic-spline
- * "mountain wave" filled with a primary→tertiary→secondary gradient, plus a
- * stretched shadow pass at 0.25 alpha and a LOWER background ridge that reads
- * the spectrum the other way round (so its crests land in the main wave's
- * valleys) with its own deeper gradient.
+ * astralis — full-screen music visualizer, one per screen. A wave rides the
+ * screen edges: a live body that fades toward the edge it grows from, with a
+ * lit crest, hot tips on loud bands and a bloom that swells with loudness,
+ * over a faint veil tracing the recent peaks as they fall.
  *
  * WHERE it draws is `Flags.vizLayout` (Settings → Appearance → Visualizer):
  *   top · bottom · topBottom (two mirrored waves) · sides (left + right) ·
  *   topHalf (the top wave bends round both corners and bleeds ~40% down the
  *   sides, tapering off) · topSides (up the left, across the top, down the
  *   right) · all (one closed loop round the screen).
- * Every layout is a list of PATHS along the screen edges; the wave is offset
- * inward along each edge's normal, and at a corner the miter normal puts the
- * offset point on the diagonal so the wave turns the corner without folding.
+ * A layout is a PATH along the screen edges; `rails` hands the shader, per
+ * edge, where that edge sits on the path (t at each end). The spectrum is
+ * mirrored along the path — bass mid-path, treble at the ends (a loop: bass at
+ * the top centre, treble at the bottom centre) — so every layout stays
+ * balanced left/right.
  *
- * Drawn by VizLayer: ONE click-through full-screen surface of GPU Shapes.
- * (Separate per-edge surfaces commit frames independently, which tore the wave
- * into steps where they met; a full-screen Canvas would software-raster the
- * whole screen 30×/s.)
+ * Drawn by VizLayer: ONE click-through full-screen surface with ONE fragment
+ * shader (shaders/edgewave.frag). The old SVG-path renderer rebuilt and
+ * re-triangulated three paths per edge 30×/s on the CPU; the shader takes the
+ * levels as uniforms and costs a few instructions per pixel near an edge.
  *
- * One cava (20 bars, pulse, 30fps) per screen feeds the layer, and runs only
+ * One cava (32 mono bands, pipewire, 60fps) per screen feeds it, and runs only
  * while this scope exists — shell.qml's Loader keeps it on `vizEnabled`
  * (Super+B / `ipc call visualizer toggle`). That toggle is deliberately
  * independent of `Flags.musicViz` (the rest-pill spectrum's switch).
@@ -48,7 +48,7 @@ Scope {
     }
     Component.onCompleted: fade = Qt.binding(() => viz.shown ? 1 : 0)
 
-    readonly property string layout: Flags.vizLayout
+    property string layout: Flags.vizLayout
     /** Full wave height for straight edges (bent layouts scale it down). */
     readonly property real depth: Math.round(200 * s)
     readonly property real sw: screen ? screen.width : 0
@@ -58,186 +58,131 @@ Scope {
     readonly property bool hasTop: ["top", "topBottom", "topHalf", "topSides", "all"].indexOf(layout) >= 0
 
     /**
-     * Edge paths for the layout, in screen coordinates. `sym` paths are fed a
-     * mirrored spectrum so the one wave stays balanced left/right:
-     *   "u"    bass at the top centre, treble at the side bottoms
-     *   "loop" bass at the top centre, treble at the bottom centre
+     * The layout as shader rails. Each edge is [on, t at its start, t at its
+     * end], where an edge's start is its left (top/bottom) or top (left/right)
+     * end and t runs 0..1 along the layout's path. A rail only draws where its
+     * t lands inside 0..1 (a closed loop wraps instead), so the sides of
+     * topHalf stop 40% of the way down on their own.
+     *   sym    1 mirror (bass mid-path) · 2 loop (bass at the path's start/end)
+     *   scale  band height factor: bent layouts run more edge, thinner band
+     *   taper  share of t eased to nothing at each open end
      */
-    readonly property var paths: {
+    readonly property var rails: {
         const W = sw, H = sh;
+        const off = [0, 0, 0];
+        const full = [1, 0, 1];
+        const r = { top: off, right: off, bottom: off, left: off,
+                    sym: 1, closed: 0, taper: 0, scale: 1 };
         if (W <= 0 || H <= 0)
-            return [];
-        const P = (x, y) => ({ x: x, y: y });
-        let defs;
+            return r;
         switch (layout) {
-        case "top":       defs = [{ v: [P(0, 0), P(W, 0)] }]; break;
-        case "bottom":    defs = [{ v: [P(0, H), P(W, H)] }]; break;
-        case "sides":     defs = [{ v: [P(0, 0), P(0, H)] }, { v: [P(W, 0), P(W, H)] }]; break;
-        // Bent layouts run a lot more edge, so the band is thinner there.
-        case "topHalf":   defs = [{ v: [P(0, H * 0.4), P(0, 0), P(W, 0), P(W, H * 0.4)], sym: "u",
-                                    scale: 0.65, taper: 0.18 }]; break;
-        case "topSides":  defs = [{ v: [P(0, H), P(0, 0), P(W, 0), P(W, H)], sym: "u",
-                                    scale: 0.6, taper: 0.06 }]; break;
-        case "all":       defs = [{ v: [P(W / 2, 0), P(W, 0), P(W, H), P(0, H), P(0, 0), P(W / 2, 0)],
-                                    sym: "loop", closed: true, scale: 0.5 }]; break;
-        default:          defs = [{ v: [P(0, 0), P(W, 0)] }, { v: [P(0, H), P(W, H)] }]; break;
+        case "top":       r.top = full; break;
+        case "bottom":    r.bottom = full; break;
+        case "sides":     r.left = full; r.right = full; break;
+        case "topHalf": {
+            const d = 0.4 * H, L = d + W + d;
+            // up the left side, across the top, down the right side
+            r.left = [1, d / L, (d - H) / L];
+            r.top = [1, d / L, (d + W) / L];
+            r.right = [1, (d + W) / L, (d + W + H) / L];
+            r.scale = 0.65; r.taper = 0.18;
+            break;
         }
-        return defs.map(d => viz.buildPath(d, W, H));
-    }
-
-    /** Samples a polyline evenly by arc length (corners always sampled). */
-    function buildPath(def, W, H) {
-        const v = def.v;
-        const segs = [];
-        let L = 0;
-        for (let i = 0; i < v.length - 1; i++) {
-            const dx = v[i + 1].x - v[i].x, dy = v[i + 1].y - v[i].y;
-            const len = Math.hypot(dx, dy);
-            let nx = -dy / len, ny = dx / len;
-            // Point the normal into the screen.
-            const mx = (v[i].x + v[i + 1].x) / 2, my = (v[i].y + v[i + 1].y) / 2;
-            if (nx * (W / 2 - mx) + ny * (H / 2 - my) < 0) { nx = -nx; ny = -ny; }
-            segs.push({ a: v[i], dx: dx / len, dy: dy / len, len: len, nx: nx, ny: ny, at: L });
-            L += len;
+        case "topSides": {
+            const L = H + W + H;
+            r.left = [1, H / L, 0];
+            r.top = [1, H / L, (H + W) / L];
+            r.right = [1, (H + W) / L, 1];
+            r.scale = 0.6; r.taper = 0.06;
+            break;
         }
-        // Same spacing the original 20-point top/bottom wave had.
-        const step = W / 19;
-        const n = Math.max(1, Math.round(L / step));
-        const pos = [];
-        for (let k = 0; k <= n; k++)
-            pos.push(k * L / n);
-        // Interior corners: force a sample, drop uniform ones crowding it.
-        // (svgFor also drops, per frame, any that the rounded corner's arc
-        // currently overlaps — it reaches 2× the band height along each edge.)
-        const clear = step * 0.35;
-        const corners = segs.slice(1).map(sg => sg.at);
-        const out = [];
-        const segAt = d => {
-            let j = 0;
-            while (j < segs.length - 1 && d >= segs[j + 1].at) j++;
-            return j;
-        };
-        const all = pos.filter(d => corners.every(c => Math.abs(d - c) > clear))
-                       .concat(corners).sort((a, b) => a - b);
-        for (const d of all) {
-            const j = segAt(d);
-            const sg = segs[j];
-            const off = d - sg.at;
-            const pt = { x: sg.a.x + sg.dx * off, y: sg.a.y + sg.dy * off,
-                         nx: sg.nx, ny: sg.ny, t: L > 0 ? d / L : 0 };
-            if (j > 0 && Math.abs(off) < 0.001) {
-                // Corner: u = incoming edge's normal, w = outgoing edge's.
-                pt.corner = true;
-                pt.ux = segs[j - 1].nx; pt.uy = segs[j - 1].ny;
-                pt.wx = sg.nx; pt.wy = sg.ny;
-            }
-            let cd = Infinity;
-            for (const c of corners)
-                cd = Math.min(cd, Math.abs(d - c));
-            pt.at = d;
-            pt.cd = cd;            // arc-length distance to the nearest corner
-            pt.cnear = corners.length ? corners.reduce((b, c) => Math.abs(d - c) < Math.abs(d - b) ? c : b) : -1;
-            out.push(pt);
+        case "all": {
+            // clockwise from the top centre: right half of the top, down the
+            // right, back along the bottom, up the left, left half of the top
+            const L = 2 * W + 2 * H;
+            r.top = [1, -0.5 * W / L, 0.5 * W / L];
+            r.right = [1, 0.5 * W / L, (0.5 * W + H) / L];
+            r.bottom = [1, (1.5 * W + H) / L, (0.5 * W + H) / L];
+            r.left = [1, (1.5 * W + 2 * H) / L, (1.5 * W + H) / L];
+            r.sym = 2; r.closed = 1; r.scale = 0.5;
+            break;
         }
-        return { verts: v, samples: out, sym: def.sym || "", closed: !!def.closed,
-                 scale: def.scale || 1, taper: def.taper || 0 };
-    }
-
-    /** Spectrum laid out for a path; `alt` is the lower ridge's arrangement. */
-    function arrange(levels, sym, alt) {
-        const S = levels, R = levels.slice().reverse();
-        if (sym === "u") return alt ? S.concat(R) : R.concat(S);
-        if (sym === "loop") return alt ? R.concat(S) : S.concat(R);
-        return alt ? R : S;
-    }
-
-    // Linear interpolation into `data` at fraction t (0..1).
-    function sampleAt(data, t) {
-        const p = Math.max(0, Math.min(1, t)) * (data.length - 1);
-        const i = Math.floor(p);
-        const f = p - i;
-        return i + 1 < data.length ? data[i] * (1 - f) + data[i + 1] * f : data[i];
-    }
-
-    /**
-     * SVG fill for one pass of the wave along `path`: the offset curve
-     * (quadratic-smoothed through the samples, as the original did) closed back
-     * along the screen edge — or, for a loop, the curve plus the screen rect
-     * (filled even-odd → the band between). `stretch` widens the shadow pass
-     * about the path's middle; `taper` eases open ends of bent paths to 0.
-     */
-    function svgFor(path, data, amp, stretch) {
-        if (data.length < 2 || path.samples.length < 2)
-            return "";
-        const h = depth * path.scale * amp;
-        const f = n => n.toFixed(1);
-        const vals = path.samples.map(p => {
-            let env = 1;
-            if (path.taper > 0) {
-                const e = Math.min(p.t, 1 - p.t) / path.taper;
-                env = e >= 1 ? 1 : e * e * (3 - 2 * e);
-            }
-            return sampleAt(data, 0.5 + (p.t - 0.5) / stretch) * h * env;
-        });
-        const cornerVal = {};
-        path.samples.forEach((p, i) => { if (p.corner) cornerVal[p.at] = vals[i]; });
-        const pts = [];
-        path.samples.forEach((p, i) => {
-            const val = vals[i];
-            if (!p.corner) {
-                // Skip samples the rounded corner's arc currently covers.
-                const cv = cornerVal[p.cnear];
-                if (cv !== undefined && p.cd < 2.05 * cv)
-                    return;
-                pts.push({ x: p.x + p.nx * val, y: p.y + p.ny * val });
-                return;
-            }
-            // Rounded inner corner, radius = band height: a quarter arc from
-            // the incoming edge's offset line to the outgoing one, centred at
-            // 2·val along both normals. Collapses into the corner at silence.
-            const K = 8;
-            for (let k = 0; k <= K; k++) {
-                const th = (k / K) * Math.PI / 2;
-                const a = val * (2 - Math.cos(th)), b = val * (2 - Math.sin(th));
-                pts.push({ x: p.x + p.ux * a + p.wx * b, y: p.y + p.uy * a + p.wy * b });
-            }
-        });
-        const sm = path.samples;
-        let d = path.closed ? `M${f(pts[0].x)} ${f(pts[0].y)}`
-                            : `M${f(sm[0].x)} ${f(sm[0].y)} L${f(pts[0].x)} ${f(pts[0].y)}`;
-        for (let i = 0; i < pts.length - 1; i++) {
-            const a = pts[i], b = pts[i + 1];
-            d += ` Q${f(a.x)} ${f(a.y)} ${f((a.x + b.x) / 2)} ${f((a.y + b.y) / 2)}`;
+        default:          r.top = full; r.bottom = full; break;   // topBottom
         }
-        const z = pts[pts.length - 1];
-        d += ` L${f(z.x)} ${f(z.y)}`;
-        if (path.closed)
-            return d + ` Z M0 0 L${f(sw)} 0 L${f(sw)} ${f(sh)} L0 ${f(sh)} Z`;
-        const last = sm[sm.length - 1];
-        d += ` L${f(last.x)} ${f(last.y)}`;
-        const vs = path.verts;
-        for (let i = vs.length - 2; i >= 1; i--)
-            d += ` L${f(vs[i].x)} ${f(vs[i].y)}`;
-        return d + " Z";
+        return r;
     }
 
-    /** Smoothed spectrum (0..1, bass→treble). */
+    // ── motion ────────────────────────────────────────────────────────────
+    // cava does the FFT with light smoothing; the follow below shapes how the
+    // wave moves: a band snaps up on a transient (~45ms) and sinks away
+    // gently (~170ms), frame-rate independent. Peaks ride on top and only
+    // fall, so a hit stays traced in the veil as the wave drops away from it.
+
+    readonly property int bands: 32
+    /** Must match `framerate` in the cava config below (one follow step per frame). */
+    readonly property int cavaFps: 60
+    readonly property real dt: 1 / cavaFps
+    readonly property real attackK: 1 - Math.exp(-dt / 0.045)
+    readonly property real decayK: 1 - Math.exp(-dt / 0.17)
+    /** Trail fall, in full heights per second. */
+    readonly property real peakFall: 0.55
+
+    /** Eased spectrum, 0..1, bass → treble. */
     property var levels: []
+    /** Falling peaks over `levels`. */
+    property var peaks: []
+    /** 0..1 loudness, eased: drives the bloom. */
+    property real energy: 0
 
-    /** Must match `framerate` in the cava config below (the repaint cadence). */
-    readonly property int cavaFps: 30
+    /** Where cava listens. A dev harness swaps in a fifo of decoded audio. */
+    property string cavaInput: "method = pipewire\nsource = auto"
+
+    function step(target) {
+        const cur = viz.levels, pk = viz.peaks;
+        const fresh = cur.length !== target.length;
+        const out = new Array(target.length);
+        const np = new Array(target.length);
+        let mx = 0, moving = false;
+        for (let i = 0; i < target.length; i++) {
+            // Lift: 32 narrow bands leave most of the spectrum low next to
+            // the peak autosens normalises to, so quiet bands get a curve up.
+            const goal = Math.pow(Math.max(0, Math.min(1, target[i])), 0.6);
+            const c = fresh ? 0 : cur[i];
+            const v = c + (goal - c) * (goal > c ? viz.attackK : viz.decayK);
+            out[i] = v < 0.0005 ? 0 : v;
+            const p = fresh ? 0 : pk[i] - viz.peakFall * viz.dt;
+            np[i] = out[i] > p ? out[i] : Math.max(0, p);
+            if (out[i] > mx) mx = out[i];
+            if (out[i] > 0 || np[i] > 0) moving = true;
+        }
+        const e = viz.energy + (mx - viz.energy) * (mx > viz.energy ? 0.25 : 0.06);
+        // Silence once everything has sunk: stop touching the uniforms, so the
+        // surface stops repainting until sound returns.
+        if (!moving && !viz._live)
+            return;
+        viz._live = moving;
+        viz.levels = out;
+        viz.peaks = np;
+        viz.energy = e < 0.001 ? 0 : e;
+
+        // Colour ring rides the frame beat. Reduce-motion holds it still
+        // rather than running it faster (Motion.mult would shorten the period
+        // — the opposite of calmer).
+        if (Flags.vizColorCycle && !Motion.reduceMotion)
+            viz.cyclePhase += viz.colorRing.length / (viz.cycleSeconds * viz.cavaFps);
+    }
+    property bool _live: true
 
     Process {
         id: cavaProc
         running: true
-        command: ["sh", "-c", `cava -p /dev/stdin <<EOF
-[general]
-bars = 20
-framerate = 30
+        command: ["sh", "-c", "printf '%s' \"$1\" | cava -p /dev/stdin", "_", `[general]
+bars = ${viz.bands}
+framerate = ${viz.cavaFps}
 autosens = 1
 
 [input]
-method = pulse
+${viz.cavaInput}
 
 [output]
 method = raw
@@ -245,40 +190,24 @@ raw_target = /dev/stdout
 data_format = ascii
 ascii_max_range = 1000
 bar_delimiter = 59
+channels = mono
+mono_option = average
 
 [smoothing]
-monstercat = 1.5
-waves = 0
-gravity = 100
-noise_reduction = 0.20
-EOF
+noise_reduction = 25
 `]
 
         stdout: SplitParser {
             onRead: data => {
-                const target = data.split(";")
-                    .map(p => parseFloat(p.trim()) / 1000)
-                    .filter(p => !isNaN(p));
-                if (target.length === 0)
-                    return;
-
-                const smoothFactor = 0.3;
-                const cur = viz.levels;
-                if (cur.length !== target.length) {
-                    viz.levels = target;
-                } else {
-                    const smoothed = [];
-                    for (let i = 0; i < target.length; i++)
-                        smoothed.push(cur[i] + (target[i] - cur[i]) * smoothFactor);
-                    viz.levels = smoothed;
+                const t = data.split(";");
+                const target = [];
+                for (let i = 0; i < t.length; i++) {
+                    const v = parseInt(t[i]);
+                    if (!isNaN(v))
+                        target.push(v / 1000);
                 }
-
-                // Colour ring rides the repaint beat. Reduce-motion holds it
-                // still rather than running it faster (Motion.mult would
-                // shorten the period — the opposite of calmer).
-                if (Flags.vizColorCycle && !Motion.reduceMotion)
-                    viz.cyclePhase += viz.colorRing.length / (viz.cycleSeconds * viz.cavaFps);
-
+                if (target.length >= 2)
+                    viz.step(target);
             }
         }
     }
@@ -304,7 +233,7 @@ EOF
         return out.length >= 2 ? out : [Colors.primary, Colors.tertiary];
     }
 
-    /** Position in the ring, in ring-entries; read in onPaint, never bound. */
+    /** Position in the ring, in ring-entries. */
     property real cyclePhase: 0
     /** Seconds for one full trip around the ring. */
     readonly property real cycleSeconds: 42

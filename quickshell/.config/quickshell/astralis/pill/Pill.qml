@@ -429,7 +429,7 @@ Item {
         s: pill.s
         radius: pill.morphRadius
         // thinner at rest over the visualizer; firmer once a surface needs reading
-        fillAlpha: !pill.vizBehind ? 1 : pill.surfaceOpen ? 0.88 : 0.6
+        fillAlpha: !pill.vizBehind ? 1 : pill.surfaceOpen ? 0.92 : 0.8
         Behavior on fillAlpha { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
 
         // A critical toast makes the pill ITSELF the error container (M3:
