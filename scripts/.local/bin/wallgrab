@@ -1,0 +1,784 @@
+#!/usr/bin/env python3
+"""wallgrab: one gallery for wallpapers from several sites, saved straight into
+~/wallpapers for skwd-wall.
+
+  wallgrab                          Wuthering Waves from every source
+  wallgrab hololive                 any other search
+  wallgrab -s konachan wuthering waves
+
+Sources: motionbgs, desktophut (live wallpapers); wallhaven, konachan, yande.re,
+pixiv (images). Pick source and type in the page. Hover a video card to preview
+it. Each card's folder is pre-filled with the character's folder ("auto" decides
+from the full tags at download). Get saves the original and rescans skwd; Set
+applies it. Images you already have (by picture, not name) are flagged.
+"""
+import html, json, os, re, subprocess, sys, threading, time, unicodedata, urllib.parse, urllib.request, webbrowser
+from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+PORT = 47127
+UA = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
+LIB = os.path.expanduser("~/wallpapers")
+CACHE = os.path.expanduser("~/.cache/wallgrab")
+INDEX = os.path.join(CACHE, "library.json")      # "source:id" -> saved file
+HASHES = os.path.join(CACHE, "hashes.json")      # library relpath -> [mtime, dhash]
+WUWA = "Wuthering Waves"
+NOT_CHARACTERS = {"Group", "Scenery", "Echoes", "Cutscenes", "Key Art", "Live2D", "Live", "Unsorted"}
+WUWA_RE = re.compile(r"wuthering|wuwa|鳴潮|鸣潮", re.I)
+IMAGE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".jfif")
+DUP_BITS = 16                                    # dHash distance that still counts as the same picture
+
+# Only these hosts are ever fetched for thumbnails or downloads, whatever a request says.
+HOSTS = {"motionbgs.com", "www.desktophut.com", "media.desktophut.com", "w.wallhaven.cc", "th.wallhaven.cc",
+         "konachan.net", "files.yande.re", "assets.yande.re", "i.pximg.net"}
+SAVE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm"}
+
+jobs, jobs_lock, index_lock, scan_lock = {}, threading.Lock(), threading.Lock(), threading.Lock()
+net_pool = ThreadPoolExecutor(8)     # source searches
+hash_pool = ThreadPoolExecutor(8)    # dHash work (first library index takes a minute)
+
+
+# ---------------------------------------------------------------- helpers
+def http(url, referer=None, timeout=30):
+    h = {"User-Agent": UA}
+    if referer:
+        h["Referer"] = referer
+    with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=timeout) as r:
+        return r.read()
+
+
+def allowed(url):
+    u = urllib.parse.urlparse(url)
+    return u.scheme == "https" and u.hostname in HOSTS
+
+
+def is_raster(data):
+    """JPEG/PNG/WebP/GIF only, so ImageMagick never parses anything fancier from the network."""
+    return data[:3] == b"\xff\xd8\xff" or data[:8] == b"\x89PNG\r\n\x1a\n" or data[:4] == b"GIF8" \
+        or (data[:4] == b"RIFF" and data[8:12] == b"WEBP")
+
+
+def get_json(url, referer=None):
+    return json.loads(http(url, referer))
+
+
+def get_text(url, referer=None):
+    return http(url, referer).decode("utf-8", "replace")
+
+
+def ascii_fold(s):
+    s = s.replace("С", "C").replace("с", "c")      # Cyrillic look-alikes ("Сiaccona")
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+
+
+def norm(s):
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", ascii_fold(s).lower()).split())
+
+
+def snake(s):
+    s = ascii_fold(s).replace("&", " and ").replace("'", "").replace("’", "")
+    s = re.sub(r"[^a-zA-Z0-9]+", "_", s).strip("_").lower()
+    return re.sub(r"^and_|_and$", "", s)
+
+
+def strip_franchise(title):
+    t = re.sub(r"\([^)]*(wuthering waves|wuwa|hololive)[^)]*\)", "", title, flags=re.I)
+    return re.sub(r"wuthering waves|wuwa|hololive|live wallpaper|animated wallpaper", "", t, flags=re.I)
+
+
+def res_of(w, h):
+    return f"{w}x{h}" if w and h else ""
+
+
+# ---------------------------------------------------------------- library knowledge
+def characters():
+    d = os.path.join(LIB, WUWA)
+    names = [n for n in os.listdir(d) if os.path.isdir(os.path.join(d, n)) and n not in NOT_CHARACTERS]
+    return sorted(names, key=len, reverse=True)
+
+
+def find_chars(texts):
+    """Character folders named as whole words in any of texts ("Hsin" never matches "Jinhsi")."""
+    blob = " " + " ".join(norm(t) for t in texts if t) + " "
+    return [c for c in characters() if f" {norm(c)} " in blob]
+
+
+def tagged_chars(names):
+    """Names a site explicitly tags as WuWa characters: existing folders first, others become new folders."""
+    known = find_chars(names)
+    new = [n.strip().title() for n in names if n.strip() and not find_chars([n]) and "/" not in n]
+    return known + [n for n in dict.fromkeys(new) if n not in known]
+
+
+def top_folder_for(query):
+    """Content folder a search belongs to: "hololive" -> Hololive, "genshin impact" -> Genshin."""
+    q = f" {norm(query)} "
+    for n in sorted(os.listdir(LIB), key=len, reverse=True):
+        if os.path.isdir(os.path.join(LIB, n)) and norm(n) and f" {norm(n)} " in q:
+            return n
+    return None
+
+
+def guess_folder(kind, query, chars, wuwa):
+    if kind == "video":                     # videos live in <content folder>/Live, never a top-level Live/
+        if wuwa:
+            return f"{WUWA}/Live"
+        return f"{top_folder_for(query) or (' '.join(query.split()).title() or 'Other')}/Live"
+    if wuwa:
+        if len(chars) == 1:
+            return f"{WUWA}/{chars[0]}"
+        return f"{WUWA}/Group" if chars else "auto"
+    return top_folder_for(query) or "Other"
+
+
+def library_folders():
+    out = []
+    for root, dirs, _ in os.walk(LIB):
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        rel = os.path.relpath(root, LIB)
+        if rel != ".":
+            out.append(rel)
+    return out
+
+
+def library_stems():
+    """Stems are unique across the whole library (setwall finds files by stem)."""
+    return {f.rsplit(".", 1)[0] for _, _, files in os.walk(LIB) for f in files if not f.endswith(".part")}
+
+
+def free_stem(name, stems):
+    stem, n = name, 2
+    while stem in stems:
+        stem, n = f"{name}_{n}", n + 1
+    return stem
+
+
+def load_index():
+    try:
+        idx = json.load(open(INDEX))
+    except Exception:
+        return {}
+    return {(k if ":" in k else "motionbgs:" + k): v for k, v in idx.items()}   # pre-sources format
+
+
+def remember(uid, path):
+    with index_lock:
+        idx = load_index()
+        idx[uid] = path
+        os.makedirs(CACHE, exist_ok=True)
+        json.dump(idx, open(INDEX, "w"), indent=1)
+
+
+# ---------------------------------------------------------------- "already have it" (dHash)
+def dhash_bytes(data):
+    if not is_raster(data):
+        return None
+    r = subprocess.run(["magick", "-[0]", "-auto-orient", "-colorspace", "gray", "-resize", "17x16!",
+                        "-depth", "8", "gray:-"], input=data, capture_output=True, timeout=60)
+    b = r.stdout
+    if len(b) != 272:
+        return None
+    return int("".join("1" if b[y * 17 + x] > b[y * 17 + x + 1] else "0" for y in range(16) for x in range(16)), 2)
+
+
+def dhash_file(path):
+    r = subprocess.run(["magick", "-define", "jpeg:size=128x128", path + "[0]", "-auto-orient", "-colorspace", "gray",
+                        "-resize", "17x16!", "-depth", "8", "gray:-"], capture_output=True, timeout=120)
+    b = r.stdout
+    if len(b) != 272:
+        return None
+    return int("".join("1" if b[y * 17 + x] > b[y * 17 + x + 1] else "0" for y in range(16) for x in range(16)), 2)
+
+
+lib_hash = {"ready": False, "busy": False, "map": {}}
+
+
+def build_library_hashes():
+    """Hash every library image once; later runs only hash new or changed files."""
+    try:
+        old = json.load(open(HASHES))
+    except Exception:
+        old = {}
+    todo, out = [], {}
+    for root, _, files in os.walk(LIB):
+        for f in files:
+            if f.lower().endswith(IMAGE_EXT):
+                p = os.path.join(root, f); rel = os.path.relpath(p, LIB); mt = int(os.path.getmtime(p))
+                if rel in old and old[rel][0] == mt:
+                    out[rel] = old[rel]
+                else:
+                    todo.append((rel, p, mt))
+    for (rel, p, mt), h in zip(todo, hash_pool.map(lambda t: dhash_file(t[1]), todo)):
+        if h is not None:
+            out[rel] = [mt, "%064x" % h]
+    os.makedirs(CACHE, exist_ok=True)
+    json.dump(out, open(HASHES, "w"))
+    lib_hash["map"] = {rel: int(h, 16) for rel, (_, h) in out.items()}
+    lib_hash["ready"], lib_hash["busy"] = True, False
+
+
+def ensure_library_hashes():
+    if not lib_hash["ready"] and not lib_hash["busy"]:
+        lib_hash["busy"] = True
+        threading.Thread(target=build_library_hashes, daemon=True).start()
+
+
+thumb_hash = {}
+
+
+def similar_in_library(item):
+    uid = item["uid"]
+    if uid not in thumb_hash:
+        try:
+            if not allowed(item["hash_url"]):
+                raise ValueError("host not allowed")
+            thumb_hash[uid] = dhash_bytes(http(item["hash_url"], Pixiv.REF if "pximg" in item["hash_url"] else None))
+        except Exception:
+            thumb_hash[uid] = None
+    h = thumb_hash[uid]
+    if h is None:
+        return ""
+    for dist, rel in sorted((bin(h ^ lh).count("1"), rel) for rel, lh in lib_hash["map"].items()):
+        if dist > DUP_BITS:
+            break
+        if os.path.exists(os.path.join(LIB, rel)):          # files can be removed while wallgrab runs
+            return rel
+    return ""
+
+
+# ---------------------------------------------------------------- sources
+def item(src, kind, id_, **kw):
+    it = {"uid": f"{src}:{id_}", "src": src, "kind": kind, "id": str(id_), "title": "", "thumb": "",
+          "preview": "", "res": "", "chars": [], "wuwa": False, "artist": ""}
+    it.update(kw)
+    return it
+
+
+class MotionBgs:
+    name, kind, SITE = "motionbgs", "video", "https://motionbgs.com"
+    CARD = re.compile(
+        r'<a title="(?P<alt>[^"]*)" href=/(?P<slug>[a-z0-9-]+)>\s*<figure>.*?'
+        r'src=/i/c/364x205/media/(?P<id>\d+)/(?P<mslug>[^ ]+?)\.(?P<res>\d+x\d+)\.jpg.*?'
+        r'<span class=ttl>(?P<title>[^<]*)</span>\s*<span class=frm>\s*(?P<fmt>[^<]*?)\s*</span>', re.S)
+    mode, first = {}, {}
+
+    def search(self, q, page):
+        slug = snake(q).replace("_", "-")
+        tag_url = f"{self.SITE}/tag:{slug}/" + (f"{page}/" if page > 1 else "")
+        search_url = f"{self.SITE}/search?q={urllib.parse.quote_plus(q)}" + (f"&page={page}" if page > 1 else "")
+        cards = []
+        if self.mode.get(q) != "search":
+            try:
+                cards = list(self.CARD.finditer(get_text(tag_url)))
+            except Exception:
+                cards = []
+            if not cards and page == 1:
+                self.mode[q] = "search"
+        if self.mode.get(q) == "search":
+            cards = list(self.CARD.finditer(get_text(search_url)))
+        if page == 1 and cards:
+            self.first[q] = cards[0]["id"]
+        elif cards and cards[0]["id"] == self.first.get(q):
+            return []                                       # search serves page 1 again past the last page
+        out = []
+        for m in cards:
+            title = html.unescape(m["title"]).strip()      # card titles are right; item pages are sometimes stale
+            media = f"{self.SITE}/media/{m['id']}/{m['mslug']}"
+            out.append(item(self.name, self.kind, m["id"], title=title, slug=m["slug"], fmt=m["fmt"].strip(),
+                            res=m["res"], page=f"{self.SITE}/{m['slug']}",
+                            thumb=f"{self.SITE}/i/c/546x308/media/{m['id']}/{m['mslug']}.{m['res']}.jpg",
+                            preview=f"{media}.960x540.mp4", chars=find_chars([title]),
+                            wuwa=bool(WUWA_RE.search(q + " " + m["mslug"] + " " + title))))
+        return out
+
+    def resolve(self, it):
+        q = "4k" if it.get("fmt", "").upper().startswith("4K") else "hd"
+        return f"{self.SITE}/dl/{q}/{it['id']}/", it["page"], ".mp4"
+
+    def stem(self, it):
+        return snake(strip_franchise(it["title"])) or "motionbgs_" + it["id"]
+
+
+class DesktopHut:
+    name, kind, SITE = "desktophut", "video", "https://www.desktophut.com"
+    START = re.compile(r'<a href="/([^"]+)" class="wallpaper-card"')
+
+    def search(self, q, page):
+        h = get_text(f"{self.SITE}/search/{urllib.parse.quote(q, safe='')}" + (f"?page={page}" if page > 1 else ""))
+        starts = [(m.start(), m.group(1)) for m in self.START.finditer(h)]
+        out = []
+        for n, (pos, slug) in enumerate(starts):
+            chunk = h[pos: starts[n + 1][0] if n + 1 < len(starts) else pos + 4000]
+            img = re.search(r'<img src="([^"]+)"', chunk)
+            prev = re.search(r'data-src="([^"]+\.mp4)"', chunk)
+            res = re.search(r'class="badge-res">\s*(\d+)x(\d+)', chunk)
+            ttl = re.search(r'class="card-title">([^<]*)<', chunk)
+            if not (img and ttl):
+                continue
+            w, hh = (int(res.group(1)), int(res.group(2))) if res else (0, 0)
+            if w and hh and w < hh:
+                continue                                    # phone wallpapers
+            title = " ".join(strip_franchise(html.unescape(ttl.group(1))).replace(" - ", " ").split()).strip(" -:")
+            out.append(item(self.name, self.kind, slug, title=title, page=f"{self.SITE}/{slug}",
+                            thumb=img.group(1), preview=prev.group(1) if prev else "", res=res_of(w, hh),
+                            chars=find_chars([title, slug.replace("-", " ")]),
+                            wuwa=bool(WUWA_RE.search(q + " " + slug))))
+        return out
+
+    def resolve(self, it):
+        m = re.search(r'href="(https://media\.desktophut\.com/files/[^"]+\.mp4)"', get_text(it["page"]))
+        if not m:
+            raise RuntimeError("no download link on the page")
+        return m.group(1), it["page"], ".mp4"
+
+    def stem(self, it):
+        return snake(it["title"]) or "desktophut_" + snake(it["id"])
+
+
+class Wallhaven:
+    name, kind = "wallhaven", "image"
+
+    def search(self, q, page):
+        d = get_json("https://wallhaven.cc/api/v1/search?" + urllib.parse.urlencode(
+            {"q": q, "sorting": "date_added", "order": "desc", "atleast": "1920x1080", "ratios": "landscape",
+             "purity": "100", "page": page}))
+        return [item(self.name, self.kind, w["id"], title="", thumb=w["thumbs"]["original"],
+                     hash_url=w["thumbs"]["original"], res=w["resolution"], page=w["url"], file=w["path"],
+                     wuwa=bool(WUWA_RE.search(q))) for w in d["data"]]
+
+    def details(self, it):
+        tags = [t["name"] for t in get_json(f"https://wallhaven.cc/api/v1/w/{it['id']}")["data"]["tags"]]
+        marked = [t.rsplit("(", 1)[0] for t in tags if t.lower().endswith("(wuthering waves)")]
+        it["chars"] = tagged_chars(marked) if marked else find_chars(tags)
+        it["artist"] = next((t.replace("(artist)", "").strip() for t in tags if "(artist)" in t.lower()), "")
+        it["wuwa"] = it["wuwa"] or any(WUWA_RE.search(t) for t in tags)
+
+    def resolve(self, it):
+        return it["file"], "https://wallhaven.cc/", os.path.splitext(it["file"])[1]
+
+
+class Moebooru:
+    kind = "image"
+
+    def __init__(self, name, site, rating):
+        self.name, self.site, self.rating, self.tag_memo = name, site, rating, {}
+
+    def tag(self, q):
+        if "_" in q or "(" in q:
+            return q.strip()
+        key = snake(q)
+        if key not in self.tag_memo:
+            try:
+                tags = get_json(f"{self.site}/tag.json?" + urllib.parse.urlencode({"name": key, "order": "count", "limit": 10}))
+                names = [t["name"] for t in tags]
+                self.tag_memo[key] = key if key in names else next((n for n in names if n.startswith(key + "_(")), names[0] if names else key)
+            except Exception:
+                self.tag_memo[key] = key
+        return self.tag_memo[key]
+
+    def search(self, q, page):
+        tags = f"{self.tag(q)} rating:{self.rating} width:>=1920"
+        posts = get_json(f"{self.site}/post.json?" + urllib.parse.urlencode({"tags": tags, "limit": 40, "page": page}))
+        out = []
+        for p in posts:
+            if p["width"] < p["height"] * 1.3:
+                continue
+            ptags = p["tags"].split()
+            chars = [t.rsplit("_(", 1)[0].replace("_", " ") for t in ptags if t.endswith("_(wuthering_waves)")]
+            plain = [t.replace("_", " ") for t in ptags if "_(" not in t]      # yande.re often tags "denia", not "denia_(…)"
+            chars = tagged_chars(chars) + [c for c in find_chars(plain) if c not in tagged_chars(chars)]
+            out.append(item(self.name, self.kind, p["id"], title="", thumb=p.get("sample_url") or p["preview_url"],
+                            hash_url=p["preview_url"], res=res_of(p["width"], p["height"]),
+                            page=f"{self.site}/post/show/{p['id']}", file=p["file_url"],
+                            chars=chars, wuwa="wuthering_waves" in ptags or bool(WUWA_RE.search(q))))
+        return out
+
+    def resolve(self, it):
+        path = urllib.parse.urlparse(it["file"]).path
+        return it["file"], self.site + "/", os.path.splitext(urllib.parse.unquote(path))[1] or ".jpg"
+
+
+class Pixiv:
+    name, kind, REF = "pixiv", "image", "https://www.pixiv.net/"
+
+    def keyword(self, q):
+        return "鳴潮" if WUWA_RE.search(q) else q
+
+    def search(self, q, page):
+        kw = urllib.parse.quote(self.keyword(q))
+        d = get_json(f"https://www.pixiv.net/ajax/search/illustrations/{kw}?order=date_d&mode=safe&ratio=0.5"
+                     f"&s_mode=s_tag&p={page}", self.REF)
+        out = []
+        for w in d["body"]["illust"]["data"]:
+            if not isinstance(w, dict) or "id" not in w or w.get("aiType") == 2 or w.get("width", 0) < 1920:
+                continue                                    # AI-generated, small, or ad slots
+            thumb = re.sub(r"/c/[^/]+/", "/c/540x540_70/", w["url"]).replace("_square1200", "_master1200")
+            out.append(item(self.name, self.kind, w["id"], title=w["title"], artist=w["userName"],
+                            thumb="/img?u=" + urllib.parse.quote(thumb), hash_url=thumb, referer=self.REF,
+                            res=res_of(w["width"], w["height"]), page=f"https://www.pixiv.net/artworks/{w['id']}",
+                            pages=w.get("pageCount", 1), chars=find_chars(w.get("tags", []) + [w["title"]]),
+                            wuwa=bool(WUWA_RE.search(q + " " + " ".join(w.get("tags", []))))))
+        return out
+
+    def resolve(self, it):
+        pages = get_json(f"https://www.pixiv.net/ajax/illust/{it['id']}/pages", self.REF)["body"]
+        url = pages[0]["urls"]["original"]
+        return url, self.REF, os.path.splitext(url)[1]
+
+
+SOURCES = {s.name: s for s in [MotionBgs(), DesktopHut(), Wallhaven(), Moebooru("konachan", "https://konachan.net", "s"),
+                               Moebooru("yande.re", "https://yande.re", "s"), Pixiv()]}
+
+
+def image_stem(it):
+    who = "_".join(snake(c) for c in it["chars"][:3])
+    what = snake(it.get("title", "")) or snake(it.get("artist", ""))
+    if who and (what == who or what.startswith(who + "_")):
+        who = ""                                                        # "Danjin - Last Sight" already names her
+    parts = [p for p in (who, what) if p]
+    if not what:
+        parts.append(f"{it['src'].replace('.', '')}_{it['id']}")
+    return "_".join(parts)
+
+
+def listing(q, source, kind, page):
+    names = [n for n, s in SOURCES.items() if (source in ("all", n)) and kind in ("all", s.kind)]
+    results, errors = {}, {}
+
+    def run(n):
+        try:
+            results[n] = SOURCES[n].search(q, page)
+        except Exception as e:
+            results[n], errors[n] = [], str(e)[:120]
+    list(net_pool.map(run, names))
+    idx = load_index()
+    merged, lists = [], [results[n] for n in names]
+    for i in range(max((len(l) for l in lists), default=0)):        # interleave so every source shows up top
+        merged += [l[i] for l in lists if i < len(l)]
+    for it in merged:
+        p = idx.get(it["uid"])
+        it["path"] = p if p and os.path.exists(p) else None
+        it["folder"] = guess_folder(it["kind"], q, it["chars"], it["wuwa"])
+        it["q"] = q
+    return merged, errors
+
+
+# ---------------------------------------------------------------- download
+def download(it, folder):
+    uid = it["uid"]
+    try:
+        src = SOURCES[it["src"]]
+        if folder == "auto" and hasattr(src, "details"):
+            src.details(it)
+            folder = guess_folder(it["kind"], it.get("q", ""), it["chars"], it["wuwa"])
+        if folder == "auto":
+            folder = f"{WUWA}/Unsorted" if it["wuwa"] else "Other"
+        d = os.path.realpath(os.path.join(LIB, folder))
+        if not d.startswith(LIB + os.sep):
+            raise RuntimeError("folder is outside ~/wallpapers")
+        url, referer, ext = src.resolve(it)
+        if not allowed(url):
+            raise RuntimeError("download host not allowed: " + (urllib.parse.urlparse(url).hostname or url))
+        ext = ext.lower() if ext.lower() in SAVE_EXT else (".mp4" if it["kind"] == "video" else ".jpg")
+        if it["kind"] == "image" and not it["chars"] and hasattr(src, "details") and folder != "auto":
+            try:
+                src.details(it)                                         # names still want the characters
+            except Exception:
+                pass
+        stem = src.stem(it) if hasattr(src, "stem") else image_stem(it)
+        os.makedirs(d, exist_ok=True)
+        final = os.path.join(d, free_stem(stem or snake(f"{it['src']}_{it['id']}"), library_stems()) + ext)
+        part = final + ".part"
+        req = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": referer})
+        with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as out:
+            total = int(r.headers.get("Content-Length") or 0)
+            ctype = r.headers.get("Content-Type") or ""
+            if not (ctype.startswith("video") or ctype.startswith("image") or ctype == "application/octet-stream"):
+                raise RuntimeError("not a picture or video: " + ctype)
+            with jobs_lock:
+                jobs[uid].update(state="downloading", total=total)
+            got = 0
+            while chunk := r.read(1 << 16):
+                out.write(chunk); got += len(chunk)
+                jobs[uid]["got"] = got
+        if total and got != total:
+            raise RuntimeError(f"short download {got}/{total}")
+        os.replace(part, final)
+        remember(uid, final)
+        if lib_hash["ready"] and it["kind"] == "image":
+            h = dhash_file(final)
+            if h is not None:
+                lib_hash["map"][os.path.relpath(final, LIB)] = h
+        with scan_lock:                                                # one skwd scan at a time
+            subprocess.run(["skwd-wall-scan"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
+        with jobs_lock:
+            jobs[uid].update(state="done", path=final)
+    except Exception as e:
+        for p in [locals().get("part")]:
+            if p and os.path.exists(p):
+                os.remove(p)
+        with jobs_lock:
+            jobs[uid].update(state="error", error=str(e)[:200])
+
+
+# ---------------------------------------------------------------- server
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def send(self, code, body, ctype="application/json", extra=None):
+        data = body if isinstance(body, bytes) else body.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def local(self):
+        """Refuse other web pages: DNS-rebinding hosts, and cross-site requests (they can't send X-Wallgrab)."""
+        if self.headers.get("Host") not in (f"127.0.0.1:{PORT}", f"localhost:{PORT}"):
+            return False
+        return self.path in ("/",) or self.path.startswith("/?") or self.headers.get("X-Wallgrab") == "1" \
+            or self.path.startswith("/img?")
+
+    def body(self):
+        return json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+
+    def do_GET(self):
+        if not self.local():
+            return self.send(403, "{}")
+        try:
+            self.get()
+        except Exception as e:
+            self.send(500, json.dumps({"error": str(e)[:200]}))
+
+    def do_POST(self):
+        if not self.local():
+            return self.send(403, "{}")
+        try:
+            self.post()
+        except Exception as e:
+            self.send(500, json.dumps({"error": str(e)[:200]}))
+
+    def get(self):
+        u = urllib.parse.urlparse(self.path)
+        qs = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
+        if u.path == "/":
+            return self.send(200, PAGE, "text/html; charset=utf-8")
+        if u.path == "/api/list":
+            items, errors = listing(qs.get("q", "wuthering waves"), qs.get("source", "all"),
+                                    qs.get("kind", "all"), int(qs.get("page", 1)))
+            return self.send(200, json.dumps({"items": items, "errors": errors}))
+        if u.path == "/api/folders":
+            return self.send(200, json.dumps(library_folders()))
+        if u.path == "/api/jobs":
+            with jobs_lock:
+                return self.send(200, json.dumps(jobs))
+        if u.path == "/img":
+            url = qs.get("u", "")
+            if urllib.parse.urlparse(url).hostname != "i.pximg.net" or not allowed(url):
+                return self.send(400, "{}")
+            try:
+                data = http(url, Pixiv.REF)
+            except Exception:
+                return self.send(502, "{}")
+            if not is_raster(data):
+                return self.send(502, "{}")
+            return self.send(200, data, "image/jpeg", {"Cache-Control": "max-age=86400"})
+        self.send(404, "{}")
+
+    def post(self):
+        b = self.body()
+        if self.path == "/api/get":
+            it, folder = b["item"], (b.get("folder") or "auto").strip().strip("/")
+            if it.get("src") not in SOURCES:
+                return self.send(400, json.dumps({"error": "unknown source"}))
+            with jobs_lock:
+                if jobs.get(it["uid"], {}).get("state") in ("queued", "downloading"):
+                    return self.send(200, "{}")
+                jobs[it["uid"]] = {"state": "queued", "got": 0, "total": 0}
+            threading.Thread(target=download, args=(it, folder), daemon=True).start()
+            return self.send(200, "{}")
+        if self.path == "/api/dupes":
+            ensure_library_hashes()
+            if not lib_hash["ready"]:
+                return self.send(200, json.dumps({"pending": True}))
+            todo = [i for i in b.get("items", []) if i.get("hash_url")]
+            return self.send(200, json.dumps({"pending": False, "dupes": dict(zip(
+                [i["uid"] for i in todo], hash_pool.map(similar_in_library, todo)))}))
+        if self.path == "/api/apply":
+            path = os.path.realpath(b["path"])
+            if not path.startswith(LIB + os.sep) or not os.path.isfile(path):
+                return self.send(400, json.dumps({"error": "outside library"}))
+            r = subprocess.run(["skwd-helm", "apply", path], capture_output=True, text=True)
+            return self.send(200 if r.returncode == 0 else 500, json.dumps({"out": r.stdout + r.stderr}))
+        self.send(404, "{}")
+
+
+PAGE = r"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>wallgrab</title>
+<style>
+:root{--bg:#0b0d14;--surf:#151926;--surf2:#1d2233;--fg:#e6e8f2;--dim:#9aa0b8;--acc:#9fb4ff;--ok:#8fd9a8;--warn:#f2c97d;--err:#ff8f8f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 Outfit,"Noto Sans",system-ui,sans-serif}
+header{position:sticky;top:0;z-index:2;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 20px;background:rgba(11,13,20,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--surf2)}
+h1{font-size:18px;margin:0 6px 0 0;font-weight:600}
+input,select,button{font:inherit;color:var(--fg);background:var(--surf);border:1px solid var(--surf2);border-radius:999px;padding:7px 14px}
+button{cursor:pointer}button:hover{border-color:var(--acc)}
+#q{min-width:220px}#filter{min-width:170px}
+#meta{color:var(--dim);font-size:13px;width:100%}
+#meta .err{color:var(--err)}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px;padding:20px}
+.card{background:var(--surf);border-radius:18px;overflow:hidden;border:1px solid var(--surf2);transition:transform .25s cubic-bezier(.2,0,0,1),border-color .25s}
+.card:hover{transform:translateY(-3px);border-color:var(--acc)}
+.media{position:relative;aspect-ratio:16/9;background:#000;display:block;color:var(--fg);text-decoration:none}
+.media img,.media video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.media video{opacity:0;transition:opacity .3s}.card.playing .media video{opacity:1}
+.badges{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:6px;flex-wrap:wrap}
+.badge{background:rgba(0,0,0,.65);border-radius:999px;padding:2px 9px;font-size:12px}
+.badge.have{background:rgba(40,90,60,.9);color:var(--ok)}
+.badge.dup{background:rgba(100,80,30,.9);color:var(--warn)}
+.row{display:flex;align-items:center;gap:8px;padding:9px 12px}
+.ttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.f input{flex:1;min-width:0;padding:5px 12px;font-size:13px}
+.row button{padding:5px 14px;font-size:13px}
+.get{background:var(--acc);color:#0b0d14;border-color:var(--acc);font-weight:600}
+.bar{height:3px;background:var(--surf2)}.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
+.err{color:var(--err);font-size:12px;padding:0 12px 10px}
+#more{display:block;margin:0 auto 40px;padding:10px 28px}
+</style></head><body>
+<header>
+  <h1>wallgrab</h1>
+  <input id="q" placeholder="Search (e.g. wuthering waves)" autocomplete="off">
+  <select id="source"><option value="all">All sources</option><option>motionbgs</option><option>desktophut</option><option>wallhaven</option><option>konachan</option><option>yande.re</option><option>pixiv</option></select>
+  <select id="kind"><option value="all">Videos + images</option><option value="video">Videos</option><option value="image">Images</option></select>
+  <button id="go">Search</button>
+  <input id="filter" placeholder="Filter shown (e.g. hsin)" autocomplete="off">
+  <select id="show"><option value="all">All</option><option value="new">Not in library</option><option value="have">In library</option></select>
+  <div id="meta">Loading…</div>
+</header>
+<main id="grid"></main>
+<button id="more">Load more</button>
+<datalist id="folders"></datalist>
+<script>
+const api=(u,o={})=>fetch(u,{...o,headers:{'X-Wallgrab':'1'}});
+const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const P=new URLSearchParams(location.search);
+let st={q:P.get('q')||'wuthering waves',source:P.get('source')||'all',kind:P.get('kind')||'all',page:1}, items=[], dupes={}, errors={};
+$('#q').value=st.q; $('#source').value=st.source; $('#kind').value=st.kind;
+api('/api/folders').then(r=>r.json()).then(f=>{$('#folders').innerHTML=['auto',...f].map(x=>`<option value="${esc(x)}">`).join('')});
+async function load(reset){
+  if(reset){st.page=1;items=[];dupes={};$('#grid').innerHTML='';}
+  $('#meta').textContent='Loading page '+st.page+'…'; $('#more').disabled=true;
+  const r=await api(`/api/list?q=${encodeURIComponent(st.q)}&source=${st.source}&kind=${st.kind}&page=${st.page}`);
+  const d=await r.json(); if(d.error){$('#meta').textContent='Error: '+d.error;$('#more').disabled=false;return} errors=d.errors||{};
+  const seen=new Set(items.map(i=>i.uid)); const fresh=d.items.filter(i=>!seen.has(i.uid));
+  items.push(...fresh); render(); $('#more').disabled=false; $('#more').style.display=fresh.length?'block':'none';
+  checkDupes(fresh.filter(i=>i.kind==='image'&&!i.path));
+}
+async function checkDupes(list){
+  if(!list.length)return;
+  const body=JSON.stringify({items:list.map(i=>({uid:i.uid,hash_url:i.hash_url,referer:i.referer}))});
+  while(true){
+    const d=await (await api('/api/dupes',{method:'POST',body})).json();
+    if(!d.pending){Object.assign(dupes,d.dupes);render();return}
+    $('#meta').dataset.note='indexing your library for duplicate checks (first run only)…'; meta();
+    await new Promise(r=>setTimeout(r,3000));
+  }
+}
+function meta(){
+  const have=items.filter(i=>i.path).length, dup=items.filter(i=>dupes[i.uid]).length;
+  const errs=Object.entries(errors).map(([k,v])=>`<span class="err">${esc(k)}: ${esc(v)}</span>`).join(' · ');
+  $('#meta').innerHTML=`${items.length} results · ${have} downloaded · ${dup} you already have · page ${st.page}`+
+    ($('#meta').dataset.note&&!Object.keys(dupes).length?' · '+esc($('#meta').dataset.note):'')+(errs?' · '+errs:'');
+}
+function visible(){
+  const f=$('#filter').value.toLowerCase().trim(), show=$('#show').value;
+  return items.filter(it=>(!f||(it.title+' '+it.chars.join(' ')+' '+it.artist+' '+it.id).toLowerCase().includes(f))
+    &&(show==='all'||(show==='have')===!!(it.path||dupes[it.uid])));
+}
+function render(){
+  const g=$('#grid'), keep={};
+  g.querySelectorAll('.card').forEach(c=>keep[c.dataset.uid]=c);
+  const list=visible(); g.innerHTML='';
+  for(const it of list){
+    let c=keep[it.uid];
+    const sig=(it.path||'')+'|'+(dupes[it.uid]||'');
+    if(!c||c.dataset.sig!==sig){c=card(it); c.dataset.sig=sig;}
+    g.appendChild(c);
+  }
+  meta();
+}
+function card(it){
+  const c=document.createElement('div'); c.className='card'; c.dataset.uid=it.uid;
+  const label=it.title||it.chars.join(', ')||it.artist||it.id, dup=dupes[it.uid];
+  c.innerHTML=`<a class="media" href="${esc(it.page)}" target="_blank" rel="noreferrer"><img loading="lazy" referrerpolicy="no-referrer" src="${esc(it.thumb)}">
+      ${it.kind==='video'?`<video muted loop playsinline preload="none" data-src="${esc(it.preview)}"></video>`:''}
+      <span class="badges"><span class="badge">${esc(it.src)} · ${it.kind==='video'?'video':'image'}${it.res?' · '+esc(it.res):''}${it.pages>1?' · '+it.pages+' pages, saves p1':''}</span>
+      ${it.path?'<span class="badge have">in library</span>':''}${!it.path&&dup?`<span class="badge dup" title="${esc(dup)}">have: ${esc(dup.split('/').pop())}</span>`:''}</span></a>
+    <div class="row"><span class="ttl" title="${esc(label)}">${esc(label)}</span>
+      ${it.path?'<button class="set">Set</button>':'<button class="get">Get</button>'}</div>
+    ${it.path?'':`<div class="row f"><input list="folders" value="${esc(it.folder)}" title="Folder in ~/wallpapers (auto = decide from tags)"></div>`}
+    <div class="bar"><i></i></div><div class="err"></div>`;
+  const v=c.querySelector('video');
+  if(v){c.addEventListener('mouseenter',()=>{if(!v.src)v.src=v.dataset.src;c.classList.add('playing');v.play().catch(()=>{})});
+        c.addEventListener('mouseleave',()=>{c.classList.remove('playing');v.pause()});}
+  c.querySelector('.get')?.addEventListener('click',e=>grab(it,e.target,c.querySelector('.row.f input').value));
+  c.querySelector('.set')?.addEventListener('click',()=>api('/api/apply',{method:'POST',body:JSON.stringify({path:it.path})}));
+  return c;
+}
+async function grab(it,btn,folder){btn.disabled=true;btn.textContent='Queued';
+  await api('/api/get',{method:'POST',body:JSON.stringify({item:it,folder})}); poll();}
+let polling=false;
+async function poll(){ if(polling)return; polling=true;
+  while(true){
+    const j=await (await api('/api/jobs')).json(); let active=false;
+    for(const [uid,s] of Object.entries(j)){
+      const c=document.querySelector(`.card[data-uid="${CSS.escape(uid)}"]`); if(!c)continue;
+      const b=c.querySelector('.get'), bar=c.querySelector('.bar i');
+      if(s.state==='queued'||s.state==='downloading'){active=true;
+        const p=s.total?Math.round(100*s.got/s.total):0; bar.style.width=p+'%'; if(b)b.textContent=s.total?p+'%':'…';}
+      else if(s.state==='done'){const it=items.find(i=>i.uid===uid); if(it&&!it.path){it.path=s.path; render();}}
+      else if(s.state==='error'){c.querySelector('.err').textContent=s.error; if(b){b.disabled=false;b.textContent='Retry'}}
+    }
+    if(!active)break; await new Promise(r=>setTimeout(r,700));
+  }
+  polling=false;
+}
+function search(){st.q=$('#q').value.trim()||'wuthering waves';st.source=$('#source').value;st.kind=$('#kind').value;
+  history.replaceState(null,'',`?q=${encodeURIComponent(st.q)}&source=${st.source}&kind=${st.kind}`); load(true);}
+$('#go').addEventListener('click',search); $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')search()});
+$('#source').addEventListener('change',search); $('#kind').addEventListener('change',search);
+$('#filter').addEventListener('input',render); $('#show').addEventListener('change',render);
+$('#more').addEventListener('click',()=>{st.page++;load(false)});
+load(true);
+</script></body></html>"""
+
+
+def main():
+    args = sys.argv[1:]
+    if args[:1] in (["-h"], ["--help"]):
+        print(__doc__.strip()); return
+    source = "all"
+    if args[:1] == ["-s"] and len(args) > 1:
+        source, args = args[1], args[2:]
+    q = " ".join(args) or "wuthering waves"
+    url = f"http://127.0.0.1:{PORT}/?" + urllib.parse.urlencode({"q": q, "source": source, "kind": "all"})
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError:
+        webbrowser.open(url)   # already running: just open another tab
+        return
+    print(f"wallgrab on {url}  (Ctrl+C to stop)")
+    threading.Timer(0.3, webbrowser.open, [url]).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
