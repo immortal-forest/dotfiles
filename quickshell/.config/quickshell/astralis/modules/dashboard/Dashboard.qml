@@ -441,6 +441,7 @@ PanelWindow {
                         Layout.preferredHeight: 172 * root.s
                         accessibleName: "Weather, " + (Weather.ready ? Weather.tempNow + " degrees, " + Weather.labelFor(Weather.codeNow) : "loading")
 
+                        readonly property var next12: Weather.hourly.slice(0, 13)
                         readonly property var range: {
                             var h = Weather.hourly, lo = 999, hi = -999;
                             for (var i = 0; i < h.length; i++) {
@@ -496,56 +497,110 @@ PanelWindow {
                             }
                         }
 
-                        // Next 12 hours, 2-hourly: hour, condition glyph, temperature —
-                        // the pill calendar's strip, wider. Replaces a temperature line
-                        // that drew whole degrees as a staircase and never showed rain.
-                        Row {
-                            id: wxSteps
+                        Item {
+                            id: wxCurveBox
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.margins: 20 * root.s
                             anchors.bottom: parent.bottom
-                            anchors.bottomMargin: 14 * root.s
-                            readonly property var steps: [0, 2, 4, 6, 8, 10, 12].filter(i => i < Weather.hourly.length).map(i => Weather.hourly[i])
-                            visible: steps.length > 0
+                            anchors.bottomMargin: 12 * root.s
+                            height: 74 * root.s
+                            visible: wxTile.next12.length >= 2
+                            // band the curve occupies between the temp labels and the hour labels
+                            readonly property real bandTop: 18 * root.s
+                            readonly property real bandBot: height - 18 * root.s
+                            function px(i) { return 6 * root.s + i * (width - 12 * root.s) / Math.max(1, wxTile.next12.length - 1); }
+                            function py(t) {
+                                var r = wxTile.range;
+                                if (!r || r.hi === r.lo) return (bandTop + bandBot) / 2;
+                                return bandBot - (t - r.lo) / (r.hi - r.lo) * (bandBot - bandTop);
+                            }
+
+                            // the curve draws in left→right with the tile's reveal
+                            Item {
+                                width: parent.width * wxTile.reveal
+                                height: parent.height
+                                clip: true
+                            Canvas {
+                                id: wxCurve
+                                width: wxCurveBox.width
+                                height: wxCurveBox.height
+                                readonly property var pts: wxTile.next12
+                                readonly property color tint: Colors.primary
+                                onPtsChanged: requestPaint()
+                                onTintChanged: requestPaint()
+                                onWidthChanged: requestPaint()
+                                onPaint: {
+                                    var ctx = getContext("2d");
+                                    ctx.reset();
+                                    var p = pts;
+                                    if (p.length < 2) return;
+                                    function X(i) { return wxCurveBox.px(i); }
+                                    function Y(i) { return wxCurveBox.py(p[i].temp); }
+                                    // smooth path through the samples (midpoint quadratic)
+                                    function trace() {
+                                        ctx.moveTo(X(0), Y(0));
+                                        for (var i = 1; i < p.length - 1; i++)
+                                            ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 1)) / 2, (Y(i) + Y(i + 1)) / 2);
+                                        ctx.lineTo(X(p.length - 1), Y(p.length - 1));
+                                    }
+                                    ctx.beginPath();
+                                    trace();
+                                    ctx.lineTo(X(p.length - 1), wxCurveBox.bandBot);
+                                    ctx.lineTo(X(0), wxCurveBox.bandBot);
+                                    ctx.closePath();
+                                    var g = ctx.createLinearGradient(0, wxCurveBox.bandTop, 0, wxCurveBox.bandBot);
+                                    g.addColorStop(0, Qt.alpha(tint, 0.22));
+                                    g.addColorStop(1, Qt.alpha(tint, 0));
+                                    ctx.fillStyle = g;
+                                    ctx.fill();
+                                    ctx.beginPath();
+                                    trace();
+                                    ctx.lineWidth = 2 * root.s;
+                                    ctx.lineCap = "round";
+                                    ctx.lineJoin = "round";
+                                    ctx.strokeStyle = tint;
+                                    ctx.stroke();
+                                }
+                            }
+                            }
                             Repeater {
-                                model: wxSteps.steps
-                                Column {
-                                    id: wxStep
-                                    required property var modelData
-                                    required property int index
-                                    readonly property bool now: index === 0
-                                    readonly property int hr: parseInt(modelData.hour, 10)
-                                    width: wxSteps.width / 7
-                                    spacing: 5 * root.s
-                                    opacity: wxTile.seg(1 + index * 0.35)
-                                    transform: Translate { y: (1 - wxTile.seg(1 + wxStep.index * 0.35)) * 6 * root.s }
+                                model: wxTile.next12.length >= 2 ? [0, 3, 6, 9, 12].filter(i => i < wxTile.next12.length) : []
+                                Item {
+                                    id: wxMark
+                                    required property int modelData
+                                    readonly property var h: wxTile.next12[modelData]
+                                    readonly property real cx: wxCurveBox.px(modelData)
+                                    readonly property real cy: wxCurveBox.py(h.temp)
+                                    opacity: Math.max(0, Math.min(1, (wxTile.reveal * wxCurveBox.width - cx + 12 * root.s) / (24 * root.s)))
+                                    Rectangle {
+                                        x: wxMark.cx - width / 2
+                                        y: wxMark.cy - height / 2
+                                        width: (wxMark.modelData === 0 ? 8 : 6) * root.s
+                                        height: width
+                                        radius: width / 2
+                                        color: wxMark.modelData === 0 ? Colors.primary : Colors.surface_container
+                                        border.width: 1.5 * root.s
+                                        border.color: Colors.primary
+                                    }
                                     Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: wxStep.now ? "Now" : wxStep.modelData.hour
-                                        color: wxStep.now ? Colors.on_surface_variant : Qt.alpha(Colors.on_surface_variant, 0.65)
+                                        x: Math.max(0, Math.min(wxCurveBox.width - width, wxMark.cx - width / 2))
+                                        y: wxMark.cy - height - 4 * root.s
+                                        text: wxMark.h.temp + "°"
+                                        color: Colors.on_surface
                                         font.family: Appearance.font.family
-                                        font.pixelSize: 9.5 * root.s
+                                        font.pixelSize: 11 * root.s
                                         font.weight: Font.DemiBold
-                                        font.capitalization: Font.AllUppercase
-                                        font.letterSpacing: 0.5 * root.s
                                         font.features: ({ "tnum": 1 })
                                     }
-                                    GlyphIcon {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        width: 18 * root.s
-                                        height: 18 * root.s
-                                        name: Weather.glyphFor(wxStep.modelData.code, wxStep.now ? Weather.isDay : (wxStep.hr >= 6 && wxStep.hr < 19))
-                                        color: wxStep.now ? Colors.primary : Colors.on_surface_variant
-                                        stroke: 1.7
-                                    }
                                     Text {
-                                        anchors.horizontalCenter: parent.horizontalCenter
-                                        text: wxStep.modelData.temp + "°"
-                                        color: wxStep.now ? Colors.on_surface : Qt.alpha(Colors.on_surface, 0.85)
+                                        x: Math.max(0, Math.min(wxCurveBox.width - width, wxMark.cx - width / 2))
+                                        y: wxCurveBox.height - height
+                                        text: wxMark.modelData === 0 ? "now" : wxMark.h.hour
+                                        color: Colors.on_surface_variant
                                         font.family: Appearance.font.family
-                                        font.pixelSize: 11.5 * root.s
-                                        font.weight: wxStep.now ? Font.Bold : Font.DemiBold
+                                        font.pixelSize: 10 * root.s
+                                        font.weight: Font.Medium
                                         font.features: ({ "tnum": 1 })
                                     }
                                 }
