@@ -25,7 +25,9 @@ Singleton {
     readonly property string dataDir: Quickshell.env("HOME") + "/.local/share/astralis/depth"
     readonly property string scripts: Quickshell.shellDir + "/scripts/depth"
 
-    readonly property string wallpaper: Wallpaper.current
+    // the decodable full-res still: a live wallpaper's is a frame of its video,
+    // not the 640×360 thumbnail skwd records
+    readonly property string wallpaper: Wallpaper.still
     readonly property real threshold: Widgets.depth.threshold
     readonly property real feather: Widgets.depth.feather
 

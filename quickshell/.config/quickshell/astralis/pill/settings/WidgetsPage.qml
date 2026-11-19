@@ -8,7 +8,7 @@ import "../../config"
 
 /**
  * astralis — 景 WIDGETS settings page: the desktop widgets (cover art,
- * synced lyrics, depth clock). "Edit layout" opens the full-screen placer
+ * synced lyrics, depth clock) and Retroact Rain (modules/rain). "Edit layout" opens the full-screen placer
  * (modules/nowplaying/WidgetEditor.qml) — drag, resize, snap grid. Everything
  * here backs onto services/Widgets.qml (~/.cache/astralis/widgets.json) and
  * applies live.
@@ -62,6 +62,16 @@ SettingsPage {
     readonly property var weightOptions: [
         { label: "Light", value: 300 }, { label: "Regular", value: 400 }, { label: "Bold", value: 700 }, { label: "Black", value: 900 }
     ]
+    readonly property var rainLengthOptions: [
+        { label: "20 s", value: "short" }, { label: "1 min", value: "long" }, { label: "Indefinite", value: "endless" }
+    ]
+    readonly property var rainSequenceOptions: [
+        { label: "Fall, hang, rise", value: "full" }, { label: "Rise only", value: "rise" }
+    ]
+    readonly property var rainTintOptions: [
+        { label: "Water", value: "water" }, { label: "Accent", value: "primary" },
+        { label: "Tertiary", value: "tertiary" }, { label: "Light", value: "on_surface" }
+    ]
 
     rows: [
         { item: editRow, kind: "toggle", get: function () { return Widgets.editing; }, set: function (v) { Widgets.editing = v; } },
@@ -100,7 +110,20 @@ SettingsPage {
         { item: clockDateSizeRow, kind: "scrub", bump: function (d) { clockDateSizeScrub.bump(d); } },
         { item: clockHourRow, kind: "seg", vals: root.hourOptions.map(o => o.value), get: function () { return Widgets.depth.hour; }, set: function (v) { Widgets.set("depth", "hour", v); } },
         { item: clockShadowRow, kind: "toggle", get: function () { return Widgets.depth.shadow; }, set: function (v) { Widgets.set("depth", "shadow", v); } },
-        { item: clockOpacityRow, kind: "scrub", bump: function (d) { clockOpacityScrub.bump(d); } }
+        { item: clockOpacityRow, kind: "scrub", bump: function (d) { clockOpacityScrub.bump(d); } },
+        { item: rainRow, kind: "toggle", get: function () { return RetroactRain.playing && !RetroactRain.ending; }, set: function (v) { if (v !== (RetroactRain.playing && !RetroactRain.ending)) RetroactRain.toggle(); } },
+        { item: rainSequenceRow, kind: "seg", vals: root.rainSequenceOptions.map(o => o.value), get: function () { return Flags.rainSequence; }, set: function (v) { Flags.rainSequence = v; } },
+        { item: rainLengthRow, kind: "seg", vals: root.rainLengthOptions.map(o => o.value), get: function () { return Flags.rainLength; }, set: function (v) { Flags.rainLength = v; } },
+        { item: rainHangRow, kind: "scrub", bump: function (d) { rainHangScrub.bump(d); } },
+        { item: rainWallRow, kind: "toggle", get: function () { return Flags.rainOnWallpaper; }, set: function (v) { Flags.rainOnWallpaper = v; } },
+        { item: rainUnlockRow, kind: "toggle", get: function () { return Flags.rainOnUnlock; }, set: function (v) { Flags.rainOnUnlock = v; } },
+        { item: rainAmountRow, kind: "scrub", bump: function (d) { rainAmountScrub.bump(d); } },
+        { item: rainSizeRow, kind: "scrub", bump: function (d) { rainSizeScrub.bump(d); } },
+        { item: rainSpeedRow, kind: "scrub", bump: function (d) { rainSpeedScrub.bump(d); } },
+        { item: rainOpacityRow, kind: "scrub", bump: function (d) { rainOpacityScrub.bump(d); } },
+        { item: rainTintRow, kind: "seg", vals: root.rainTintOptions.map(o => o.value), get: function () { return Flags.rainTint; }, set: function (v) { Flags.rainTint = v; } },
+        { item: rainSkyRow, kind: "toggle", get: function () { return Flags.rainSky; }, set: function (v) { Flags.rainSky = v; } },
+        { item: rainBehindRow, kind: "toggle", get: function () { return Flags.rainBehind; }, set: function (v) { Flags.rainBehind = v; } }
     ]
 
     SettingsHeader {
@@ -320,7 +343,7 @@ SettingsPage {
                     id: backdropRow
                     surface: root
                     name: "Backdrop"
-                    sub: "A cover-tinted panel behind the lyrics for busy wallpapers"
+                    sub: "For busy wallpapers: Soft shades the words, Solid puts a card behind them"
                     captionOnFocus: true
                     icon: "palette"
                     shown: Widgets.lyrics.on
@@ -779,6 +802,235 @@ SettingsPage {
                         step: 5
                         unit: "%"
                         onEdited: v => Widgets.set("depth", "opacity", v / 100)
+                    }
+                }
+            }
+
+            SettingsSection {
+                s: root.s
+                surface: root
+                title: "Retroact Rain"
+                key: "widgets/retroact-rain"
+
+                SettingsRow {
+                    id: rainRow
+                    surface: root
+                    name: "Play Retroact Rain"
+                    sub: "Rain that halts in mid-air, then falls upward · Super+Shift+W"
+                    captionOnFocus: true
+                    icon: "cloud-rain"
+
+                    LinkToggle {
+                        s: root.s
+                        on: RetroactRain.playing && !RetroactRain.ending
+                        onToggled: RetroactRain.toggle()
+                    }
+                }
+                SettingsRow {
+                    id: rainSequenceRow
+                    surface: root
+                    name: "Sequence"
+                    sub: "Rise only: bubbles drift up from the start, no falling rain"
+                    captionOnFocus: true
+                    icon: "arrow-up"
+
+                    SettingsSeg {
+                        s: root.s
+                        options: root.rainSequenceOptions
+                        value: Flags.rainSequence
+                        onPicked: (v) => Flags.rainSequence = v
+                    }
+                }
+                SettingsRow {
+                    id: rainLengthRow
+                    surface: root
+                    name: "Length"
+                    sub: "Indefinite stays on through locks and restarts until you turn it off; it pauses under fullscreen apps"
+                    captionOnFocus: true
+                    icon: "stopwatch"
+
+                    SettingsSeg {
+                        s: root.s
+                        options: root.rainLengthOptions
+                        value: Flags.rainLength
+                        onPicked: (v) => Flags.rainLength = v
+                    }
+                }
+                SettingsRow {
+                    id: rainHangRow
+                    surface: root
+                    name: "Hang time"
+                    sub: "How long the drops stay frozen in mid-air"
+                    captionOnFocus: true
+                    icon: "pause"
+                    shown: Flags.rainSequence === "full"
+
+                    ScrubValue {
+                        id: rainHangScrub
+                        s: root.s
+                        value: Flags.rainHang
+                        openValue: 2.4
+                        from: 0
+                        to: 10
+                        step: 0.2
+                        decimals: 1
+                        unit: "s"
+                        onEdited: v => Flags.rainHang = v
+                    }
+                }
+                SettingsRow {
+                    id: rainWallRow
+                    surface: root
+                    name: "Play on new wallpaper"
+                    sub: "Once the new scene has faded in"
+                    captionOnFocus: true
+                    icon: "image"
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.rainOnWallpaper
+                        onToggled: Flags.rainOnWallpaper = !Flags.rainOnWallpaper
+                    }
+                }
+                SettingsRow {
+                    id: rainUnlockRow
+                    surface: root
+                    name: "Play on unlock"
+                    icon: "lock"
+                    last: true
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.rainOnUnlock
+                        onToggled: Flags.rainOnUnlock = !Flags.rainOnUnlock
+                    }
+                }
+            }
+
+            SettingsSection {
+                s: root.s
+                surface: root
+                title: "Rain look"
+                key: "widgets/rain-look"
+
+                SettingsRow {
+                    id: rainAmountRow
+                    surface: root
+                    name: "Amount"
+                    sub: "How many drops"
+                    captionOnFocus: true
+                    icon: "droplet"
+
+                    ScrubValue {
+                        id: rainAmountScrub
+                        s: root.s
+                        value: Flags.rainAmount
+                        openValue: 55
+                        from: 10
+                        to: 100
+                        step: 5
+                        unit: "%"
+                        onEdited: v => Flags.rainAmount = Math.round(v)
+                    }
+                }
+                SettingsRow {
+                    id: rainSizeRow
+                    surface: root
+                    name: "Drop size"
+                    icon: "scaling"
+
+                    ScrubValue {
+                        id: rainSizeScrub
+                        s: root.s
+                        value: Flags.rainSize
+                        openValue: 100
+                        from: 50
+                        to: 200
+                        step: 10
+                        unit: "%"
+                        onEdited: v => Flags.rainSize = Math.round(v)
+                    }
+                }
+                SettingsRow {
+                    id: rainSpeedRow
+                    surface: root
+                    name: "Speed"
+                    sub: "How fast it falls and rises"
+                    captionOnFocus: true
+                    icon: "bolt"
+
+                    ScrubValue {
+                        id: rainSpeedScrub
+                        s: root.s
+                        value: Flags.rainSpeed
+                        openValue: 100
+                        from: 50
+                        to: 200
+                        step: 10
+                        unit: "%"
+                        onEdited: v => Flags.rainSpeed = Math.round(v)
+                    }
+                }
+                SettingsRow {
+                    id: rainOpacityRow
+                    surface: root
+                    name: "Opacity"
+                    icon: "eye"
+
+                    ScrubValue {
+                        id: rainOpacityScrub
+                        s: root.s
+                        value: Flags.rainOpacity
+                        openValue: 100
+                        from: 20
+                        to: 100
+                        step: 5
+                        unit: "%"
+                        onEdited: v => Flags.rainOpacity = Math.round(v)
+                    }
+                }
+                SettingsRow {
+                    id: rainTintRow
+                    surface: root
+                    name: "Highlight colour"
+                    sub: "Water is the light on real drops; the rest follow the wallpaper palette"
+                    captionOnFocus: true
+                    icon: "palette"
+
+                    SettingsSeg {
+                        s: root.s
+                        options: root.rainTintOptions
+                        value: Flags.rainTint
+                        onPicked: (v) => Flags.rainTint = v
+                    }
+                }
+                SettingsRow {
+                    id: rainSkyRow
+                    surface: root
+                    name: "Sky ripples"
+                    sub: "Faint water-surface lines overhead while it rises"
+                    captionOnFocus: true
+                    icon: "waves"
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.rainSky
+                        onToggled: Flags.rainSky = !Flags.rainSky
+                    }
+                }
+                SettingsRow {
+                    id: rainBehindRow
+                    surface: root
+                    name: "Behind the subject"
+                    sub: "Back drops pass behind the wallpaper's foreground (the depth cut-out)"
+                    captionOnFocus: true
+                    icon: "eye-off"
+                    last: true
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.rainBehind
+                        onToggled: Flags.rainBehind = !Flags.rainBehind
                     }
                 }
             }

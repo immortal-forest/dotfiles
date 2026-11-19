@@ -44,6 +44,7 @@ hl.bind(mainMod .. " + A",     hl.dsp.exec_cmd('qs -c astralis ipc call pill mix
 hl.bind(mainMod .. " + D",     hl.dsp.exec_cmd('qs -c astralis ipc call pill calendar ""'))      -- astralis: calendar
 hl.bind(mainMod .. " + K",     hl.dsp.exec_cmd('qs -c astralis ipc call pill link ""'))          -- astralis: link (wifi / bluetooth)
 hl.bind(mainMod .. " + B",     hl.dsp.exec_cmd("qs -c astralis ipc call visualizer toggle"))     -- fullscreen visualizer
+hl.bind(mainMod .. " + SHIFT + W", hl.dsp.exec_cmd("qs -c astralis ipc call rain toggle"))      -- astralis: Retroact Rain (play / fade out)
 -- SHIFT because plain SUPER+S is the scratch special-workspace toggle below.
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd('qs -c astralis ipc call pill sysmon ""'))    -- astralis: system monitor
 hl.bind(mainMod .. " + comma",     hl.dsp.exec_cmd('qs -c astralis ipc call pill settings ""'))  -- astralis: settings

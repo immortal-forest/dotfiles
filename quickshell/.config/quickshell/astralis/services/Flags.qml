@@ -75,6 +75,19 @@ Singleton {
     property alias vizColorCycle: adapter.vizColorCycle
     property alias vizLayout: adapter.vizLayout
     property alias vizFill: adapter.vizFill
+    property alias rainLength: adapter.rainLength
+    property alias rainSequence: adapter.rainSequence
+    property alias rainActive: adapter.rainActive
+    property alias rainOnWallpaper: adapter.rainOnWallpaper
+    property alias rainOnUnlock: adapter.rainOnUnlock
+    property alias rainHang: adapter.rainHang
+    property alias rainSpeed: adapter.rainSpeed
+    property alias rainAmount: adapter.rainAmount
+    property alias rainSize: adapter.rainSize
+    property alias rainOpacity: adapter.rainOpacity
+    property alias rainTint: adapter.rainTint
+    property alias rainSky: adapter.rainSky
+    property alias rainBehind: adapter.rainBehind
     property alias nightLightMode: adapter.nightLightMode
     property alias nightLightTemp: adapter.nightLightTemp
     property alias nightLightOnMin: adapter.nightLightOnMin
@@ -341,6 +354,29 @@ Singleton {
             // Full-screen visualizer body: "transparent" (glass that fades
             // toward the screen edge) | "opaque" (one solid fill, the old look).
             property string vizFill: "transparent"
+            // Retroact Rain (modules/rain, services/RetroactRain.qml): how long
+            // it rises before fading — "short" (~20 s event) | "long" (~1 min) |
+            // "endless" (until stopped) — and what plays it besides the key.
+            property string rainLength: "short"
+            // "full" = fall → hang → rise | "rise" = only the rising part
+            property string rainSequence: "full"
+            // An Indefinite rain is ON: set while one plays, cleared only when
+            // the user stops it — so it comes back after a lock or a restart.
+            property bool rainActive: false
+            property bool rainOnWallpaper: true
+            property bool rainOnUnlock: false
+            // Its look; defaults = the approved look. hang = s the drops hang
+            // still; speed/amount/size/opacity in %; tint "water" (cool white)
+            // or a Colors role; sky = the faint ripples overhead while it
+            // rises; behind = back drops pass behind the wallpaper's subject.
+            property real rainHang: 2.4
+            property int rainSpeed: 100
+            property int rainAmount: 55
+            property int rainSize: 100
+            property int rainOpacity: 100
+            property string rainTint: "water"
+            property bool rainSky: true
+            property bool rainBehind: true
             property string nightLightMode: "off"
             property int nightLightTemp: 4000
             property int nightLightOnMin: 1260

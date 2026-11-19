@@ -23,4 +23,5 @@ singleton Lyrics Lyrics.qml
 singleton Widgets Widgets.qml
 singleton DiskCache DiskCache.qml
 singleton ClipHistory ClipHistory.qml
+singleton RetroactRain RetroactRain.qml
 singleton AppNap AppNap.qml

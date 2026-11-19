@@ -17,6 +17,7 @@ import "modules/depth"
 import "config"
 import "pill"
 import "modules/visualizer"
+import "modules/rain"
 import "modules/powermenu"
 import "modules/dashboard"
 import "modules/settings"
@@ -422,6 +423,11 @@ ShellRoot {
     // ── depth clock: desktop clock tucked behind the wallpaper's foreground ──
     // (services/WallpaperDepth.qml cuts the scene out; `ipc call depth ...`)
     Depth {}
+
+    // ── Retroact Rain: rain falls, halts mid-air, rises — a timed event ────
+    // (modules/rain; Super+Shift+W, `ipc call rain toggle`, a new wallpaper,
+    // optionally unlock). Its layers exist only while it plays.
+    Rain { locked: lockScope.locked }
 
     // ── lockscreen: real WlSessionLock + PAM (lock/Lock.qml) ───────────────
     // Driven by logind: `loginctl lock-session` (powermenu Lock tile, idle
