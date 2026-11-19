@@ -80,6 +80,20 @@ local function setPinned(w, pinned)
 	end
 end
 
+-- Pinned while no special workspace is open on the popout's monitor, unpinned
+-- under it while one is. Since Hyprland 3c37f4f (Nov 2026) unpin assigns the
+-- window to the monitor's *current* workspace — the special that is open — so
+-- an unpin that lands it there is followed by a silent move back to the
+-- regular workspace underneath (moving by monitor targets its non-special
+-- active workspace). On older builds unpin never lands on a special: no-op.
+local function sync(w)
+	local open = specialOpenOn(w.monitor)
+	setPinned(w, not open)
+	if open and w.workspace and w.workspace.special then
+		hl.dispatch(hl.dsp.window.move({ monitor = w.monitor.name, follow = false, window = w }))
+	end
+end
+
 local function notify(body)
 	hl.exec_cmd("notify-send -a Hyprland -u low -t 1500 Popout '" .. body .. "'")
 end
@@ -115,17 +129,18 @@ function M.toggle()
 	-- Pinning assigns it to its monitor's active (never special) workspace, so
 	-- a popout left on another workspace comes to you. If a special is open
 	-- right now, workspace.special_active pins it once that closes.
-	setPinned(w, not specialOpenOn(w.monitor))
+	sync(w)
 	notify(popoutLabel(w) .. " follows you")
 end
 
--- ws is the special workspace that opened, or nil when it closed.
-function M.onSpecial(ws, mon)
+-- Fires when a special opens (ws) or closes (nil) on mon; sync reads the
+-- live state.
+function M.onSpecial(_, mon)
 	local w = follower()
 	if not (w and mon and w.monitor) or w.monitor.id ~= mon.id then
 		return
 	end
-	setPinned(w, ws == nil)
+	sync(w)
 end
 
 hl.bind("SUPER + SHIFT + O", M.toggle, { description = "Popout: follow across workspaces (newest PiP / Discord popout)" })
@@ -136,7 +151,7 @@ hl.on("workspace.special_active", M.onSpecial)
 hl.on("config.reloaded", function()
 	local w = follower()
 	if w then
-		setPinned(w, not specialOpenOn(w.monitor))
+		sync(w)
 	end
 end)
 
