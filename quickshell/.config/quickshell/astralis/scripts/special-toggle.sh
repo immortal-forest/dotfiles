@@ -16,9 +16,15 @@ addr=$(printf '%s' "$aw" | jq -r '.address // ""')
 ws=$(printf '%s' "$aw" | jq -r '.workspace.name // ""')
 [ -n "$addr" ] || exit 0
 
+# Lua config (Hyprland 0.57): vanilla "movetoworkspace ws,address:..." is rejected
+# with a parse error, so dispatch the hl.dsp form.
+move() {
+	hyprctl dispatch "hl.dsp.window.move({ workspace = \"$1\", follow = $2, window = \"address:$addr\" })" >/dev/null
+}
+
 if [ "$ws" = "special:$name" ]; then
 	real=$(hyprctl monitors -j | jq -r 'map(select(.focused)) | .[0].activeWorkspace.id // 1')
-	hyprctl dispatch movetoworkspace "$real,address:$addr" >/dev/null
+	move "$real" true
 else
-	hyprctl dispatch movetoworkspacesilent "special:$name,address:$addr" >/dev/null
+	move "special:$name" false
 fi

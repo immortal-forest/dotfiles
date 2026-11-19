@@ -31,6 +31,12 @@ Singleton {
     property alias notifApps: adapter.notifApps
     /** Launcher apps that always start on the NVIDIA dGPU ({ desktopId: true }). */
     property alias gpuApps: adapter.gpuApps
+    /** appnap (Settings → App nap). ~/.local/bin/appnap reads these keys from flags.json too. */
+    property alias napSwap: adapter.napSwap
+    property alias napNotify: adapter.napNotify
+    property alias napAutoMin: adapter.napAutoMin
+    property alias napSkipAudio: adapter.napSkipAudio
+    property alias napNever: adapter.napNever
     property alias airplane: adapter.airplane
     property alias time12h: adapter.time12h
     property alias clockSeconds: adapter.clockSeconds
@@ -101,6 +107,16 @@ Singleton {
         else
             delete m[app];
         adapter.notifApps = m;
+    }
+
+    /** Keep (or stop keeping) a window class out of appnap's auto-nap. */
+    function setNapNever(cls, never) {
+        var m = Object.assign({}, adapter.napNever);
+        if (never)
+            m[cls] = true;
+        else
+            delete m[cls];
+        adapter.napNever = m;
     }
 
     /** Pin (or unpin) a desktop entry to the NVIDIA dGPU for launcher starts. */
@@ -248,6 +264,12 @@ Singleton {
             property bool notifSound: false
             property var notifApps: ({})
             property var gpuApps: ({})
+            // appnap: the script reads these by name, keep them stable.
+            property bool napSwap: true       // push a napped app's RAM to swap (off: freeze only)
+            property bool napNotify: true
+            property int napAutoMin: 0        // nap apps left minimized this long; 0 = off
+            property bool napSkipAudio: true  // auto-nap leaves apps playing/recording audio alone
+            property var napNever: ({})       // { window class: true } never auto-napped
             property bool airplane: false
             property bool time12h: false
             property bool clockSeconds: false

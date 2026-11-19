@@ -1,0 +1,475 @@
+#!/usr/bin/env python3
+"""appnap — "suspend" one app: hide it on special:minimized, freeze it, push its RAM to swap.
+
+  appnap                    toggle the focused window's app: nap it, or restore it if napped
+  appnap --address 0x..     same, for a given window
+  appnap nap 0x..           nap a window's app where it is (also one that's already minimized)
+  appnap nap 0x.. --auto    the same, as astralis' auto-nap asks it: skipped (silently) for
+                            classes in Flags.napNever, apps with a window still out of the
+                            tray, and apps playing or recording audio (Flags.napSkipAudio)
+  appnap wake 0x..          thaw a napped app, leaving its windows where they are
+  appnap wake-all           thaw everything
+  appnap list [--json]      show napped apps
+  appnap watch              (internal, auto-started) thaws an app when its window leaves
+                            special:minimized (tray chip, Super+Shift+M, anything) or closes
+
+How an app is frozen depends on where it was started:
+  own scope     launcher apps and binds wrapped in systemd-run: the scope is frozen with
+                `systemctl --user freeze` and all of its RAM is pushed to swap.
+  shared scope  started from a terminal, or opened by another app (a link out of Discord):
+                its processes move into a new scope, which is frozen. cgroup v2 keeps its RAM
+                charged to the old scope, so about the app's footprint is reclaimed from there.
+  session       started by Hyprland itself (a bare exec bind): SIGSTOP/SIGCONT. That scope is
+                root's, so nothing is pushed to swap up front; the kernel swaps the idle pages
+                out when memory gets tight.
+
+State: $XDG_RUNTIME_DIR/appnap.json (gone on logout, like the frozen apps). The astralis
+pill mirrors it (services/AppNap.qml) to mark napped chips in the minimized tray.
+Prefs: astralis Settings → App nap, stored in ~/.cache/astralis/flags.json (napSwap,
+napNotify, napSkipAudio, napNever; the auto-nap delay itself is timed by the shell).
+"""
+import contextlib, fcntl, json, os, re, signal, socket, subprocess, sys, time
+
+SPECIAL = "special:minimized"
+RUN = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+STATE_FILE = os.path.join(RUN, "appnap.json")
+LOCK_FILE = os.path.join(RUN, "appnap.lock")
+WATCH_LOCK = os.path.join(RUN, "appnap.watch.lock")
+FLAGS_FILE = os.path.expanduser("~/.cache/astralis/flags.json")
+FLAG_DEFAULTS = {"napSwap": True, "napNotify": True, "napSkipAudio": True, "napNever": {}}
+CG = "/sys/fs/cgroup"
+UID = os.getuid()
+STEP = 128 << 20
+# Never freeze the desktop itself (an astralis FloatingWindow is a Hyprland client, owned by qs).
+DESKTOP = {"Hyprland", "qs", "quickshell", ".quickshell-wra", "hyprland-dialog"}
+
+
+# ---- small helpers -----------------------------------------------------------------------
+
+def hypr(*args):
+    out = subprocess.run(["hyprctl", "-j", *args], capture_output=True, text=True).stdout
+    try:
+        return json.loads(out or "null")
+    except ValueError:
+        return None
+
+
+def move(addr, ws, follow=False):
+    # Lua config: vanilla "movetoworkspacesilent ws,address:..." is rejected; hl.dsp.* only.
+    expr = "hl.dsp.window.move({ workspace = %s, follow = %s, window = %s })" % (
+        json.dumps(str(ws)), "true" if follow else "false", json.dumps("address:" + addr))
+    subprocess.run(["hyprctl", "dispatch", expr], capture_output=True)
+
+
+def notify(title, body=""):
+    subprocess.run(["notify-send", "-a", "appnap", title, body], capture_output=True)
+
+
+def read(path, default=""):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+def read_int(path):
+    try:
+        return int(read(path).split()[0])
+    except (ValueError, IndexError):
+        return 0
+
+
+def flags():
+    """astralis prefs. Flags writes flags.json in place (truncate + write), so a read can
+    land mid-write: retry a torn read briefly, then fall back to the defaults."""
+    for _ in range(4):
+        try:
+            with open(FLAGS_FILE) as f:
+                data = json.load(f)
+            return {k: data.get(k, v) for k, v in FLAG_DEFAULTS.items()}
+        except FileNotFoundError:
+            break
+        except (OSError, ValueError):
+            time.sleep(0.05)
+    return dict(FLAG_DEFAULTS)
+
+
+def plays_audio(pids):
+    """Does any of these processes have a running PipeWire audio stream (playback or
+    capture)? Stream nodes carry the pid on their client object, not always on the node."""
+    try:
+        objs = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True,
+                                         timeout=3).stdout or "[]")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
+    by_id = {o.get("id"): o for o in objs}
+    pids = set(pids)
+    for o in objs:
+        info = o.get("info") or {}
+        props = info.get("props") or {}
+        if info.get("state") != "running" or props.get("media.class") not in (
+                "Stream/Output/Audio", "Stream/Input/Audio"):
+            continue
+        client = ((by_id.get(props.get("client.id")) or {}).get("info") or {}).get("props") or {}
+        for v in (props.get("application.process.id"), client.get("application.process.id"),
+                  client.get("pipewire.sec.pid")):
+            try:
+                if int(v) in pids:
+                    return True
+            except (TypeError, ValueError):
+                pass
+    return False
+
+
+def cgroup_of(pid):
+    return read(f"/proc/{pid}/cgroup").strip().partition("::")[2]
+
+
+def procs_in(cg):
+    return {int(x) for x in read(f"{CG}{cg}/cgroup.procs").split()}
+
+
+def comm(pid):
+    return read(f"/proc/{pid}/comm").strip()
+
+
+def app_procs(pid, cg_procs, other_owners):
+    """The app = the window's process and its descendants, staying inside its cgroup and
+    leaving out other apps that happen to be children (a browser opened from a link)."""
+    kids = {}
+    for d in os.listdir("/proc"):
+        if d.isdigit():
+            try:
+                ppid = int(read(f"/proc/{d}/stat").rsplit(")", 1)[1].split()[1])
+                kids.setdefault(ppid, []).append(int(d))
+            except (IndexError, ValueError):
+                pass
+    out, todo = [], [pid]
+    while todo:
+        p = todo.pop(0)
+        if p not in cg_procs or (p != pid and p in other_owners):
+            continue
+        out.append(p)
+        todo += kids.get(p, [])
+    return out
+
+
+def footprint(pids):
+    total = 0
+    for p in pids:
+        for line in read(f"/proc/{p}/smaps_rollup").splitlines():
+            if line.startswith("Pss:"):
+                total += int(line.split()[1]) * 1024
+                break
+    return total
+
+
+def unit_cgroup(unit):
+    r = subprocess.run(["systemctl", "--user", "show", "-p", "ControlGroup", "--value", unit],
+                       capture_output=True, text=True)
+    return r.stdout.strip() or None
+
+
+def new_scope(pids, cls):
+    """Move pids into a fresh transient scope under app.slice. Returns the unit or None."""
+    unit = "app-nap-%s-%d.scope" % (re.sub(r"[^A-Za-z0-9_.-]", "_", cls or "app")[:40], pids[0])
+    r = subprocess.run(
+        ["busctl", "--user", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+         "org.freedesktop.systemd1.Manager", "StartTransientUnit", "ssa(sv)a(sa(sv))",
+         unit, "fail", "3",
+         "PIDs", "au", str(len(pids)), *map(str, pids),
+         "Slice", "s", "app.slice",
+         "CollectMode", "s", "inactive-or-failed",
+         "0"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    for _ in range(40):  # the job is async; wait until they've actually moved
+        cg = unit_cgroup(unit)
+        if cg and set(pids) <= procs_in(cg):
+            return unit
+        time.sleep(0.05)
+    return None
+
+
+def push_to_swap(cg, cap=None):
+    """Reclaim a cgroup's RAM in 128 MB steps at idle priority with a breather between steps,
+    so the burst of swap writes doesn't stall the desktop. Uncapped: until the kernel says
+    nothing more can go (EAGAIN). Capped: about `cap` bytes. Returns bytes freed."""
+    path = CG + cg + "/memory.reclaim"
+    if not os.access(path, os.W_OK):
+        return 0
+    os.nice(19)
+    subprocess.run(["ionice", "-c3", "-p", str(os.getpid())], capture_output=True)
+    before = read_int(CG + cg + "/memory.current")
+    steps = 8192 if cap is None else max(1, -(-cap // STEP))
+    for _ in range(steps):
+        try:
+            with open(path, "w") as f:
+                f.write(str(STEP))
+        except OSError:
+            break
+        time.sleep(0.02)
+    return max(0, before - read_int(CG + cg + "/memory.current"))
+
+
+# ---- state -------------------------------------------------------------------------------
+
+def load():
+    try:
+        with open(STATE_FILE) as f:
+            return json.load(f).get("naps", {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+@contextlib.contextmanager
+def state():
+    """Locked read-modify-write of the nap table (nap, wake and the watcher all write it)."""
+    with open(LOCK_FILE, "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        naps = load()
+        yield naps
+        tmp = STATE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"naps": naps}, f)
+        os.replace(tmp, STATE_FILE)
+
+
+def nap_for(addr):
+    for key, n in load().items():
+        if addr in n["windows"]:
+            return key, n
+    return None, None
+
+
+# ---- freeze / thaw -----------------------------------------------------------------------
+
+def thaw(key, move_back=True):
+    with state() as naps:
+        n = naps.pop(key, None)
+    if not n:
+        return
+    if n["unit"]:
+        subprocess.run(["systemctl", "--user", "thaw", n["unit"]], capture_output=True)
+    else:
+        for p in reversed(n["pids"]):  # children first, so the parent wakes to live children
+            try:
+                os.kill(p, signal.SIGCONT)
+            except OSError:
+                pass
+    if move_back:  # the other windows of a multi-window app go back where they came from
+        where = {c["address"]: c["workspace"]["name"] for c in hypr("clients") or []}
+        for addr, ws in n["windows"].items():
+            if ws is not None and where.get(addr) == SPECIAL:
+                move(addr, ws)
+
+
+def nap(win, clients, auto=False):
+    pid, cls = win["pid"], win.get("class") or win.get("initialClass") or "app"
+    cg = cgroup_of(pid)
+    cg_procs = procs_in(cg)
+    others = {c["pid"] for c in clients} - {pid}
+    app = app_procs(pid, cg_procs, others)
+    if not app or os.getpid() in app or any(comm(p) in DESKTOP for p in app):
+        if not auto:
+            notify("appnap: can't nap this one", f"{cls} is part of the desktop")
+        return
+
+    windows = {c["address"]: (None if c["workspace"]["name"] == SPECIAL else c["workspace"]["id"])
+               for c in clients if c.get("pid") in app}
+    prefs = flags()
+    # Auto-nap only takes an app that is wholly minimized, allowed, and not making sound
+    # (a call or music in a minimized player). Checked before anything is touched.
+    # Audio is sampled twice: a player between two tracks is briefly not running.
+    if auto and (cls in prefs["napNever"] or any(ws is not None for ws in windows.values())
+                 or (prefs["napSkipAudio"]
+                     and (plays_audio(app) or time.sleep(0.5) or plays_audio(app)))):
+        return
+
+    # Freeze method and where its RAM is charged (see the docstring).
+    unit, charge_cg, cap, kind = None, None, None, "session"
+    if f"/user@{UID}.service/" in cg:
+        if cg_procs <= set(app) and re.search(r"/app\.slice/[^/]+\.(scope|service)$", cg):
+            kind, unit, charge_cg = "own", cg.rsplit("/", 1)[1], cg
+        else:
+            kind, charge_cg, cap = "shared", cg, footprint(app)
+            unit = new_scope(app, cls)
+
+    for a, ws in windows.items():
+        if ws is not None:
+            move(a, SPECIAL)
+
+    if unit and subprocess.run(["systemctl", "--user", "freeze", unit],
+                               capture_output=True).returncode:
+        unit = None
+    if not unit:
+        for p in app:
+            try:
+                os.kill(p, signal.SIGSTOP)
+            except OSError:
+                pass
+
+    key = unit[:-6] if unit else f"pid-{pid}"
+    with state() as naps:
+        naps[key] = {"class": cls, "kind": kind, "unit": unit, "pids": app, "windows": windows,
+                     "since": int(time.time()), "freed": 0}
+    start_watcher()
+
+    freed = push_to_swap(charge_cg, cap) if charge_cg and prefs["napSwap"] else 0
+    if freed:
+        with state() as naps:
+            if key in naps:
+                naps[key]["freed"] = freed
+
+    if not prefs["napNotify"]:
+        return
+    title = f"{'Auto-napped' if auto else 'Napped'} {cls}"
+    if freed:
+        notify(title, f"Frozen, {freed / 2**20:.0f} MB of RAM freed")
+    elif not prefs["napSwap"]:
+        notify(title, "Frozen. Its memory stays in RAM, so it wakes instantly")
+    elif kind == "session":
+        notify(f"{title} (frozen only)",
+               "It was started by a Hyprland bind, outside its own app scope, so its RAM "
+               "can't be pushed to swap up front. The kernel swaps it out when memory gets tight.")
+    else:
+        notify(title, "Frozen")
+
+
+def toggle(addr=None):
+    clients = hypr("clients") or []
+    if not addr:
+        addr = (hypr("activewindow") or {}).get("address")
+    win = next((c for c in clients if c["address"] == addr), None)
+    if not win or win.get("pid", 0) <= 1:
+        return
+    key, _ = nap_for(addr)
+    if key:  # napped → bring it back here, focused
+        mon = next((m for m in hypr("monitors") or [] if m.get("focused")), {})
+        move(addr, mon.get("activeWorkspace", {}).get("id", 1), follow=True)
+        thaw(key)
+    else:
+        nap(win, clients)
+
+
+def nap_address(addr, auto=False):
+    if nap_for(addr)[0]:
+        return
+    clients = hypr("clients") or []
+    win = next((c for c in clients if c["address"] == addr), None)
+    if win and win.get("pid", 0) > 1:
+        nap(win, clients, auto)
+
+
+# ---- watcher -----------------------------------------------------------------------------
+
+def start_watcher():
+    subprocess.Popen([os.path.abspath(__file__), "watch"], start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def suppress_anr():
+    """Close Hyprland's "not responding" dialog when it's about a napped window: a frozen app
+    can't answer pings, and the dialog's Terminate button would kill it. Other apps' real
+    hangs still get the dialog. (Hyprland also closes it by itself once the app thaws.)"""
+    naps = load()
+    napped = {a for n in naps.values() for a in n["windows"]}
+    texts = [f"{c['title']} - {c['class']} is not responding"
+             for c in hypr("clients") or [] if c["address"] in napped]
+    if not texts:
+        return
+    for d in os.listdir("/proc"):
+        if d.isdigit() and comm(d) == "hyprland-dialog":
+            if any(t in read(f"/proc/{d}/cmdline").replace("\0", " ") for t in texts):
+                try:
+                    os.kill(int(d), signal.SIGTERM)
+                except OSError:
+                    pass
+
+
+def handle(line):
+    ev, _, data = line.partition(">>")
+    if ev == "movewindowv2":
+        a, _, rest = data.partition(",")
+        key, _ = nap_for("0x" + a)
+        if key and rest.partition(",")[2] != SPECIAL:
+            thaw(key)
+    elif ev == "closewindow":
+        key, _ = nap_for("0x" + data)
+        if key:
+            thaw(key, move_back=False)  # let it finish closing
+    elif ev == "openwindow":
+        suppress_anr()
+
+
+def watch():
+    lock = open(WATCH_LOCK, "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return  # already running
+    sock = socket.socket(socket.AF_UNIX)
+    sock.connect(f"{RUN}/hypr/{os.environ['HYPRLAND_INSTANCE_SIGNATURE']}/.socket2.sock")
+    buf = b""
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:  # Hyprland went away: its windows are gone, let the apps run and exit
+            for key in list(load()):
+                thaw(key, move_back=False)
+            return
+        buf += chunk
+        *lines, buf = buf.split(b"\n")
+        for line in lines:
+            try:
+                handle(line.decode(errors="replace"))
+            except Exception:
+                pass  # one bad event must not strand frozen apps
+        if not load():
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            if not load():
+                return
+            try:  # a nap landed while unlocking; keep going unless a new watcher took over
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return
+
+
+# ---- cli ---------------------------------------------------------------------------------
+
+def addr_arg(a):
+    return a if a.startswith("0x") else "0x" + a
+
+
+def main():
+    a = sys.argv[1:]
+    cmd = a[0] if a else ""
+    if cmd == "watch":
+        watch()
+    elif cmd == "":
+        toggle()
+    elif cmd == "--address" and len(a) == 2:
+        toggle(addr_arg(a[1]))
+    elif cmd == "nap" and len(a) in (2, 3) and a[2:] in ([], ["--auto"]):
+        nap_address(addr_arg(a[1]), auto=a[2:] == ["--auto"])
+    elif cmd == "wake" and len(a) == 2:
+        key, _ = nap_for(addr_arg(a[1]))
+        if key:
+            thaw(key, move_back=False)
+    elif cmd == "wake-all":
+        for key in list(load()):
+            thaw(key, move_back=False)
+    elif cmd == "list":
+        naps = load()
+        if a[1:] == ["--json"]:
+            print(json.dumps(naps))
+        else:
+            for key, n in naps.items():
+                print(f"{n['class']:<22} {n['kind']:<8} {n['freed'] / 2**20:>6.0f} MB freed  "
+                      f"{key}  windows: {', '.join(n['windows'])}")
+    else:
+        print(__doc__.strip())
+
+
+if __name__ == "__main__":
+    main()

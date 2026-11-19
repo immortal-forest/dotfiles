@@ -174,9 +174,13 @@ PillSurface {
      * directory goes through `env -C` because the context-object overload of
      * execDetached ({command, workingDirectory}) fails to convert on this
      * Quickshell build and would drop the launch.
+     * systemd-run gives the app its own scope, as `execute()` does; a bare
+     * execDetached child would land in Hyprland's session scope (qs lives
+     * there), where appnap can freeze it but not push its RAM to swap.
      */
     function launchOnNvidia(entry) {
-        var cmd = ["env", "-u", "__EGL_VENDOR_LIBRARY_FILENAMES"];
+        var cmd = ["systemd-run", "--user", "--scope", "--slice=app.slice", "--collect", "-q", "--",
+                   "env", "-u", "__EGL_VENDOR_LIBRARY_FILENAMES"];
         if (entry.workingDirectory)
             cmd.push("-C", entry.workingDirectory);
         cmd.push("prime-run");

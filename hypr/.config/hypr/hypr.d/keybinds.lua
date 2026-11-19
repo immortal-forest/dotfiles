@@ -15,10 +15,17 @@ hl.bind("ALT + Return",         hl.dsp.window.fullscreen())
 -- hl.bind("CTRL + ALT + W", ...)
 
 -- Apps
+-- GUI apps get their own systemd scope, like launcher apps do, instead of landing
+-- in Hyprland's session scope: appnap (Super+Ctrl+M) can then freeze them AND push
+-- their RAM to swap. systemd-run execs the app in place with Hyprland's environment.
+-- (ghostty +new-window only messages the running ghostty service, which has its own.)
+local function app(cmd)
+	return hl.dsp.exec_cmd("systemd-run --user --scope --slice=app.slice --collect -q -- " .. cmd)
+end
 hl.bind(mainMod .. " + T",         hl.dsp.exec_cmd(apps.terminal .. " +new-window"))
-hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd("kitty -e"))
-hl.bind(mainMod .. " + F",         hl.dsp.exec_cmd(apps.browser))
-hl.bind(mainMod .. " + SHIFT + F", hl.dsp.exec_cmd("firefox"))
+hl.bind(mainMod .. " + SHIFT + T", app("kitty -e"))
+hl.bind(mainMod .. " + F",         app(apps.browser))
+hl.bind(mainMod .. " + SHIFT + F", app("firefox"))
 -- Shell (astralis — Quickshell IPC; see quickshell/astralis/shell.qml)
 --   bridge: qs -c astralis ipc call pill <surface> "<monitor>"
 --   astralis: qs IPC is arity-strict — the trailing "" (empty monitor arg,
@@ -50,6 +57,9 @@ hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd("sh -c 'qs -c astralis kill; 
 -- astralis: stash/restore the focused window on special:minimized — the pill's
 -- hover tray shows the stashed windows as app-icon chips that restore on click.
 hl.bind(mainMod .. " + SHIFT + M", hl.dsp.exec_cmd("~/.config/quickshell/astralis/scripts/special-toggle.sh minimized"))
+-- appnap: same stash, but the app is also frozen (0% CPU) and its RAM pushed to swap.
+-- Restore exactly like a minimized window (tray chip / Super+Shift+M); it thaws on the way out.
+hl.bind(mainMod .. " + CTRL + M",  hl.dsp.exec_cmd("~/.local/bin/appnap"))
 
 -- Brightness — route through the shell (updates its state + flashes the OSD),
 -- falling back to raw brightnessctl if astralis isn't running.

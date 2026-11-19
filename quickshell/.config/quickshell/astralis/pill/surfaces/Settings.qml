@@ -26,6 +26,7 @@ import "../../config"
  * Built pages: Appearance (Flags-backed), Animation / Look / Input
  * (Settings-store backed hyprctl keywords), Display (monitors dict + live
  * keyword with confirm countdown), Idle-Lock (Flags-backed, daemonless),
+ * App nap (Flags-backed appnap prefs + live minimized-tray nap switches),
  * Keybinds (read-only `hyprctl binds -j` viewer), Workspaces (read-only
  * workspace-rules view), Updates (checkupdates/AUR pending list) and
  * FontPicker (fc-list → Flags.uiFont, reached from Appearance's Font row).
@@ -190,6 +191,7 @@ PillSurface {
         case "keybinds":   return pgKeybinds;
         case "workspaces": return pgWorkspaces;
         case "idlelock":   return pgIdleLock;
+        case "appnap":     return pgAppNap;
         case "notifications": return pgNotifications;
         case "updates":    return pgUpdates;
         case "widgets":    return pgWidgets;
@@ -249,6 +251,7 @@ PillSurface {
             { item: keybindsRow, kind: "nav", surface: "keybinds" },
             { item: workspacesRow, kind: "nav", surface: "workspaces" },
             { item: idleRow, kind: "nav", surface: "idlelock" },
+            { item: napRow, kind: "nav", surface: "appnap" },
             { item: notifRow, kind: "nav", surface: "notifications" },
             { item: widgetsRow, kind: "nav", surface: "widgets" },
             { item: updatesRow, kind: "nav", surface: "updates" }
@@ -273,6 +276,7 @@ PillSurface {
                 case "keybinds":   return keybindsRow;
                 case "workspaces": return workspacesRow;
                 case "idlelock":   return idleRow;
+                case "appnap":     return napRow;
                 case "notifications": return notifRow;
                 case "updates":    return updatesRow;
                 case "widgets":    return widgetsRow;
@@ -424,6 +428,15 @@ PillSurface {
                 name: "Idle / Lock"
                 lit: root.page === "idlelock"
                 NavChevron { row: idleRow }
+            }
+
+            SettingsRow {
+                id: napRow
+                surface: sidebar
+                icon: "suspend"
+                name: "App nap"
+                lit: root.page === "appnap"
+                NavChevron { row: napRow }
             }
 
             SettingsRow {
@@ -587,6 +600,19 @@ PillSurface {
                 anchors.fill: parent
                 s: root.s
                 active: root.page === "idlelock" && root.open
+                onRequestPage: (name) => root.openPage(name)
+                onBack: root.requestClose()
+            }
+        }
+
+        PageSlot {
+            current: root.page === "appnap"
+
+            AppNapPage {
+                id: pgAppNap
+                anchors.fill: parent
+                s: root.s
+                active: root.page === "appnap" && root.open
                 onRequestPage: (name) => root.openPage(name)
                 onBack: root.requestClose()
             }

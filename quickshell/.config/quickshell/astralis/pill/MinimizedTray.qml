@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import "../services"
+import "../colors"
 
 /**
  * astralis — row of icon chips for windows parked on Hyprland's
@@ -11,6 +12,11 @@ import "../services"
  * tooltip dropped). Clicking a chip moves the
  * window back to the active workspace of the monitor THIS pill lives on, so
  * it reappears on the screen the user clicked.
+ *
+ * Napped apps (appnap, Super+Ctrl+M: frozen, RAM in swap) sit here too: their
+ * chip dims and wears a moon badge (AppNap service). A normal click restores
+ * them like any other chip, and appnap thaws them as they leave. Right-click
+ * naps or wakes a chip's app in place, without restoring it.
  */
 Row {
     id: root
@@ -94,9 +100,11 @@ Row {
             height: 18 * root.s
 
             readonly property string iconSrc: root.iconFor(chip.modelData)
+            readonly property bool napped: AppNap.isNapped(chip.modelData.address)
 
             Accessible.role: Accessible.Button
             Accessible.name: "Restore " + root.titleFor(chip.modelData) + " to this screen"
+                + (chip.napped ? " (napped: frozen, memory in swap)" : "")
             Accessible.focusable: true
             Accessible.onPressAction: root.restoreToplevel(chip.modelData)
 
@@ -108,7 +116,8 @@ Row {
                 asynchronous: true
                 smooth: true
                 source: chip.iconSrc
-                opacity: area.containsMouse ? 1 : 0.78
+                // Napped apps read as asleep: dimmer at rest, still lifting on hover.
+                opacity: chip.napped ? (area.containsMouse ? 0.85 : 0.42) : (area.containsMouse ? 1 : 0.78)
                 Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
                 scale: area.pressed ? 0.92 : 1
                 Behavior on scale {
@@ -120,13 +129,52 @@ Row {
                 }
             }
 
+            // Moon badge on napped chips: pops in with the same spatial spring
+            // the chip's press uses, fades with the standard curve.
+            Rectangle {
+                id: badge
+                width: 10 * root.s
+                height: width
+                radius: width / 2
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: -2 * root.s
+                anchors.bottomMargin: -2 * root.s
+                color: Colors.surface_container_highest
+                opacity: chip.napped ? 1 : 0
+                scale: chip.napped ? 1 : 0.4
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: Motion.glide
+                        easing.type: Motion.easeBezier
+                        easing.bezierCurve: Motion.expressiveFastSpatial
+                    }
+                }
+
+                GlyphIcon {
+                    anchors.fill: parent
+                    anchors.margins: 1.5 * root.s
+                    name: "suspend"
+                    color: Colors.primary
+                    stroke: 2.4
+                }
+            }
+
             MouseArea {
                 id: area
                 anchors.fill: parent
                 anchors.margins: -3 * root.s
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.restoreToplevel(chip.modelData)
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: mouse => {
+                    if (mouse.button === Qt.RightButton)
+                        AppNap.toggle(chip.modelData.address);
+                    else
+                        root.restoreToplevel(chip.modelData);
+                }
             }
         }
     }
