@@ -50,7 +50,7 @@ case "$img" in
             done
         fi
         if [ -z "$_full" ]; then
-            _full="$(find "$HOME/wallpapers" -type f -name "$_tname.*" 2>/dev/null | head -n1)"
+            _full="$(find -H "$HOME/wallpapers" -type f -name "$_tname.*" 2>/dev/null | head -n1)"
         fi
         [ -n "$_full" ] && [ -f "$_full" ] && img="$_full"
         ;;
