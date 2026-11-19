@@ -31,8 +31,9 @@ FloatingWindow {
 
     // Fixed window size (Hyprland `center` rule drops it in the middle).
     implicitWidth:  Math.round(720 * win.s)   // default
-    // 572: the sidebar's eleven rows (Notifications joined) plus both group
-    // labels need ~566; at 520 the last row (Updates) fell off the bottom.
+    // 572 held the sidebar's eleven rows; past that the list scrolls under
+    // its header (pill/surfaces/Settings.qml sideFlick) instead of the
+    // window growing with every page.
     implicitHeight: Math.round(572 * win.s)
     minimumSize:    Qt.size(Math.round(720 * win.s), Math.round(572 * win.s))
     

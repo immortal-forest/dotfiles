@@ -31,6 +31,8 @@ Singleton {
     property alias notifApps: adapter.notifApps
     /** Launcher apps that always start on the NVIDIA dGPU ({ desktopId: true }). */
     property alias gpuApps: adapter.gpuApps
+    /** Settings groups folded shut ({ "page/section": true }), see SettingsSection. */
+    property alias collapsedSections: adapter.collapsedSections
     /** appnap (Settings → App nap). ~/.local/bin/appnap reads these keys from flags.json too. */
     property alias napSwap: adapter.napSwap
     property alias napNotify: adapter.napNotify
@@ -117,6 +119,16 @@ Singleton {
         else
             delete m[cls];
         adapter.napNever = m;
+    }
+
+    /** Fold (or unfold) a settings group; only folded keys are stored. */
+    function setSectionCollapsed(key, on) {
+        var m = Object.assign({}, adapter.collapsedSections);
+        if (on)
+            m[key] = true;
+        else
+            delete m[key];
+        adapter.collapsedSections = m;
     }
 
     /** Pin (or unpin) a desktop entry to the NVIDIA dGPU for launcher starts. */
@@ -264,6 +276,7 @@ Singleton {
             property bool notifSound: false
             property var notifApps: ({})
             property var gpuApps: ({})
+            property var collapsedSections: ({})
             // appnap: the script reads these by name, keep them stable.
             property bool napSwap: true       // push a napped app's RAM to swap (off: freeze only)
             property bool napNotify: true

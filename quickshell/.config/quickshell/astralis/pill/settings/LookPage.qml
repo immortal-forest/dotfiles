@@ -213,212 +213,227 @@ SettingsPage {
             width: flick.width
             spacing: 0
 
-            SettingsGroupLabel { s: root.s; text: "Window" }
-
-            SettingsRow {
-                id: gapsInRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Gaps inner"
-                sub: "Space between tiled windows"
-                captionOnFocus: true
-                icon: "app-window"
+                title: "Window"
+                key: "look/window"
 
-                ScrubValue {
-                    id: gapsInScrub
-                    s: root.s
-                    value: root.gapsIn
-                    openValue: root.base.gapsIn
-                    from: 0; to: 40; step: 1; unit: "px"
-                    onEdited: v => {
-                        root.gapsIn = v;
-                        root.setStore.set("gapsIn", v);
+                SettingsRow {
+                    id: gapsInRow
+                    surface: root
+                    name: "Gaps inner"
+                    sub: "Space between tiled windows"
+                    captionOnFocus: true
+                    icon: "app-window"
+
+                    ScrubValue {
+                        id: gapsInScrub
+                        s: root.s
+                        value: root.gapsIn
+                        openValue: root.base.gapsIn
+                        from: 0; to: 40; step: 1; unit: "px"
+                        onEdited: v => {
+                            root.gapsIn = v;
+                            root.setStore.set("gapsIn", v);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: gapsOutRow
+                    surface: root
+                    name: "Gaps outer"
+                    sub: "Space to the screen edge"
+                    captionOnFocus: true
+                    icon: "monitor"
+
+                    ScrubValue {
+                        id: gapsOutScrub
+                        s: root.s
+                        value: root.gapsOut
+                        openValue: root.base.gapsOut
+                        from: 0; to: 60; step: 1; unit: "px"
+                        onEdited: v => {
+                            root.gapsOut = v;
+                            root.setStore.set("gapsOut", v);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: borderRow
+                    surface: root
+                    name: "Border size"
+                    sub: "Window outline thickness"
+                    captionOnFocus: true
+                    icon: "scaling"
+
+                    ScrubValue {
+                        id: borderScrub
+                        s: root.s
+                        value: root.borderSize
+                        openValue: root.base.borderSize
+                        from: 0; to: 8; step: 1; unit: "px"
+                        onEdited: v => {
+                            root.borderSize = v;
+                            root.setStore.set("borderSize", v);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: roundRow
+                    surface: root
+                    name: "Rounding"
+                    sub: "Corner radius in pixels"
+                    captionOnFocus: true
+                    icon: "record"
+
+                    ScrubValue {
+                        id: roundScrub
+                        s: root.s
+                        value: root.rounding
+                        openValue: root.base.rounding
+                        from: 0; to: 30; step: 1; unit: "px"
+                        onEdited: v => {
+                            root.rounding = v;
+                            root.setStore.set("rounding", v);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: resizeRow
+                    surface: root
+                    name: "Resize on border"
+                    sub: "Drag a window edge to resize"
+                    captionOnFocus: true
+                    icon: "mouse"
+                    last: true
+
+                    LinkToggle {
+                        s: root.s
+                        on: root.resizeOnBorder
+                        onToggled: {
+                            root.resizeOnBorder = !root.resizeOnBorder;
+                            root.setStore.set("resizeOnBorder", root.resizeOnBorder);
+                        }
                     }
                 }
             }
 
-            SettingsRow {
-                id: gapsOutRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Gaps outer"
-                sub: "Space to the screen edge"
-                captionOnFocus: true
-                icon: "monitor"
+                title: "Border colour"
+                key: "look/border-colour"
 
-                ScrubValue {
-                    id: gapsOutScrub
-                    s: root.s
-                    value: root.gapsOut
-                    openValue: root.base.gapsOut
-                    from: 0; to: 60; step: 1; unit: "px"
-                    onEdited: v => {
-                        root.gapsOut = v;
-                        root.setStore.set("gapsOut", v);
+                SettingsRow {
+                    id: activeColRow
+                    surface: root
+                    name: "Active window"
+                    sub: "Focused window border, from the palette"
+                    captionOnFocus: true
+                    icon: "awake"
+
+                    SwatchSeg {
+                        options: root.activeOptions
+                        value: root.activeBorder
+                        onPicked: (v) => {
+                            root.activeBorder = v;
+                            root.setStore.set("activeBorder", v);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: inactiveColRow
+                    surface: root
+                    name: "Inactive window"
+                    sub: "Unfocused window border"
+                    captionOnFocus: true
+                    icon: "moon"
+                    last: true
+
+                    SwatchSeg {
+                        options: root.inactiveOptions
+                        value: root.inactiveBorder
+                        onPicked: (v) => {
+                            root.inactiveBorder = v;
+                            root.setStore.set("inactiveBorder", v);
+                        }
                     }
                 }
             }
 
-            SettingsRow {
-                id: borderRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Border size"
-                sub: "Window outline thickness"
-                captionOnFocus: true
-                icon: "scaling"
+                title: "Blur"
+                key: "look/blur"
 
-                ScrubValue {
-                    id: borderScrub
-                    s: root.s
-                    value: root.borderSize
-                    openValue: root.base.borderSize
-                    from: 0; to: 8; step: 1; unit: "px"
-                    onEdited: v => {
-                        root.borderSize = v;
-                        root.setStore.set("borderSize", v);
+                SettingsRow {
+                    id: blurEnRow
+                    surface: root
+                    name: "Enabled"
+                    sub: "Blur behind transparent windows"
+                    captionOnFocus: true
+                    icon: "droplet"
+                    last: !root.blurOn
+
+                    LinkToggle {
+                        s: root.s
+                        on: root.blurOn
+                        onToggled: {
+                            root.blurOn = !root.blurOn;
+                            root.setStore.set("blurEnabled", root.blurOn);
+                        }
                     }
                 }
-            }
 
-            SettingsRow {
-                id: roundRow
-                surface: root
-                name: "Rounding"
-                sub: "Corner radius in pixels"
-                captionOnFocus: true
-                icon: "record"
+                SettingsRow {
+                    id: blSizeRow
+                    surface: root
+                    name: "Strength"
+                    sub: "Blur radius"
+                    captionOnFocus: true
+                    icon: "waves"
+                    shown: root.blurOn
 
-                ScrubValue {
-                    id: roundScrub
-                    s: root.s
-                    value: root.rounding
-                    openValue: root.base.rounding
-                    from: 0; to: 30; step: 1; unit: "px"
-                    onEdited: v => {
-                        root.rounding = v;
-                        root.setStore.set("rounding", v);
+                    ScrubValue {
+                        id: blSizeScrub
+                        s: root.s
+                        value: root.blurSize
+                        openValue: root.base.blurSize
+                        from: 1; to: 20; step: 1; unit: "px"
+                        onEdited: v => {
+                            root.blurSize = v;
+                            root.setStore.set("blurSize", v);
+                        }
                     }
                 }
-            }
 
-            SettingsRow {
-                id: resizeRow
-                surface: root
-                name: "Resize on border"
-                sub: "Drag a window edge to resize"
-                captionOnFocus: true
-                icon: "mouse"
-                last: true
+                SettingsRow {
+                    id: blPassRow
+                    surface: root
+                    name: "Passes"
+                    sub: "More passes, smoother blur"
+                    captionOnFocus: true
+                    icon: "reboot"
+                    shown: root.blurOn
+                    last: true
 
-                LinkToggle {
-                    s: root.s
-                    on: root.resizeOnBorder
-                    onToggled: {
-                        root.resizeOnBorder = !root.resizeOnBorder;
-                        root.setStore.set("resizeOnBorder", root.resizeOnBorder);
-                    }
-                }
-            }
-
-            SettingsGroupLabel { s: root.s; text: "Border colour" }
-
-            SettingsRow {
-                id: activeColRow
-                surface: root
-                name: "Active window"
-                sub: "Focused window border, from the palette"
-                captionOnFocus: true
-                icon: "awake"
-
-                SwatchSeg {
-                    options: root.activeOptions
-                    value: root.activeBorder
-                    onPicked: (v) => {
-                        root.activeBorder = v;
-                        root.setStore.set("activeBorder", v);
-                    }
-                }
-            }
-
-            SettingsRow {
-                id: inactiveColRow
-                surface: root
-                name: "Inactive window"
-                sub: "Unfocused window border"
-                captionOnFocus: true
-                icon: "moon"
-                last: true
-
-                SwatchSeg {
-                    options: root.inactiveOptions
-                    value: root.inactiveBorder
-                    onPicked: (v) => {
-                        root.inactiveBorder = v;
-                        root.setStore.set("inactiveBorder", v);
-                    }
-                }
-            }
-
-            SettingsGroupLabel { s: root.s; text: "Blur" }
-
-            SettingsRow {
-                id: blurEnRow
-                surface: root
-                name: "Enabled"
-                sub: "Blur behind transparent windows"
-                captionOnFocus: true
-                icon: "droplet"
-                last: !root.blurOn
-
-                LinkToggle {
-                    s: root.s
-                    on: root.blurOn
-                    onToggled: {
-                        root.blurOn = !root.blurOn;
-                        root.setStore.set("blurEnabled", root.blurOn);
-                    }
-                }
-            }
-
-            SettingsRow {
-                id: blSizeRow
-                surface: root
-                name: "Strength"
-                sub: "Blur radius"
-                captionOnFocus: true
-                icon: "waves"
-                shown: root.blurOn
-
-                ScrubValue {
-                    id: blSizeScrub
-                    s: root.s
-                    value: root.blurSize
-                    openValue: root.base.blurSize
-                    from: 1; to: 20; step: 1; unit: "px"
-                    onEdited: v => {
-                        root.blurSize = v;
-                        root.setStore.set("blurSize", v);
-                    }
-                }
-            }
-
-            SettingsRow {
-                id: blPassRow
-                surface: root
-                name: "Passes"
-                sub: "More passes, smoother blur"
-                captionOnFocus: true
-                icon: "reboot"
-                shown: root.blurOn
-                last: true
-
-                ScrubValue {
-                    id: blPassScrub
-                    s: root.s
-                    value: root.blurPasses
-                    openValue: root.base.blurPasses
-                    from: 1; to: 5; step: 1
-                    onEdited: v => {
-                        root.blurPasses = v;
-                        root.setStore.set("blurPasses", v);
+                    ScrubValue {
+                        id: blPassScrub
+                        s: root.s
+                        value: root.blurPasses
+                        openValue: root.base.blurPasses
+                        from: 1; to: 5; step: 1
+                        onEdited: v => {
+                            root.blurPasses = v;
+                            root.setStore.set("blurPasses", v);
+                        }
                     }
                 }
             }

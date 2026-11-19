@@ -128,175 +128,190 @@ SettingsPage {
             width: flick.width
             spacing: 0
 
-            SettingsGroupLabel { s: root.s; text: "Pointer" }
-
-            SettingsRow {
-                id: sensRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Sensitivity"
-                sub: "Pointer speed offset"
-                captionOnFocus: true
-                icon: "mouse"
+                title: "Pointer"
+                key: "input/pointer"
 
-                ScrubValue {
-                    id: sensScrub
-                    s: root.s
-                    value: root.sensitivity
-                    openValue: root.base.sensitivity
-                    from: -1; to: 1; step: 0.1; decimals: 1
-                    onEdited: v => {
-                        root.sensitivity = v;
-                        root.setStore.set("sensitivity", v);
+                SettingsRow {
+                    id: sensRow
+                    surface: root
+                    name: "Sensitivity"
+                    sub: "Pointer speed offset"
+                    captionOnFocus: true
+                    icon: "mouse"
+
+                    ScrubValue {
+                        id: sensScrub
+                        s: root.s
+                        value: root.sensitivity
+                        openValue: root.base.sensitivity
+                        from: -1; to: 1; step: 0.1; decimals: 1
+                        onEdited: v => {
+                            root.sensitivity = v;
+                            root.setStore.set("sensitivity", v);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: accelRow
+                    surface: root
+                    name: "Acceleration"
+                    sub: "How pointer speed follows motion"
+                    captionOnFocus: true
+                    icon: "bolt"
+                    last: true
+
+                    SettingsSeg {
+                        s: root.s
+                        options: root.accelOptions
+                        value: root.accelProfile
+                        onPicked: (v) => {
+                            root.accelProfile = v;
+                            root.setStore.set("accelProfile", v);
+                        }
                     }
                 }
             }
 
-            SettingsRow {
-                id: accelRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Acceleration"
-                sub: "How pointer speed follows motion"
-                captionOnFocus: true
-                icon: "bolt"
-                last: true
+                title: "Keyboard"
+                key: "input/keyboard"
 
-                SettingsSeg {
-                    s: root.s
-                    options: root.accelOptions
-                    value: root.accelProfile
-                    onPicked: (v) => {
-                        root.accelProfile = v;
-                        root.setStore.set("accelProfile", v);
+                SettingsRow {
+                    id: layoutRow
+                    surface: root
+                    name: "Layout"
+                    sub: "Click to cycle common layouts"
+                    captionOnFocus: true
+                    icon: "language"
+
+                    Rectangle {
+                        width: layoutLbl.implicitWidth + 20 * root.s
+                        height: 22 * root.s
+                        radius: 9 * root.s
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Qt.alpha(Colors.on_surface, 0.06)
+
+                        Text {
+                            id: layoutLbl
+                            anchors.centerIn: parent
+                            text: root.kbLayout
+                            color: Colors.on_surface
+                            font.family: Appearance.font.family
+                            font.pixelSize: 11 * root.s
+                            font.weight: Font.DemiBold
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: rateRow
+                    surface: root
+                    name: "Repeat rate"
+                    sub: "Key repeats per second when held"
+                    captionOnFocus: true
+                    icon: "keyboard"
+
+                    ScrubValue {
+                        id: rateScrub
+                        s: root.s
+                        value: root.repeatRate
+                        openValue: root.base.repeatRate
+                        from: 10; to: 80; step: 1; unit: "Hz"
+                        onEdited: v => {
+                            root.repeatRate = v;
+                            root.setStore.set("repeatRate", v);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: delayRow
+                    surface: root
+                    name: "Repeat delay"
+                    sub: "Hold time before a key repeats"
+                    captionOnFocus: true
+                    icon: "stopwatch"
+                    last: true
+
+                    ScrubValue {
+                        id: delayScrub
+                        s: root.s
+                        value: root.repeatDelay
+                        openValue: root.base.repeatDelay
+                        from: 150; to: 1000; step: 25; unit: "ms"
+                        onEdited: v => {
+                            root.repeatDelay = v;
+                            root.setStore.set("repeatDelay", v);
+                        }
                     }
                 }
             }
 
-            SettingsGroupLabel { s: root.s; text: "Keyboard" }
-
-            SettingsRow {
-                id: layoutRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Layout"
-                sub: "Click to cycle common layouts"
-                captionOnFocus: true
-                icon: "language"
+                title: "Touchpad"
+                key: "input/touchpad"
 
-                Rectangle {
-                    width: layoutLbl.implicitWidth + 20 * root.s
-                    height: 22 * root.s
-                    radius: 9 * root.s
-                    color: "transparent"
-                    border.width: 1
-                    border.color: Qt.alpha(Colors.on_surface, 0.06)
+                SettingsRow {
+                    id: natScrollRow
+                    surface: root
+                    name: "Natural scroll"
+                    sub: "Content follows the fingers"
+                    captionOnFocus: true
+                    icon: "waves"
 
-                    Text {
-                        id: layoutLbl
-                        anchors.centerIn: parent
-                        text: root.kbLayout
-                        color: Colors.on_surface
-                        font.family: Appearance.font.family
-                        font.pixelSize: 11 * root.s
-                        font.weight: Font.DemiBold
+                    LinkToggle {
+                        s: root.s
+                        on: root.natScroll
+                        onToggled: {
+                            root.natScroll = !root.natScroll;
+                            root.setStore.set("touchNaturalScroll", root.natScroll);
+                        }
                     }
                 }
-            }
 
-            SettingsRow {
-                id: rateRow
-                surface: root
-                name: "Repeat rate"
-                sub: "Key repeats per second when held"
-                captionOnFocus: true
-                icon: "keyboard"
+                SettingsRow {
+                    id: tapRow
+                    surface: root
+                    name: "Tap to click"
+                    sub: "A light tap counts as a click"
+                    captionOnFocus: true
+                    icon: "cursor"
 
-                ScrubValue {
-                    id: rateScrub
-                    s: root.s
-                    value: root.repeatRate
-                    openValue: root.base.repeatRate
-                    from: 10; to: 80; step: 1; unit: "Hz"
-                    onEdited: v => {
-                        root.repeatRate = v;
-                        root.setStore.set("repeatRate", v);
+                    LinkToggle {
+                        s: root.s
+                        on: root.tapClick
+                        onToggled: {
+                            root.tapClick = !root.tapClick;
+                            root.setStore.set("touchTapToClick", root.tapClick);
+                        }
                     }
                 }
-            }
 
-            SettingsRow {
-                id: delayRow
-                surface: root
-                name: "Repeat delay"
-                sub: "Hold time before a key repeats"
-                captionOnFocus: true
-                icon: "stopwatch"
-                last: true
+                SettingsRow {
+                    id: dwtRow
+                    surface: root
+                    name: "Disable while typing"
+                    sub: "Ignore the touchpad while keys are down"
+                    captionOnFocus: true
+                    icon: "keyboard"
+                    last: true
 
-                ScrubValue {
-                    id: delayScrub
-                    s: root.s
-                    value: root.repeatDelay
-                    openValue: root.base.repeatDelay
-                    from: 150; to: 1000; step: 25; unit: "ms"
-                    onEdited: v => {
-                        root.repeatDelay = v;
-                        root.setStore.set("repeatDelay", v);
-                    }
-                }
-            }
-
-            SettingsGroupLabel { s: root.s; text: "Touchpad" }
-
-            SettingsRow {
-                id: natScrollRow
-                surface: root
-                name: "Natural scroll"
-                sub: "Content follows the fingers"
-                captionOnFocus: true
-                icon: "waves"
-
-                LinkToggle {
-                    s: root.s
-                    on: root.natScroll
-                    onToggled: {
-                        root.natScroll = !root.natScroll;
-                        root.setStore.set("touchNaturalScroll", root.natScroll);
-                    }
-                }
-            }
-
-            SettingsRow {
-                id: tapRow
-                surface: root
-                name: "Tap to click"
-                sub: "A light tap counts as a click"
-                captionOnFocus: true
-                icon: "cursor"
-
-                LinkToggle {
-                    s: root.s
-                    on: root.tapClick
-                    onToggled: {
-                        root.tapClick = !root.tapClick;
-                        root.setStore.set("touchTapToClick", root.tapClick);
-                    }
-                }
-            }
-
-            SettingsRow {
-                id: dwtRow
-                surface: root
-                name: "Disable while typing"
-                sub: "Ignore the touchpad while keys are down"
-                captionOnFocus: true
-                icon: "keyboard"
-                last: true
-
-                LinkToggle {
-                    s: root.s
-                    on: root.dwt
-                    onToggled: {
-                        root.dwt = !root.dwt;
-                        root.setStore.set("touchDwt", root.dwt);
+                    LinkToggle {
+                        s: root.s
+                        on: root.dwt
+                        onToggled: {
+                            root.dwt = !root.dwt;
+                            root.setStore.set("touchDwt", root.dwt);
+                        }
                     }
                 }
             }

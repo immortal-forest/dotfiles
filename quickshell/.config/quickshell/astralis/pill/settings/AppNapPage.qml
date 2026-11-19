@@ -449,135 +449,155 @@ SettingsPage {
             width: flick.width
             spacing: 0
 
-            SettingsGroupLabel { s: root.s; text: "Napping" }
-
-            SettingsRow {
-                id: swapRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Free its memory"
-                sub: "Push a napped app's RAM to swap. Off: freeze only, so it wakes instantly"
-                captionOnFocus: true
-                icon: "chip"
+                title: "Napping"
+                key: "appnap/napping"
 
-                LinkToggle {
-                    s: root.s
-                    on: Flags.napSwap
-                    onToggled: Flags.napSwap = !Flags.napSwap
-                }
-            }
+                SettingsRow {
+                    id: swapRow
+                    surface: root
+                    name: "Free its memory"
+                    sub: "Push a napped app's RAM to swap. Off: freeze only, so it wakes instantly"
+                    captionOnFocus: true
+                    icon: "chip"
 
-            SettingsRow {
-                id: notifyRow
-                surface: root
-                name: "Notify"
-                sub: "Say when an app naps and how much memory it gave back"
-                captionOnFocus: true
-                icon: "inbox"
-                last: true
-
-                LinkToggle {
-                    s: root.s
-                    on: Flags.napNotify
-                    onToggled: Flags.napNotify = !Flags.napNotify
-                }
-            }
-
-            SettingsGroupLabel { s: root.s; text: "In the minimized tray" }
-
-            Repeater {
-                id: trayRep
-                model: root.trayList
-                delegate: AppToggleRow {
-                    id: trow
-                    required property var modelData
-                    required property int index
-                    readonly property string address: trow.modelData.address
-                    readonly property var napInfo: AppNap.info(trow.address)
-                    cls: trow.modelData.cls
-                    label: {
-                        var t = trow.modelData.toplevel;
-                        var title = t ? (t.title || (t.lastIpcObject && t.lastIpcObject.title) || "") : "";
-                        var name = AppNap.appMeta(trow.cls).name;
-                        return title.length && title !== name ? name + " — " + title : name;
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.napSwap
+                        onToggled: Flags.napSwap = !Flags.napSwap
                     }
-                    caption: root.napCaption(trow.napInfo)
-                    on: trow.napInfo !== null
-                    faded: trow.napInfo !== null
-                    last: trow.index === root.trayList.length - 1
-                    onFlipped: AppNap.toggle(trow.address)
                 }
-                onItemAdded: Qt.callLater(root.syncTrayRows)
-                onItemRemoved: Qt.callLater(root.syncTrayRows)
-            }
 
-            Note {
-                visible: root.trayList.length === 0
-                text: "Nothing minimized. Super+Shift+M minimizes a window; Super+Ctrl+M minimizes and naps it."
-            }
+                SettingsRow {
+                    id: notifyRow
+                    surface: root
+                    name: "Notify"
+                    sub: "Say when an app naps and how much memory it gave back"
+                    captionOnFocus: true
+                    icon: "inbox"
+                    last: true
 
-            SettingsGroupLabel { s: root.s; text: "Auto-nap" }
-
-            SegRow {
-                id: autoRow
-                icon: "suspend"
-                name: "Nap minimized apps"
-                caption: "Apps left in the minimized tray this long nap on their own"
-
-                SettingsSeg {
-                    s: root.s
-                    flushLeft: true
-                    options: root.autoOptions
-                    value: Flags.napAutoMin
-                    onPicked: (v) => Flags.napAutoMin = v
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.napNotify
+                        onToggled: Flags.napNotify = !Flags.napNotify
+                    }
                 }
             }
 
-            SettingsRow {
-                id: audioRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Skip apps playing audio"
-                sub: "Music, videos and calls keep going while minimized"
-                captionOnFocus: true
-                icon: "speaker"
-                last: true
+                title: "In the minimized tray"
+                key: "appnap/in-the-minimized-tray"
 
-                LinkToggle {
-                    s: root.s
-                    on: Flags.napSkipAudio
-                    onToggled: Flags.napSkipAudio = !Flags.napSkipAudio
+                Repeater {
+                    id: trayRep
+                    model: root.trayList
+                    delegate: AppToggleRow {
+                        id: trow
+                        required property var modelData
+                        required property int index
+                        readonly property string address: trow.modelData.address
+                        readonly property var napInfo: AppNap.info(trow.address)
+                        cls: trow.modelData.cls
+                        label: {
+                            var t = trow.modelData.toplevel;
+                            var title = t ? (t.title || (t.lastIpcObject && t.lastIpcObject.title) || "") : "";
+                            var name = AppNap.appMeta(trow.cls).name;
+                            return title.length && title !== name ? name + " — " + title : name;
+                        }
+                        caption: root.napCaption(trow.napInfo)
+                        on: trow.napInfo !== null
+                        faded: trow.napInfo !== null
+                        last: trow.index === root.trayList.length - 1
+                        onFlipped: AppNap.toggle(trow.address)
+                    }
+                    onItemAdded: Qt.callLater(root.syncTrayRows)
+                    onItemRemoved: Qt.callLater(root.syncTrayRows)
+                }
+
+                Note {
+                    visible: root.trayList.length === 0
+                    text: "Nothing minimized. Super+Shift+M minimizes a window; Super+Ctrl+M minimizes and naps it."
                 }
             }
 
-            SettingsGroupLabel { s: root.s; text: "Apps auto-nap may take" }
+            SettingsSection {
+                s: root.s
+                surface: root
+                title: "Auto-nap"
+                key: "appnap/auto-nap"
 
-            Repeater {
-                id: appRep
-                model: root.appList
-                delegate: AppToggleRow {
-                    id: prow
-                    required property var modelData
-                    required property int index
-                    readonly property bool allowed: !Flags.napNever[prow.cls]
-                    cls: prow.modelData.cls
-                    label: prow.modelData.name
-                    caption: prow.allowed
-                        ? (Flags.napAutoMin > 0 ? "Naps after " + Flags.napAutoMin + " min minimized" : "May auto-nap (auto-nap is off)")
-                        : "Never auto-napped"
-                    on: prow.allowed
-                    faded: !prow.allowed || Flags.napAutoMin === 0
-                    last: prow.index === root.appList.length - 1
-                    onFlipped: Flags.setNapNever(prow.cls, prow.allowed)
+                SegRow {
+                    id: autoRow
+                    icon: "suspend"
+                    name: "Nap minimized apps"
+                    caption: "Apps left in the minimized tray this long nap on their own"
+
+                    SettingsSeg {
+                        s: root.s
+                        flushLeft: true
+                        options: root.autoOptions
+                        value: Flags.napAutoMin
+                        onPicked: (v) => Flags.napAutoMin = v
+                    }
                 }
-                onItemAdded: Qt.callLater(root.syncAppRows)
-                onItemRemoved: Qt.callLater(root.syncAppRows)
+
+                SettingsRow {
+                    id: audioRow
+                    surface: root
+                    name: "Skip apps playing audio"
+                    sub: "Music, videos and calls keep going while minimized"
+                    captionOnFocus: true
+                    icon: "speaker"
+                    last: true
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.napSkipAudio
+                        onToggled: Flags.napSkipAudio = !Flags.napSkipAudio
+                    }
+                }
             }
 
-            Note {
-                topPadding: 12 * root.s
-                text: "Super+Ctrl+M naps the focused app: it moves to the minimized tray, stops using CPU and gives its memory back. "
-                    + "Click its tray chip or press Super+Shift+M to bring it back; right-click a chip to nap or wake it in place. "
-                    + "While napped an app sends no notifications and plays nothing. Auto-nap never takes an app with a window "
-                    + "still on screen. Apps started by a plain Hyprland exec freeze without freeing memory."
+            SettingsSection {
+                s: root.s
+                surface: root
+                title: "Apps auto-nap may take"
+                key: "appnap/apps-auto-nap-may-take"
+
+                Repeater {
+                    id: appRep
+                    model: root.appList
+                    delegate: AppToggleRow {
+                        id: prow
+                        required property var modelData
+                        required property int index
+                        readonly property bool allowed: !Flags.napNever[prow.cls]
+                        cls: prow.modelData.cls
+                        label: prow.modelData.name
+                        caption: prow.allowed
+                            ? (Flags.napAutoMin > 0 ? "Naps after " + Flags.napAutoMin + " min minimized" : "May auto-nap (auto-nap is off)")
+                            : "Never auto-napped"
+                        on: prow.allowed
+                        faded: !prow.allowed || Flags.napAutoMin === 0
+                        last: prow.index === root.appList.length - 1
+                        onFlipped: Flags.setNapNever(prow.cls, prow.allowed)
+                    }
+                    onItemAdded: Qt.callLater(root.syncAppRows)
+                    onItemRemoved: Qt.callLater(root.syncAppRows)
+                }
+
+                Note {
+                    topPadding: 12 * root.s
+                    text: "Super+Ctrl+M naps the focused app: it moves to the minimized tray, stops using CPU and gives its memory back. "
+                        + "Click its tray chip or press Super+Shift+M to bring it back; right-click a chip to nap or wake it in place. "
+                        + "While napped an app sends no notifications and plays nothing. Auto-nap never takes an app with a window "
+                        + "still on screen. Apps started by a plain Hyprland exec freeze without freeing memory."
+                }
             }
 
             Item { width: 1; height: 10 * root.s }

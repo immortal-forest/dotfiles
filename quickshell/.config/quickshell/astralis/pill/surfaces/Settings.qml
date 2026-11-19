@@ -124,8 +124,14 @@ PillSurface {
         // tracked it) drooped a row-height's tenth below centre on first open.
         var sb = sidebar.rowFocused ? sidebar.focusRowItem
             : (root.seamPage ? null : navAccent.litRow);
-        if (sb)
-            return Qt.point(root.sidebarSeamX, treeCol.y + sb.y + sb.height / 2);
+        // The rows scroll under a fixed header, so the anchor follows
+        // sideFlick's offset and is clamped to the visible list while the
+        // row is scrolled out of view.
+        if (sb) {
+            var sy = sideFlick.y + treeCol.y + sb.y + sb.height / 2 - sideFlick.contentY;
+            return Qt.point(root.sidebarSeamX,
+                Math.max(sideFlick.y, Math.min(sideFlick.y + sideFlick.height, sy)));
+        }
         // A focused content-pane row: that pane's own left gutter is empty, so
         // the row's 4*s seam anchor reads clean without the sidebar nudge.
         if (root.seamPage) {
@@ -241,6 +247,7 @@ PillSurface {
         s: root.s
         active: root.open
         onRequestPage: (name) => root.openPage(name)
+        contentY: sideFlick.contentY
 
         rows: [
             { item: appearanceRow, kind: "nav", surface: "appearance" },
@@ -257,214 +264,256 @@ PillSurface {
             { item: updatesRow, kind: "nav", surface: "updates" }
         ]
 
-        // Current-page accent: a soft primary panel that glides/morphs
-        // behind the lit nav row instead of snapping between rows. Declared
-        // ahead of treeCol so it paints underneath the row text/icons. Maps
-        // the target row's geometry into sidebar-local space the same way
-        // rowPoint/amePoint already do elsewhere in this file. `fontpicker`
-        // (reached from Appearance, not a sidebar entry) has no lit row, so
-        // the accent just fades out while that drill-in page is open.
-        Rectangle {
-            id: navAccent
-            readonly property var litRow: {
-                switch (root.page) {
-                case "appearance": return appearanceRow;
-                case "look":       return lookRow;
-                case "display":    return displayRow;
-                case "input":      return inputRow;
-                case "animation":  return animationRow;
-                case "keybinds":   return keybindsRow;
-                case "workspaces": return workspacesRow;
-                case "idlelock":   return idleRow;
-                case "appnap":     return napRow;
-                case "notifications": return notifRow;
-                case "updates":    return updatesRow;
-                case "widgets":    return widgetsRow;
-                default:           return null;
-                }
-            }
-
-            // While a drill-in page (no lit row) is open the box fades in place
-            // on the last lit row instead of sliding/shrinking toward y=0.
-            property var heldRow: null
-            onLitRowChanged: if (litRow) heldRow = litRow
-            Component.onCompleted: heldRow = litRow
-            readonly property var geoRow: litRow ? litRow : heldRow
-
-            x: 0
-            width: sidebar.width
-            radius: 9 * root.s
-            color: Qt.alpha(Colors.primary, 0.10)
-            visible: opacity > 0.01
-            opacity: navAccent.litRow ? 1 : 0
-            // Anchor to the lit row's STABLE layout y (treeCol sits at the
-            // sidebar's origin, so treeCol.y + row.y is the row's top in
-            // sidebar space) inset by 3*s, matching SettingsRow's own 3*s
-            // highlight inset. The old mapToItem(row, 0, 3*s) folded in the
-            // row's entrance Translate and froze the box a tenth of a row-
-            // height low, so the accent drooped below the label on first open;
-            // `y` is a plain reactive property, so this re-lays cleanly and
-            // stays centred on the row.
-            y: navAccent.geoRow ? treeCol.y + navAccent.geoRow.y + 3 * root.s : 0
-            height: navAccent.geoRow ? navAccent.geoRow.height - 6 * root.s : 0
-
-            Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-            Behavior on height { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+        SettingsHeader {
+            id: sideHeader
+            anchors.top: parent.top
+            s: root.s
+            glyph: "設"
+            title: "SETTINGS"
+            // The page header's × (top-right of the surface) is the one
+            // close button; the sidebar header carries none.
+            showAction: false
         }
 
-        Column {
-            id: treeCol
-            anchors.top: parent.top
+        /**
+         * The page list scrolls under the fixed header once it outgrows the
+         * window (twelve pages no longer fit the 572 height). The lit row is
+         * brought into view when the page changes or the surface opens, so
+         * `settingsPage updates` never lands on an off-screen row.
+         */
+        Flickable {
+            id: sideFlick
+            anchors.top: sideHeader.bottom
             anchors.left: parent.left
             anchors.right: parent.right
-            spacing: 0
-
-            SettingsHeader {
-                s: root.s
-                glyph: "設"
-                title: "SETTINGS"
-                // The page header's × (top-right of the surface) is the one
-                // close button; the sidebar header carries none.
-                showAction: false
+            anchors.bottom: parent.bottom
+            contentHeight: treeCol.implicitHeight + 6 * root.s
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            onContentHeightChanged: {
+                returnToBounds();
+                sideFlick.reveal(navAccent.litRow);
             }
 
-            Text {
-                topPadding: 16 * root.s
-                bottomPadding: 2 * root.s
-                leftPadding: 12 * root.s
-                text: "Shell"
-                color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                font.family: Appearance.font.family
-                font.pixelSize: 8.5 * root.s
-                font.weight: Font.Bold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.2 * root.s
+            function reveal(row) {
+                if (!row || sideFlick.height <= 0 || sideFlick.contentHeight <= sideFlick.height)
+                    return;
+                var top = treeCol.y + row.y;
+                var bot = top + row.height;
+                if (top < sideFlick.contentY)
+                    sideFlick.contentY = Math.max(0, top - 24 * root.s);
+                else if (bot > sideFlick.contentY + sideFlick.height)
+                    sideFlick.contentY = Math.min(sideFlick.contentHeight - sideFlick.height,
+                                                  bot - sideFlick.height + 6 * root.s);
             }
 
-            // Sidebar rows drop Ricelin's hover captions (sub) — a fixed
-            // surface can't grow a row into the pill edge like the morphing
-            // index could.
-            SettingsRow {
-                id: appearanceRow
-                surface: sidebar
-                icon: "sparkles"
-                name: "Appearance"
-                lit: root.page === "appearance"
-                NavChevron { row: appearanceRow }
+            // A cold open sets page/open before this exists, so the first
+            // layout (rows positioned, height arriving) reveals too.
+            onHeightChanged: Qt.callLater(() => sideFlick.reveal(navAccent.litRow))
+            Connections {
+                target: root
+                function onPageChanged() { Qt.callLater(() => sideFlick.reveal(navAccent.litRow)); }
+                function onOpenChanged() { if (root.open) Qt.callLater(() => sideFlick.reveal(navAccent.litRow)); }
             }
 
-            SettingsRow {
-                id: lookRow
-                surface: sidebar
-                icon: "app-window"
-                name: "Look"
-                lit: root.page === "look"
-                NavChevron { row: lookRow }
+            // Current-page accent: a soft primary panel that glides/morphs
+            // behind the lit nav row instead of snapping between rows. Declared
+            // ahead of treeCol so it paints underneath the row text/icons. Maps
+            // the target row's geometry into sidebar-local space the same way
+            // rowPoint/amePoint already do elsewhere in this file. `fontpicker`
+            // (reached from Appearance, not a sidebar entry) has no lit row, so
+            // the accent just fades out while that drill-in page is open.
+            Rectangle {
+                id: navAccent
+                readonly property var litRow: {
+                    switch (root.page) {
+                    case "appearance": return appearanceRow;
+                    case "look":       return lookRow;
+                    case "display":    return displayRow;
+                    case "input":      return inputRow;
+                    case "animation":  return animationRow;
+                    case "keybinds":   return keybindsRow;
+                    case "workspaces": return workspacesRow;
+                    case "idlelock":   return idleRow;
+                    case "appnap":     return napRow;
+                    case "notifications": return notifRow;
+                    case "updates":    return updatesRow;
+                    case "widgets":    return widgetsRow;
+                    default:           return null;
+                    }
+                }
+
+                // While a drill-in page (no lit row) is open the box fades in place
+                // on the last lit row instead of sliding/shrinking toward y=0.
+                property var heldRow: null
+                onLitRowChanged: if (litRow) heldRow = litRow
+                Component.onCompleted: heldRow = litRow
+                readonly property var geoRow: litRow ? litRow : heldRow
+
+                x: 0
+                width: sidebar.width
+                radius: 9 * root.s
+                color: Qt.alpha(Colors.primary, 0.10)
+                visible: opacity > 0.01
+                opacity: navAccent.litRow ? 1 : 0
+                // Anchor to the lit row's STABLE layout y (navAccent and treeCol
+                // share sideFlick's content, so treeCol.y + row.y is the row's top
+                // in the same space) inset by 3*s, matching SettingsRow's own 3*s
+                // highlight inset. The old mapToItem(row, 0, 3*s) folded in the
+                // row's entrance Translate and froze the box a tenth of a row-
+                // height low, so the accent drooped below the label on first open;
+                // `y` is a plain reactive property, so this re-lays cleanly and
+                // stays centred on the row.
+                y: navAccent.geoRow ? treeCol.y + navAccent.geoRow.y + 3 * root.s : 0
+                height: navAccent.geoRow ? navAccent.geoRow.height - 6 * root.s : 0
+
+                Behavior on y { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                Behavior on height { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
 
-            SettingsRow {
-                id: displayRow
-                surface: sidebar
-                icon: "monitor"
-                name: "Display"
-                lit: root.page === "display"
-                NavChevron { row: displayRow }
-            }
+            Column {
+                id: treeCol
+                width: sideFlick.width
+                spacing: 0
 
-            SettingsRow {
-                id: inputRow
-                surface: sidebar
-                icon: "mouse"
-                name: "Input"
-                lit: root.page === "input"
-                NavChevron { row: inputRow }
-            }
+                Text {
+                    topPadding: 16 * root.s
+                    bottomPadding: 2 * root.s
+                    leftPadding: 12 * root.s
+                    text: "Shell"
+                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 8.5 * root.s
+                    font.weight: Font.Bold
+                    font.capitalization: Font.AllUppercase
+                    font.letterSpacing: 1.2 * root.s
+                }
 
-            SettingsRow {
-                id: animationRow
-                surface: sidebar
-                icon: "waves"
-                name: "Animation"
-                lit: root.page === "animation"
-                NavChevron { row: animationRow }
-            }
+                // Sidebar rows drop Ricelin's hover captions (sub) — a fixed
+                // surface can't grow a row into the pill edge like the morphing
+                // index could.
+                SettingsRow {
+                    id: appearanceRow
+                    surface: sidebar
+                    icon: "sparkles"
+                    name: "Appearance"
+                    lit: root.page === "appearance"
+                    NavChevron { row: appearanceRow }
+                }
 
-            Text {
-                topPadding: 16 * root.s
-                bottomPadding: 2 * root.s
-                leftPadding: 12 * root.s
-                text: "Control"
-                color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                font.family: Appearance.font.family
-                font.pixelSize: 8.5 * root.s
-                font.weight: Font.Bold
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1.2 * root.s
-            }
+                SettingsRow {
+                    id: lookRow
+                    surface: sidebar
+                    icon: "app-window"
+                    name: "Look"
+                    lit: root.page === "look"
+                    NavChevron { row: lookRow }
+                }
 
-            SettingsRow {
-                id: keybindsRow
-                surface: sidebar
-                icon: "keyboard"
-                name: "Keybinds"
-                lit: root.page === "keybinds"
-                NavChevron { row: keybindsRow }
-            }
+                SettingsRow {
+                    id: displayRow
+                    surface: sidebar
+                    icon: "monitor"
+                    name: "Display"
+                    lit: root.page === "display"
+                    NavChevron { row: displayRow }
+                }
 
-            SettingsRow {
-                id: workspacesRow
-                surface: sidebar
-                icon: "app-window"
-                name: "Workspaces"
-                lit: root.page === "workspaces"
-                NavChevron { row: workspacesRow }
-            }
+                SettingsRow {
+                    id: inputRow
+                    surface: sidebar
+                    icon: "mouse"
+                    name: "Input"
+                    lit: root.page === "input"
+                    NavChevron { row: inputRow }
+                }
 
-            SettingsRow {
-                id: idleRow
-                surface: sidebar
-                icon: "lock"
-                name: "Idle / Lock"
-                lit: root.page === "idlelock"
-                NavChevron { row: idleRow }
-            }
+                SettingsRow {
+                    id: animationRow
+                    surface: sidebar
+                    icon: "waves"
+                    name: "Animation"
+                    lit: root.page === "animation"
+                    NavChevron { row: animationRow }
+                }
 
-            SettingsRow {
-                id: napRow
-                surface: sidebar
-                icon: "suspend"
-                name: "App nap"
-                lit: root.page === "appnap"
-                NavChevron { row: napRow }
-            }
+                Text {
+                    topPadding: 16 * root.s
+                    bottomPadding: 2 * root.s
+                    leftPadding: 12 * root.s
+                    text: "Control"
+                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 8.5 * root.s
+                    font.weight: Font.Bold
+                    font.capitalization: Font.AllUppercase
+                    font.letterSpacing: 1.2 * root.s
+                }
 
-            SettingsRow {
-                id: notifRow
-                surface: sidebar
-                icon: "inbox"
-                name: "Notifications"
-                lit: root.page === "notifications"
-                NavChevron { row: notifRow }
-            }
+                SettingsRow {
+                    id: keybindsRow
+                    surface: sidebar
+                    icon: "keyboard"
+                    name: "Keybinds"
+                    lit: root.page === "keybinds"
+                    NavChevron { row: keybindsRow }
+                }
 
-            SettingsRow {
-                id: widgetsRow
-                surface: sidebar
-                icon: "music"
-                name: "Widgets"
-                lit: root.page === "widgets"
-                NavChevron { row: widgetsRow }
-            }
+                SettingsRow {
+                    id: workspacesRow
+                    surface: sidebar
+                    icon: "app-window"
+                    name: "Workspaces"
+                    lit: root.page === "workspaces"
+                    NavChevron { row: workspacesRow }
+                }
 
-            SettingsRow {
-                id: updatesRow
-                surface: sidebar
-                icon: "download"
-                name: "Updates"
-                lit: root.page === "updates"
-                last: true
-                NavChevron { row: updatesRow }
+                SettingsRow {
+                    id: idleRow
+                    surface: sidebar
+                    icon: "lock"
+                    name: "Idle / Lock"
+                    lit: root.page === "idlelock"
+                    NavChevron { row: idleRow }
+                }
+
+                SettingsRow {
+                    id: napRow
+                    surface: sidebar
+                    icon: "suspend"
+                    name: "App nap"
+                    lit: root.page === "appnap"
+                    NavChevron { row: napRow }
+                }
+
+                SettingsRow {
+                    id: notifRow
+                    surface: sidebar
+                    icon: "inbox"
+                    name: "Notifications"
+                    lit: root.page === "notifications"
+                    NavChevron { row: notifRow }
+                }
+
+                SettingsRow {
+                    id: widgetsRow
+                    surface: sidebar
+                    icon: "music"
+                    name: "Widgets"
+                    lit: root.page === "widgets"
+                    NavChevron { row: widgetsRow }
+                }
+
+                SettingsRow {
+                    id: updatesRow
+                    surface: sidebar
+                    icon: "download"
+                    name: "Updates"
+                    lit: root.page === "updates"
+                    last: true
+                    NavChevron { row: updatesRow }
+                }
             }
         }
     }

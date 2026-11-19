@@ -146,109 +146,116 @@ SettingsPage {
             width: flick.width
             spacing: 0
 
-            SettingsGroupLabel {
+            SettingsSection {
                 s: root.s
-                text: root.rules.length > 0 ? "Rules · " + root.rules.length : "Rules"
+                surface: root
+                title: root.rules.length > 0 ? "Rules · " + root.rules.length : "Rules"
+                key: "workspaces/rules"
+
+                Repeater {
+                    model: root.rules
+
+                    delegate: SettingsRow {
+                        id: ruleRow
+                        required property int index
+                        required property var modelData
+
+                        readonly property var live: root.liveWs(Hyprland.workspaces.values, ruleRow.modelData.id)
+
+                        surface: root
+                        icon: "app-window"
+                        name: isNaN(ruleRow.modelData.id) ? ruleRow.modelData.ws : "Workspace " + ruleRow.modelData.ws
+                        sub: {
+                            var b = [];
+                            if (ruleRow.modelData.persistent) b.push("persistent");
+                            if (ruleRow.modelData.isDefault) b.push("default");
+                            if (ruleRow.live)
+                                b.push(ruleRow.live.active ? "active now" : "open now");
+                            return b.join(" · ");
+                        }
+                        last: ruleRow.index === root.rules.length - 1
+
+                        Row {
+                            spacing: 8 * root.s
+
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: ruleRow.live !== null
+                                width: 6 * root.s
+                                height: 6 * root.s
+                                radius: width / 2
+                                color: ruleRow.live && ruleRow.live.active
+                                    ? Colors.primary : Qt.alpha(Colors.on_surface_variant, 0.5)
+                                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                            }
+
+                            SideChip {
+                                anchors.verticalCenter: parent.verticalCenter
+                                label: ruleRow.modelData.monitor.length > 0
+                                    ? ruleRow.modelData.monitor : "any monitor"
+                            }
+                        }
+                    }
+                }
+
+                SettingsCollapse {
+                    shown: root.rules.length === 0
+                    surface: root
+
+                    Text {
+                        topPadding: 4 * root.s
+                        leftPadding: 12 * root.s
+                        text: "No workspace rules defined"
+                        color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                        font.family: Appearance.font.family
+                        font.pixelSize: 10.5 * root.s
+                        font.italic: true
+                    }
+                }
             }
 
-            Repeater {
-                model: root.rules
+            SettingsSection {
+                s: root.s
+                surface: root
+                title: "Monitor assignments"
+                key: "workspaces/monitor-assignments"
 
-                delegate: SettingsRow {
-                    id: ruleRow
-                    required property int index
-                    required property var modelData
+                Repeater {
+                    model: root.monitorKeys
 
-                    readonly property var live: root.liveWs(Hyprland.workspaces.values, ruleRow.modelData.id)
+                    delegate: SettingsRow {
+                        id: monRow
+                        required property int index
+                        required property var modelData
 
-                    surface: root
-                    icon: "app-window"
-                    name: isNaN(ruleRow.modelData.id) ? ruleRow.modelData.ws : "Workspace " + ruleRow.modelData.ws
-                    sub: {
-                        var b = [];
-                        if (ruleRow.modelData.persistent) b.push("persistent");
-                        if (ruleRow.modelData.isDefault) b.push("default");
-                        if (ruleRow.live)
-                            b.push(ruleRow.live.active ? "active now" : "open now");
-                        return b.join(" · ");
-                    }
-                    last: ruleRow.index === root.rules.length - 1
-
-                    Row {
-                        spacing: 8 * root.s
-
-                        Rectangle {
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: ruleRow.live !== null
-                            width: 6 * root.s
-                            height: 6 * root.s
-                            radius: width / 2
-                            color: ruleRow.live && ruleRow.live.active
-                                ? Colors.primary : Qt.alpha(Colors.on_surface_variant, 0.5)
-                            Behavior on color { ColorAnimation { duration: Motion.fast } }
-                        }
+                        surface: root
+                        icon: "monitor"
+                        name: monRow.modelData
+                        sub: "Workspaces pinned to this output"
+                        captionOnFocus: true
+                        last: monRow.index === root.monitorKeys.length - 1
 
                         SideChip {
-                            anchors.verticalCenter: parent.verticalCenter
-                            label: ruleRow.modelData.monitor.length > 0
-                                ? ruleRow.modelData.monitor : "any monitor"
+                            label: (Workspacerules.byMonitor[monRow.modelData] || []).join(" · ")
                         }
                     }
                 }
-            }
 
-            SettingsCollapse {
-                shown: root.rules.length === 0
-                surface: root
-
-                Text {
-                    topPadding: 4 * root.s
-                    leftPadding: 12 * root.s
-                    text: "No workspace rules defined"
-                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                    font.family: Appearance.font.family
-                    font.pixelSize: 10.5 * root.s
-                    font.italic: true
-                }
-            }
-
-            SettingsGroupLabel { s: root.s; text: "Monitor assignments" }
-
-            Repeater {
-                model: root.monitorKeys
-
-                delegate: SettingsRow {
-                    id: monRow
-                    required property int index
-                    required property var modelData
-
+                SettingsCollapse {
+                    shown: root.monitorKeys.length === 0
                     surface: root
-                    icon: "monitor"
-                    name: monRow.modelData
-                    sub: "Workspaces pinned to this output"
-                    captionOnFocus: true
-                    last: monRow.index === root.monitorKeys.length - 1
 
-                    SideChip {
-                        label: (Workspacerules.byMonitor[monRow.modelData] || []).join(" · ")
+                    Text {
+                        topPadding: 4 * root.s
+                        leftPadding: 12 * root.s
+                        width: parent.width
+                        text: "None — no rule names a monitor, so workspaces open on the focused one"
+                        color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                        font.family: Appearance.font.family
+                        font.pixelSize: 10.5 * root.s
+                        font.italic: true
+                        wrapMode: Text.WordWrap
                     }
-                }
-            }
-
-            SettingsCollapse {
-                shown: root.monitorKeys.length === 0
-                surface: root
-
-                Text {
-                    topPadding: 4 * root.s
-                    leftPadding: 12 * root.s
-                    width: parent.width
-                    text: "None — no rule names a monitor, so workspaces open on the focused one"
-                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                    font.family: Appearance.font.family
-                    font.pixelSize: 10.5 * root.s
-                    font.italic: true
-                    wrapMode: Text.WordWrap
                 }
             }
 

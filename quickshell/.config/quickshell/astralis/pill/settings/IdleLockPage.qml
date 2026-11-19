@@ -224,144 +224,154 @@ SettingsPage {
             width: flick.width
             spacing: 0
 
-            SettingsGroupLabel { s: root.s; text: "When idle" }
-
-            IdleRow {
-                id: dimRow
-                icon: "sun"
-                name: "Dim screen"
-                caption: "Soften the backlight after idle"
-
-                SettingsSeg {
-                    s: root.s
-                    flushLeft: true
-                    options: root.dimOptions
-                    value: Flags.idleDimMin
-                    onPicked: (v) => Flags.idleDimMin = v
-                }
-            }
-
-            IdleRow {
-                id: screenRow
-                icon: "monitor"
-                name: "Screen off"
-                caption: "Blank the display after idle"
-
-                SettingsSeg {
-                    s: root.s
-                    flushLeft: true
-                    options: root.screenOptions
-                    value: Flags.idleScreenOffMin
-                    onPicked: (v) => Flags.idleScreenOffMin = v
-                }
-            }
-
-            IdleRow {
-                id: lockRow
-                icon: "lock"
-                name: "Auto-lock"
-                caption: "Lock the screen after idle"
-
-                SettingsSeg {
-                    s: root.s
-                    flushLeft: true
-                    options: root.lockOptions
-                    value: Flags.idleLockMin
-                    onPicked: (v) => Flags.idleLockMin = v
-                }
-            }
-
-            IdleRow {
-                id: suspendRow
-                icon: "suspend"
-                name: "Suspend"
-                caption: "Sleep the machine after idle"
-                last: true
-
-                SettingsSeg {
-                    s: root.s
-                    flushLeft: true
-                    options: root.suspendOptions
-                    value: Flags.idleSuspendMin
-                    onPicked: (v) => Flags.idleSuspendMin = v
-                }
-            }
-
-            SettingsRow {
-                id: sleepLockRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Lock before sleep"
-                sub: "Lock the session on the way into suspend"
-                captionOnFocus: true
-                icon: "lock"
-                last: true
+                title: "When idle"
+                key: "idle/when-idle"
 
-                LinkToggle {
-                    s: root.s
-                    on: Flags.lockBeforeSleep
-                    onToggled: Flags.lockBeforeSleep = !Flags.lockBeforeSleep
+                IdleRow {
+                    id: dimRow
+                    icon: "sun"
+                    name: "Dim screen"
+                    caption: "Soften the backlight after idle"
+
+                    SettingsSeg {
+                        s: root.s
+                        flushLeft: true
+                        options: root.dimOptions
+                        value: Flags.idleDimMin
+                        onPicked: (v) => Flags.idleDimMin = v
+                    }
+                }
+
+                IdleRow {
+                    id: screenRow
+                    icon: "monitor"
+                    name: "Screen off"
+                    caption: "Blank the display after idle"
+
+                    SettingsSeg {
+                        s: root.s
+                        flushLeft: true
+                        options: root.screenOptions
+                        value: Flags.idleScreenOffMin
+                        onPicked: (v) => Flags.idleScreenOffMin = v
+                    }
+                }
+
+                IdleRow {
+                    id: lockRow
+                    icon: "lock"
+                    name: "Auto-lock"
+                    caption: "Lock the screen after idle"
+
+                    SettingsSeg {
+                        s: root.s
+                        flushLeft: true
+                        options: root.lockOptions
+                        value: Flags.idleLockMin
+                        onPicked: (v) => Flags.idleLockMin = v
+                    }
+                }
+
+                IdleRow {
+                    id: suspendRow
+                    icon: "suspend"
+                    name: "Suspend"
+                    caption: "Sleep the machine after idle"
+                    last: true
+
+                    SettingsSeg {
+                        s: root.s
+                        flushLeft: true
+                        options: root.suspendOptions
+                        value: Flags.idleSuspendMin
+                        onPicked: (v) => Flags.idleSuspendMin = v
+                    }
+                }
+
+                SettingsRow {
+                    id: sleepLockRow
+                    surface: root
+                    name: "Lock before sleep"
+                    sub: "Lock the session on the way into suspend"
+                    captionOnFocus: true
+                    icon: "lock"
+                    last: true
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.lockBeforeSleep
+                        onToggled: Flags.lockBeforeSleep = !Flags.lockBeforeSleep
+                    }
                 }
             }
 
-            SettingsGroupLabel { s: root.s; text: "Power menu screen off" }
-
-            SettingsRow {
-                id: lidRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                name: "Keep running with lid shut"
-                sub: "Closing the lid won't suspend while the screen is off"
-                captionOnFocus: true
-                icon: "suspend"
+                title: "Power menu screen off"
+                key: "idle/power-menu-screen-off"
 
-                LinkToggle {
-                    s: root.s
-                    on: Flags.screenOffKeepLid
-                    onToggled: Flags.screenOffKeepLid = !Flags.screenOffKeepLid
+                SettingsRow {
+                    id: lidRow
+                    surface: root
+                    name: "Keep running with lid shut"
+                    sub: "Closing the lid won't suspend while the screen is off"
+                    captionOnFocus: true
+                    icon: "suspend"
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.screenOffKeepLid
+                        onToggled: Flags.screenOffKeepLid = !Flags.screenOffKeepLid
+                    }
                 }
-            }
 
-            SettingsRow {
-                id: wakeRow
-                surface: root
-                name: "Wake on touchpad / mouse"
-                sub: "Off: only a key press turns the screen back on"
-                captionOnFocus: true
-                icon: "mouse"
+                SettingsRow {
+                    id: wakeRow
+                    surface: root
+                    name: "Wake on touchpad / mouse"
+                    sub: "Off: only a key press turns the screen back on"
+                    captionOnFocus: true
+                    icon: "mouse"
 
-                LinkToggle {
-                    s: root.s
-                    on: root.wakeOnPointer
-                    onToggled: root.setStore.set("wakeOnPointer", !root.wakeOnPointer)
+                    LinkToggle {
+                        s: root.s
+                        on: root.wakeOnPointer
+                        onToggled: root.setStore.set("wakeOnPointer", !root.wakeOnPointer)
+                    }
                 }
-            }
 
-            SettingsRow {
-                id: blankLockRow
-                surface: root
-                name: "Lock when it blanks"
-                sub: "Lock the session as the screen turns off"
-                captionOnFocus: true
-                icon: "lock"
-                last: true
+                SettingsRow {
+                    id: blankLockRow
+                    surface: root
+                    name: "Lock when it blanks"
+                    sub: "Lock the session as the screen turns off"
+                    captionOnFocus: true
+                    icon: "lock"
+                    last: true
 
-                LinkToggle {
-                    s: root.s
-                    on: Flags.screenOffLock
-                    onToggled: Flags.screenOffLock = !Flags.screenOffLock
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.screenOffLock
+                        onToggled: Flags.screenOffLock = !Flags.screenOffLock
+                    }
                 }
-            }
 
-            Text {
-                topPadding: 12 * root.s
-                leftPadding: 12 * root.s
-                rightPadding: 12 * root.s
-                width: parent.width
-                text: "Hypridle is running — these apply live: it dims the backlight, blanks the display, locks the session and suspends on the timeouts above (defaults: screen off at 6 min, lock at 5 min). Stay awake (in the dashboard) pauses all of it while on. Screen off from the power menu holds off suspend until the screen wakes; auto-lock still applies."
-                color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                font.family: Appearance.font.family
-                font.pixelSize: 9.5 * root.s
-                font.weight: Font.Medium
-                wrapMode: Text.WordWrap
+                Text {
+                    topPadding: 12 * root.s
+                    leftPadding: 12 * root.s
+                    rightPadding: 12 * root.s
+                    width: parent.width
+                    text: "Hypridle is running — these apply live: it dims the backlight, blanks the display, locks the session and suspends on the timeouts above (defaults: screen off at 6 min, lock at 5 min). Stay awake (in the dashboard) pauses all of it while on. Screen off from the power menu holds off suspend until the screen wakes; auto-lock still applies."
+                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 9.5 * root.s
+                    font.weight: Font.Medium
+                    wrapMode: Text.WordWrap
+                }
             }
 
             Item { width: 1; height: 10 * root.s }

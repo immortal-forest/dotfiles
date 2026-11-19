@@ -179,71 +179,72 @@ SettingsPage {
             width: flick.width
             spacing: 0
 
-            SettingsGroupLabel { s: root.s; text: "Motion" }
-
-            SettingsRow {
-                id: enabledRow
-                surface: root
-                name: "Enabled"
-                sub: "Animate windows, workspaces and fades"
-                captionOnFocus: true
-                icon: "sparkles"
-                last: !root.animOn
-
-                LinkToggle {
-                    s: root.s
-                    on: root.animOn
-                    onToggled: {
-                        root.animOn = !root.animOn;
-                        root.writeEnabled(root.animOn);
-                    }
-                }
-            }
-
-            SettingsRow {
-                id: speedRow
-                surface: root
-                name: "Speed"
-                sub: "Higher is faster, applied to the motion leaves"
-                captionOnFocus: true
-                icon: "bolt"
-                shown: root.animOn
-                last: true
-
-                ScrubValue {
-                    id: speedScrub
-                    s: root.s
-                    value: root.speed
-                    openValue: root.base.speed
-                    from: 1
-                    to: 10
-                    step: 0.5
-                    decimals: 1
-                    onEdited: v => {
-                        root.speed = v;
-                        root.writeSpeed(v);
-                    }
-                }
-            }
-
-            SettingsGroupLabel {
+            SettingsSection {
                 s: root.s
-                text: "Curve"
-                shown: root.animOn
                 surface: root
+                title: "Motion"
+                key: "animation/motion"
+
+                SettingsRow {
+                    id: enabledRow
+                    surface: root
+                    name: "Enabled"
+                    sub: "Animate windows, workspaces and fades"
+                    captionOnFocus: true
+                    icon: "sparkles"
+                    last: !root.animOn
+
+                    LinkToggle {
+                        s: root.s
+                        on: root.animOn
+                        onToggled: {
+                            root.animOn = !root.animOn;
+                            root.writeEnabled(root.animOn);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: speedRow
+                    surface: root
+                    name: "Speed"
+                    sub: "Higher is faster, applied to the motion leaves"
+                    captionOnFocus: true
+                    icon: "bolt"
+                    shown: root.animOn
+                    last: true
+
+                    ScrubValue {
+                        id: speedScrub
+                        s: root.s
+                        value: root.speed
+                        openValue: root.base.speed
+                        from: 1
+                        to: 10
+                        step: 0.5
+                        decimals: 1
+                        onEdited: v => {
+                            root.speed = v;
+                            root.writeSpeed(v);
+                        }
+                    }
+                }
             }
 
-            /**
-             * Bezier editor. The square maps unit curve-space (0,0 bottom-left to
-             * 1,1 top-right) to pixels with y inverted; the two handles are the
-             * source of truth and the cx/cy properties read back from them. An
-             * undo glyph appears whenever the live points drift from the
-             * session-open snapshot.
-             */
-            SettingsCollapse {
-                shown: root.animOn
+            SettingsSection {
+                s: root.s
                 surface: root
+                title: "Curve"
+                key: "animation/curve"
+                shown: root.animOn
 
+                /**
+                 * Bezier editor. The square maps unit curve-space (0,0 bottom-left to
+                 * 1,1 top-right) to pixels with y inverted; the two handles are the
+                 * source of truth and the cx/cy properties read back from them. An
+                 * undo glyph appears whenever the live points drift from the
+                 * session-open snapshot.
+                 */
                 Item {
                     id: editor
                     width: parent.width
@@ -451,26 +452,22 @@ SettingsPage {
                 }
             }
 
-            SettingsGroupLabel {
+            SettingsSection {
                 s: root.s
-                text: "Preset"
-                shown: root.animOn
                 surface: root
-            }
-
-            /**
-             * Full-width section, like the curve editor above it — NOT a
-             * SettingsRow trailing control. Six full-word options in a
-             * SettingsSeg need close to the whole content pane's width
-             * (verified against the real ~367px pane before shipping this;
-             * see the doc on `presets`); squeezed into a row's trailing slot
-             * next to an icon, a name and a caption, they overlapped all of
-             * it instead of sitting in their own space.
-             */
-            SettingsCollapse {
+                title: "Preset"
+                key: "animation/preset"
                 shown: root.animOn
-                surface: root
 
+                /**
+                 * Full-width section, like the curve editor above it — NOT a
+                 * SettingsRow trailing control. Six full-word options in a
+                 * SettingsSeg need close to the whole content pane's width
+                 * (verified against the real ~367px pane before shipping this;
+                 * see the doc on `presets`); squeezed into a row's trailing slot
+                 * next to an icon, a name and a caption, they overlapped all of
+                 * it instead of sitting in their own space.
+                 */
                 Column {
                     width: parent.width
                     spacing: 6 * root.s

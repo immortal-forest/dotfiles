@@ -295,166 +295,181 @@ SettingsPage {
             width: flick.width
             spacing: 0
 
-            SettingsGroupLabel { s: root.s; surface: root; text: "Quiet" }
-
-            SettingsRow {
-                id: dndRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                icon: "dnd"
-                name: "Do not disturb"
-                sub: root.dndCaption
+                title: "Quiet"
+                key: "notifications/quiet"
 
-                LinkToggle {
-                    s: root.s
-                    on: Flags.dnd
-                    accessibleName: "Do not disturb"
-                    onToggled: Flags.dnd = !Flags.dnd
+                SettingsRow {
+                    id: dndRow
+                    surface: root
+                    icon: "dnd"
+                    name: "Do not disturb"
+                    sub: root.dndCaption
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.dnd
+                        accessibleName: "Do not disturb"
+                        onToggled: Flags.dnd = !Flags.dnd
+                    }
+                }
+
+                SettingsRow {
+                    id: scheduleRow
+                    surface: root
+                    icon: "moon"
+                    name: "Quiet hours"
+                    sub: Flags.dndSchedule
+                        ? "Every day, " + root.clockText(Flags.dndFrom) + " – " + root.clockText(Flags.dndTo)
+                        : "Turn Do not disturb on by itself every night"
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.dndSchedule
+                        accessibleName: "Quiet hours"
+                        onToggled: Flags.dndSchedule = !Flags.dndSchedule
+                    }
+                }
+
+                SettingsRow {
+                    id: fromRow
+                    surface: root
+                    shown: Flags.dndSchedule
+                    icon: "clock"
+                    name: "Starts"
+
+                    ScrubValue {
+                        id: fromScrub
+                        s: root.s
+                        value: Flags.dndFrom
+                        from: 0
+                        to: 1425
+                        step: 15
+                        fmt: (v) => root.clockText(Math.round(v))
+                        accessibleName: "Quiet hours start"
+                        onEdited: (v) => Flags.dndFrom = Math.round(v)
+                    }
+                }
+
+                SettingsRow {
+                    id: toRow
+                    surface: root
+                    shown: Flags.dndSchedule
+                    icon: "sun"
+                    name: "Ends"
+
+                    ScrubValue {
+                        id: toScrub
+                        s: root.s
+                        value: Flags.dndTo
+                        from: 0
+                        to: 1425
+                        step: 15
+                        fmt: (v) => root.clockText(Math.round(v))
+                        accessibleName: "Quiet hours end"
+                        onEdited: (v) => Flags.dndTo = Math.round(v)
+                    }
+                }
+
+                SettingsRow {
+                    id: urgentRow
+                    surface: root
+                    icon: "bolt"
+                    name: "Let urgent through"
+                    sub: "Critical alerts still pop up while it's quiet"
+                    captionOnFocus: true
+                    last: true
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.dndUrgent
+                        accessibleName: "Let urgent through"
+                        onToggled: Flags.dndUrgent = !Flags.dndUrgent
+                    }
                 }
             }
 
-            SettingsRow {
-                id: scheduleRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                icon: "moon"
-                name: "Quiet hours"
-                sub: Flags.dndSchedule
-                    ? "Every day, " + root.clockText(Flags.dndFrom) + " – " + root.clockText(Flags.dndTo)
-                    : "Turn Do not disturb on by itself every night"
+                title: "Popups"
+                key: "notifications/popups"
 
-                LinkToggle {
-                    s: root.s
-                    on: Flags.dndSchedule
-                    accessibleName: "Quiet hours"
-                    onToggled: Flags.dndSchedule = !Flags.dndSchedule
+                SettingsRow {
+                    id: lengthRow
+                    surface: root
+                    icon: "stopwatch"
+                    name: "Popup length"
+                    sub: "How long a popup stays before it tucks away"
+                    captionOnFocus: true
+
+                    SettingsSeg {
+                        s: root.s
+                        options: root.lengthOptions
+                        value: Flags.notifPopup
+                        onPicked: (v) => Flags.notifPopup = v
+                    }
+                }
+
+                SettingsRow {
+                    id: soundRow
+                    surface: root
+                    icon: "speaker"
+                    name: "Sound"
+                    sub: "Chime when a popup shows (apps can ask for their own)"
+                    captionOnFocus: true
+                    last: true
+
+                    LinkToggle {
+                        s: root.s
+                        on: Flags.notifSound
+                        accessibleName: "Notification sound"
+                        onToggled: Flags.notifSound = !Flags.notifSound
+                    }
                 }
             }
 
-            SettingsRow {
-                id: fromRow
+            SettingsSection {
+                s: root.s
                 surface: root
-                shown: Flags.dndSchedule
-                icon: "clock"
-                name: "Starts"
+                title: "Apps"
+                key: "notifications/apps"
 
-                ScrubValue {
-                    id: fromScrub
-                    s: root.s
-                    value: Flags.dndFrom
-                    from: 0
-                    to: 1425
-                    step: 15
-                    fmt: (v) => root.clockText(Math.round(v))
-                    accessibleName: "Quiet hours start"
-                    onEdited: (v) => Flags.dndFrom = Math.round(v)
+                Repeater {
+                    id: appRep
+                    model: root.appList
+                    delegate: AppRow {}
+                    onItemAdded: Qt.callLater(root.syncAppRows)
+                    onItemRemoved: Qt.callLater(root.syncAppRows)
                 }
-            }
 
-            SettingsRow {
-                id: toRow
-                surface: root
-                shown: Flags.dndSchedule
-                icon: "sun"
-                name: "Ends"
-
-                ScrubValue {
-                    id: toScrub
-                    s: root.s
-                    value: Flags.dndTo
-                    from: 0
-                    to: 1425
-                    step: 15
-                    fmt: (v) => root.clockText(Math.round(v))
-                    accessibleName: "Quiet hours end"
-                    onEdited: (v) => Flags.dndTo = Math.round(v)
+                Text {
+                    visible: root.appList.length === 0
+                    topPadding: 6 * root.s
+                    leftPadding: 12 * root.s
+                    rightPadding: 12 * root.s
+                    width: parent.width
+                    text: "Apps show up here after they send their first notification."
+                    color: Qt.alpha(Colors.on_surface_variant, 0.85)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 10.5 * root.s
+                    wrapMode: Text.WordWrap
                 }
-            }
 
-            SettingsRow {
-                id: urgentRow
-                surface: root
-                icon: "bolt"
-                name: "Let urgent through"
-                sub: "Critical alerts still pop up while it's quiet"
-                captionOnFocus: true
-                last: true
-
-                LinkToggle {
-                    s: root.s
-                    on: Flags.dndUrgent
-                    accessibleName: "Let urgent through"
-                    onToggled: Flags.dndUrgent = !Flags.dndUrgent
+                Text {
+                    topPadding: 12 * root.s
+                    leftPadding: 12 * root.s
+                    rightPadding: 12 * root.s
+                    width: parent.width
+                    text: "Alert pops up in the pill (and chimes, if Sound is on). Silent skips the popup and goes straight to the centre. Off drops that app's notifications entirely — nothing is kept."
+                    color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                    font.family: Appearance.font.family
+                    font.pixelSize: 9.5 * root.s
+                    font.weight: Font.Medium
+                    wrapMode: Text.WordWrap
                 }
-            }
-
-            SettingsGroupLabel { s: root.s; surface: root; text: "Popups" }
-
-            SettingsRow {
-                id: lengthRow
-                surface: root
-                icon: "stopwatch"
-                name: "Popup length"
-                sub: "How long a popup stays before it tucks away"
-                captionOnFocus: true
-
-                SettingsSeg {
-                    s: root.s
-                    options: root.lengthOptions
-                    value: Flags.notifPopup
-                    onPicked: (v) => Flags.notifPopup = v
-                }
-            }
-
-            SettingsRow {
-                id: soundRow
-                surface: root
-                icon: "speaker"
-                name: "Sound"
-                sub: "Chime when a popup shows (apps can ask for their own)"
-                captionOnFocus: true
-                last: true
-
-                LinkToggle {
-                    s: root.s
-                    on: Flags.notifSound
-                    accessibleName: "Notification sound"
-                    onToggled: Flags.notifSound = !Flags.notifSound
-                }
-            }
-
-            SettingsGroupLabel { s: root.s; surface: root; text: "Apps" }
-
-            Repeater {
-                id: appRep
-                model: root.appList
-                delegate: AppRow {}
-                onItemAdded: Qt.callLater(root.syncAppRows)
-                onItemRemoved: Qt.callLater(root.syncAppRows)
-            }
-
-            Text {
-                visible: root.appList.length === 0
-                topPadding: 6 * root.s
-                leftPadding: 12 * root.s
-                rightPadding: 12 * root.s
-                width: parent.width
-                text: "Apps show up here after they send their first notification."
-                color: Qt.alpha(Colors.on_surface_variant, 0.85)
-                font.family: Appearance.font.family
-                font.pixelSize: 10.5 * root.s
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                topPadding: 12 * root.s
-                leftPadding: 12 * root.s
-                rightPadding: 12 * root.s
-                width: parent.width
-                text: "Alert pops up in the pill (and chimes, if Sound is on). Silent skips the popup and goes straight to the centre. Off drops that app's notifications entirely — nothing is kept."
-                color: Qt.alpha(Colors.on_surface_variant, 0.65)
-                font.family: Appearance.font.family
-                font.pixelSize: 9.5 * root.s
-                font.weight: Font.Medium
-                wrapMode: Text.WordWrap
             }
 
             Item { width: 1; height: 10 * root.s }

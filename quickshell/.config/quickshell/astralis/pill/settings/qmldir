@@ -14,3 +14,4 @@ FontPickerPage 1.0 FontPickerPage.qml
 WidgetsPage 1.0 WidgetsPage.qml
 NotificationsPage 1.0 NotificationsPage.qml
 AppNapPage 1.0 AppNapPage.qml
+SettingsSection 1.0 SettingsSection.qml
