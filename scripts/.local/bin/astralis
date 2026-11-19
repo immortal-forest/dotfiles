@@ -3,8 +3,11 @@
 
 Outfit SemiBold (the shell's UI font) and a turning crystal star, drawn in block
 sextants and coloured from the live wallpaper palette (the Colors.json matugen
-writes for the shell) over a painted nebula. In a terminal it runs full screen
-until a key is pressed; -o plays the intro inline and exits; -s prints once.
+writes for the shell) over the terminal's own background, so it stays as
+translucent as the window. In a terminal it runs full screen until a key is
+pressed; -o plays the intro inline and exits; -s prints once; --bg paints a
+nebula behind it (for opaque terminals: explicit cell colours are drawn opaque,
+so in a translucent one the nebula reads as a dark box).
 """
 import argparse, json, math, os, random, select, shutil, signal, sys, time
 
@@ -1021,8 +1024,10 @@ def main(argv):
                       help="play the intro inline, then exit (for a shell greeting)")
     mode.add_argument("-s", "--static", action="store_true",
                       help="print the final frame, no motion (the default when piped)")
-    ap.add_argument("--no-bg", dest="bg", action="store_false",
-                    help="nonstop: keep the terminal's own background instead of the painted nebula")
+    ap.add_argument("--bg", dest="bg", action="store_true",
+                    help="nonstop: paint a nebula over the terminal's background "
+                         "(opaque terminals; a translucent one shows it as a dark box)")
+    ap.add_argument("--no-bg", dest="bg", action="store_false", help=argparse.SUPPRESS)
     ap.add_argument("-c", "--caption", metavar="TEXT",
                     help='line under the wordmark; "" hides it '
                          "(default: quickshell · hyprland · <wallpaper>)")

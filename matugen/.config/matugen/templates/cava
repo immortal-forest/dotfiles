@@ -22,7 +22,9 @@ gradient = 1
 gradient_count = 3
 # foreground + the 3 gradient stops track the M3 accent so the bars match the shell.
 foreground = '{{colors.primary.default.hex}}'
-background = '{{colors.surface.default.hex}}'
+# 'default' = the terminal's own background. A hex here makes every cell an explicit
+# background, which Ghostty draws opaque — a dark box over the translucent window.
+background = 'default'
 gradient_color_1 = '{{colors.primary.default.hex}}'
 gradient_color_2 = '{{colors.primary_container.default.hex}}'
 gradient_color_3 = '{{colors.tertiary.default.hex}}'
