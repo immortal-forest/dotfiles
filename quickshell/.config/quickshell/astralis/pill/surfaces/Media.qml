@@ -639,7 +639,8 @@ PillSurface {
         anchors.rightMargin: root.edgePad
         anchors.verticalCenter: stroke.verticalCenter
         visible: root.hasPlayer
-        text: root.live ? "生" : root.fmt(root.lengthSec)
+        // No length yet (a browser tab that has not started) is not "0:00".
+        text: root.live ? "生" : root.lengthSec > 0 ? root.fmt(root.lengthSec) : "–:––"
         color: root.live ? Colors.error : Colors.on_surface_variant
         font.family: root.live ? Appearance.font.jp : Appearance.font.family
         font.pixelSize: (root.live ? 12 : 10) * root.s

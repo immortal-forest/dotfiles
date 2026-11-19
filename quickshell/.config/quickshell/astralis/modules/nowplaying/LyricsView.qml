@@ -237,27 +237,19 @@ PanelWindow {
         opacity: win.shown ? (Players.playing ? 1 : 0.55) : 0
         Behavior on opacity { NumberAnimation { duration: Motion.largeDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
 
-        // Optional backdrop for legibility on busy wallpapers: a rounded,
-        // cover-tinted panel. Soft fades out top and bottom; Solid is a card.
-        readonly property real backdropA: win.cfg.backdrop === "solid" ? 0.72 : win.cfg.backdrop === "soft" ? 0.5 : 0
+        // Optional backdrop for legibility on busy wallpapers. Soft is a shade
+        // on the words themselves; Solid is a rounded cover-tinted card.
+        readonly property color tint: win.mix(Colors.surface, TrackInfo.accentDeep, 0.14)
+        readonly property bool soft: win.cfg.backdrop === "soft"
         Rectangle {
             id: backdrop
             anchors.fill: parent
             radius: Appearance.rounding.large * 1.4 * win.s
-            visible: stage.backdropA > 0
-            readonly property color tint: win.mix(Colors.surface, TrackInfo.accentDeep, 0.14)
-            color: win.cfg.backdrop === "solid" ? Qt.alpha(tint, stage.backdropA) : "transparent"
-            border.width: win.cfg.backdrop === "solid" ? 1 : 0
+            visible: win.cfg.backdrop === "solid"
+            color: Qt.alpha(stage.tint, 0.72)
+            border.width: 1
             border.color: Qt.alpha(Colors.on_surface, 0.07)
-            gradient: win.cfg.backdrop === "soft" ? softGrad : null
             Behavior on color { ColorAnimation { duration: Motion.largeDur } }
-            Gradient {
-                id: softGrad
-                GradientStop { position: 0; color: Qt.alpha(backdrop.tint, 0) }
-                GradientStop { position: 0.22; color: Qt.alpha(backdrop.tint, stage.backdropA) }
-                GradientStop { position: 0.78; color: Qt.alpha(backdrop.tint, stage.backdropA) }
-                GradientStop { position: 1; color: Qt.alpha(backdrop.tint, 0) }
-            }
         }
 
         Column {
@@ -342,19 +334,27 @@ PanelWindow {
                     // dark legibility shade on far lines and the cover's deep
                     // accent glow on the current one. Enabled for every line
                     // near the centre so it never toggles while visible.
+                    // Backdrop Soft widens that shadow into a dark tinted shade
+                    // hugging the words (the glow still tints the current
+                    // line's); blur is rescaled so the distance blur keeps its
+                    // 12 px reach under the larger blurMax.
                     property real blurAmt: win.cfg.blur ? Math.min(1, Math.abs(dist) * 0.22) : 0
                     Behavior on blurAmt { NumberAnimation { duration: Motion.normalDur; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.standardCurve } }
                     layer.enabled: near && win.visible
                     layer.smooth: true
                     layer.effect: MultiEffect {
-                        blurEnabled: true
-                        blur: line.blurAmt
-                        blurMax: 12
-                        shadowEnabled: true
                         readonly property real glow: win.cfg.glow ? line.act : 0
-                        shadowColor: win.mix(Qt.rgba(0, 0, 0, 0.55), Qt.alpha(win.glowC, 0.9), glow)
-                        shadowBlur: 0.6 + 0.35 * glow
-                        shadowVerticalOffset: 2 * win.s * (1 - glow)
+                        readonly property bool shade: stage.soft
+                        blurEnabled: true
+                        blurMax: shade ? Math.round(18 * win.s) : 12
+                        blur: line.blurAmt * 12 / blurMax
+                        shadowEnabled: true
+                        shadowColor: shade
+                            ? win.mix(Qt.alpha(stage.tint, 1), Qt.alpha(win.glowC, 0.9), 0.4 * glow)
+                            : win.mix(Qt.rgba(0, 0, 0, 0.55), Qt.alpha(win.glowC, 0.9), glow)
+                        shadowBlur: shade ? 1 : 0.6 + 0.35 * glow
+                        shadowScale: shade ? 1.02 : 1
+                        shadowVerticalOffset: shade ? 0 : 2 * win.s * (1 - glow)
                         shadowHorizontalOffset: 0
                     }
 

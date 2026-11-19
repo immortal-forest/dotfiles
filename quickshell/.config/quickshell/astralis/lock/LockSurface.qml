@@ -1815,7 +1815,11 @@ Item {
                 return wave.mapToItem(mediaAme, wave.headX, wave.headY);
             }
             wake: mediaAme.point
-            opacity: mediaPanel.opacity
+            // Setting opacity here REPLACES Ame's own `form === "off" ? 0 : 1`
+            // binding, so it must carry the off-gate itself: without it a
+            // player with no timeline (a browser tab reporting no length)
+            // left the hidden bead painted on the cover art.
+            opacity: form === "off" ? 0 : mediaPanel.opacity
         }
     }
 }

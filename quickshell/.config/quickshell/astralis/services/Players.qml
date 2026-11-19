@@ -137,8 +137,15 @@ Singleton {
     readonly property string trackUrl: urlOf(active)
     readonly property string artUrl: artUrlFor(active)
     readonly property real lengthSec: has && active.length > 0 ? active.length : 0
-    /** A bogus near-INT64 length is how live streams report "no end". */
-    readonly property bool live: has && (lengthSec <= 0 || lengthSec > 86400)
+    /**
+     * A stream with no end. Chromium reports that as a bogus near-INT64
+     * length. Firefox/Zen send no length at all — but they send none for an
+     * ordinary video that has not started playing either (a paused YouTube tab
+     * read LIVE on the lock screen), so a missing length only counts as live
+     * on a source that streams live: Twitch, or a /live URL.
+     */
+    readonly property bool live: has && (lengthSec > 86400
+        || (lengthSec <= 0 && (source === "twitch" || /\/live(\/|\?|$)/.test(trackUrl))))
     readonly property string source: serviceOf(active)
     readonly property string serviceLabel: source.length > 0
         ? source.charAt(0).toUpperCase() + source.slice(1) : ""
@@ -211,35 +218,60 @@ Singleton {
      * source carries its real logo. Matching is the same window-to-entry pass the
      * tray uses, with a direct icon-theme lookup as the fallback.
      */
-    function appIconFor(p) {
-        if (!p)
-            return "";
-        var id = (p.desktopEntry && p.desktopEntry.length > 0) ? p.desktopEntry : (p.identity || "");
-        if (id.length === 0)
-            return "";
-        var lid = id.toLowerCase();
+    function appIdOf(p) {
+        var id = p ? ((p.desktopEntry && p.desktopEntry.length > 0) ? p.desktopEntry : (p.identity || "")) : "";
+        return id.toLowerCase();
+    }
+
+    function entryFor(p) {
+        var lid = appIdOf(p);
+        if (lid.length === 0)
+            return null;
         var apps = DesktopEntries.applications.values;
         var e, i;
         // Exact desktop-entry id match.
         for (i = 0; i < apps.length; i++) {
             e = apps[i];
-            if (e && e.id && e.id.toLowerCase() === lid && e.icon)
-                return (Quickshell.iconPath(e.icon, true) || Quickshell.iconPath("application-x-executable", true));
+            if (e && e.id && e.id.toLowerCase() === lid)
+                return e;
         }
         // Fuzzy: a launcher-wrapped app reports one entry name but installs
         // another (MPRIS "spotify" ↔ spotify-launcher.desktop, WMClass spotify).
         // Match on a shared id prefix or the entry's startup window class.
         for (i = 0; i < apps.length; i++) {
             e = apps[i];
-            if (!e || !e.icon)
+            if (!e)
                 continue;
             var eid = (e.id || "").toLowerCase();
             var wm = (e.startupClass || "").toLowerCase();
             if (wm === lid || (eid.length && (eid.indexOf(lid) === 0 || lid.indexOf(eid) === 0)))
-                return (Quickshell.iconPath(e.icon, true) || Quickshell.iconPath("application-x-executable", true));
+                return e;
         }
-        return (Quickshell.iconPath(lid, true) || Quickshell.iconPath("application-x-executable", true));
+        return null;
     }
+
+    function appIconFor(p) {
+        var lid = appIdOf(p);
+        if (lid.length === 0)
+            return "";
+        var e = entryFor(p);
+        return (Quickshell.iconPath(e && e.icon ? e.icon : lid, true) || Quickshell.iconPath("application-x-executable", true));
+    }
+
+    /**
+     * A dedicated music player: Spotify (the app or its web player), or any app
+     * whose desktop entry is filed under Music. Browsers and video players are
+     * not, so a YouTube video never lands on the desktop cover widget.
+     */
+    function isMusic(p) {
+        if (!p || isProxy(p))
+            return false;
+        if (serviceOf(p) === "spotify")
+            return true;
+        var e = entryFor(p);
+        return !!e && String(e.categories).split(/[;,]/).indexOf("Music") >= 0;
+    }
+    readonly property bool music: has && isMusic(active)
 
     function artUrlFor(p) {
         if (!p)

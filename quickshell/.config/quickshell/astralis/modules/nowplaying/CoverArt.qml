@@ -41,9 +41,11 @@ PanelWindow {
     readonly property real padT: Math.round(Math.max(pad, info.reachT + 8 * s))
     readonly property real padB: Math.round(Math.max(pad, info.reachB + 8 * s))
 
-    // Nothing shows until a cover has actually decoded (no empty placeholder
-    // square); while the placer is open it shows even with nothing playing.
-    readonly property bool shown: (Players.has && TrackInfo.art.length > 0 && slots.ready) || Widgets.editing
+    // Only a music player's cover (Players.music: Spotify or a Music-category
+    // app) — a browser or video player playing never shows here. Nothing shows
+    // until a cover has actually decoded (no empty placeholder square); while
+    // the placer is open it shows even with nothing playing.
+    readonly property bool shown: (Players.music && TrackInfo.art.length > 0 && slots.ready) || Widgets.editing
 
     color: "transparent"
     WlrLayershell.layer: win.layer
@@ -379,11 +381,29 @@ PanelWindow {
         target: TrackInfo
         function onArtChanged() { win.swap(); }
     }
+    Connections {
+        target: Players
+        function onMusicChanged() {
+            // Back on a music player after a video: if the song moved on
+            // meanwhile, drop the stale cover (the widget is faded out, so
+            // nothing pops) and fade in once the current one has decoded.
+            if (Players.music && TrackInfo.art !== (slots.front === 0 ? slots.ra : slots.rb))
+                slots.ready = false;
+            win.swap();
+        }
+    }
     Component.onCompleted: win.swap()
 
     // New art → preload it into the back slot. The old cover (and its halo)
     // stays up until the new one has decoded; then flip() swaps them.
     function swap() {
+        // A video's art never loads in: the music cover stays put while the
+        // widget fades out. Asks the player directly — Players.music may not
+        // have re-evaluated yet when the art changes.
+        if (!Players.isMusic(Players.active)) {
+            slots.pending = -1;
+            return;
+        }
         var url = TrackInfo.art;
         var cur = slots.front === 0 ? slots.ra : slots.rb;
         if (url.length === 0) {
