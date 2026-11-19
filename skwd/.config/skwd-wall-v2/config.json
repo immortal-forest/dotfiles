@@ -1,0 +1,144 @@
+{
+  "components": {
+    "wallpaperSelector": {
+      "activePreset": {
+        "slices": "Style 1"
+      },
+      "cornerBL": 18,
+      "cornerBR": 18,
+      "cornerTL": 18,
+      "cornerTR": 18,
+      "displayMode": "slices",
+      "enabled": true,
+      "expandedWidth": 660,
+      "flipEffect": "Tonal Wipe",
+      "gridLayout": "editorial",
+      "hexCurve": "flat",
+      "hexShape": "hexagon",
+      "lastAppliedKey": "static:Wuthering Waves/Jinhsi/jinhsi_new_year.jpg",
+      "presets": {
+        "slices": [
+          {
+            "name": "Style 1",
+            "params": {
+              "cornerBL": 18.0,
+              "cornerBR": 18.0,
+              "cornerTL": 18.0,
+              "cornerTR": 18.0,
+              "expandedWidth": 660.0,
+              "roundCorners": true,
+              "skewOffset": 80.0,
+              "sliceEdgeTilt": 0.0,
+              "sliceHeight": 420.0,
+              "sliceSpacing": 6.0,
+              "sliceStageX": 0.0,
+              "sliceStageY": 0.0,
+              "sliceWidth": 190.0,
+              "sliceWobble": false,
+              "sliceWobbleStrength": 100.0,
+              "visibleCount": 8
+            }
+          }
+        ]
+      },
+      "roundCorners": true,
+      "skewOffset": 80,
+      "sliceEdgeTilt": 0,
+      "sliceHeight": 420,
+      "sliceSpacing": 6,
+      "sliceWidth": 190,
+      "sliceWobble": false,
+      "startPosition": "applied",
+      "visibleCount": 8
+    }
+  },
+  "compositor": "hyprland",
+  "defaultMatugenConfig": "~/.config/matugen/config.toml",
+  "display": {
+    "fillMode": "fill"
+  },
+  "externalMatugenCommand": "~/.config/quickshell/astralis/scripts/setwall %path%",
+  "features": {
+    "matugen": true,
+    "wallhaven": true
+  },
+  "filterBar": {
+    "defaultFolder": "",
+    "last": {
+      "color": -1,
+      "favouritesOnly": false,
+      "folder": "/home/immortalforest/wallpapers/Wuthering Waves",
+      "kind": "",
+      "orient": "",
+      "resolution": "",
+      "sort": "color"
+    },
+    "resolutionPresets": [],
+    "show": {
+      "colors": false,
+      "favourites": false,
+      "folder": true,
+      "orient": false,
+      "random": false,
+      "resolution": false,
+      "sort": {
+        "color": false,
+        "date": false,
+        "minimalist": false,
+        "pop": false,
+        "recent": false,
+        "res": false,
+        "richness": false
+      },
+      "tagcloud": false,
+      "theme": false,
+      "type": {
+        "all": true,
+        "static": true,
+        "video": true,
+        "we": false
+      },
+      "download": true
+    },
+    "sticky": true,
+    "visualStyle": "match"
+  },
+  "general": {
+    "closeOnSelection": true,
+    "filterBarAlwaysVisible": false,
+    "uiScale": 1.4
+  },
+  "keys": {
+    "colorNext": "none",
+    "colorPrev": "none"
+  },
+  "launch": {
+    "animation": "fade"
+  },
+  "monitor": "",
+  "motion": {
+    "launchSpeed": "standard"
+  },
+  "paths": {
+    "wallpaper": "~/wallpapers"
+  },
+  "performance": {
+    "gpuDevice": "auto",
+    "gpuPreference": "auto",
+    "imageOptimizePreset": "quality",
+    "imageOptimizeResolution": "4k"
+  },
+  "theme": {
+    "engine": "matugen"
+  },
+  "transition": {
+    "durationMs": 2100,
+    "previewFps": 60,
+    "shader": "inkwell-drop"
+  },
+  "sources": {
+    "youtube": {
+      "enabled": true
+    }
+  }
+}

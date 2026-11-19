@@ -1,0 +1,430 @@
+.theme-dark, .theme-light {
+    --skwd-backdrop: {{colors.background.default.hex}};
+    --skwd-backdrop-rgb: {{colors.background.default.red}}, {{colors.background.default.green}}, {{colors.background.default.blue}};
+    --skwd-panel: {{colors.surface.default.hex}};
+    --skwd-panel-rgb: {{colors.surface.default.red}}, {{colors.surface.default.green}}, {{colors.surface.default.blue}};
+    --skwd-panel-alt: {{colors.surface_variant.default.hex}};
+    --skwd-panel-alt-rgb: {{colors.surface_variant.default.red}}, {{colors.surface_variant.default.green}}, {{colors.surface_variant.default.blue}};
+    --skwd-panel-raised: {{colors.surface_container.default.hex}};
+    --skwd-panel-raised-rgb: {{colors.surface_container.default.red}}, {{colors.surface_container.default.green}}, {{colors.surface_container.default.blue}};
+    --skwd-content-surface: var(--skwd-panel);
+    --skwd-rail-surface: rgba(var(--skwd-panel-alt-rgb), 0.86);
+    --skwd-chrome-surface: rgba(var(--skwd-panel-raised-rgb), 0.92);
+    --skwd-panel-text: {{colors.on_surface.default.hex}};
+    --skwd-panel-text-rgb: {{colors.on_surface.default.red}}, {{colors.on_surface.default.green}}, {{colors.on_surface.default.blue}};
+    --skwd-panel-secondary: rgba(var(--skwd-panel-text-rgb), 0.64);
+    --skwd-panel-muted: rgba(var(--skwd-panel-text-rgb), 0.48);
+    --skwd-content-text: var(--skwd-panel-text);
+    /* Keep the editor on one semantic surface/on-surface pair. Discord's
+       inner editor changed independently of channelTextArea, so both the
+       variables and the concrete containers below consume this pair. */
+    --skwd-editor-surface: rgba(var(--skwd-panel-raised-rgb), 0.92);
+    --skwd-editor-surface-hover: rgba(var(--skwd-panel-raised-rgb), 0.97);
+    --skwd-editor-text: var(--skwd-panel-text);
+    --skwd-editor-secondary: rgba(var(--skwd-panel-text-rgb), 0.72);
+    --skwd-editor-placeholder: rgba(var(--skwd-panel-text-rgb), 0.64);
+    --skwd-accent: {{colors.primary.default.hex}};
+    --skwd-accent-rgb: {{colors.primary.default.red}}, {{colors.primary.default.green}}, {{colors.primary.default.blue}};
+    --skwd-accent-text: {{colors.on_primary.default.hex}};
+    --skwd-second-accent: {{colors.tertiary.default.hex}};
+    --skwd-outline: {{colors.outline.default.hex}};
+    --skwd-outline-rgb: {{colors.outline.default.red}}, {{colors.outline.default.green}}, {{colors.outline.default.blue}};
+    --skwd-outline-soft-rgb: var(--skwd-outline-rgb);
+
+    --background-primary: var(--skwd-content-surface) !important;
+    --background-secondary: var(--skwd-rail-surface) !important;
+    --background-secondary-alt: var(--skwd-chrome-surface) !important;
+    --background-tertiary: rgba(var(--skwd-backdrop-rgb), 0.60) !important;
+    --background-accent: rgba(var(--skwd-accent-rgb), 0.45) !important;
+    --background-floating: rgba(var(--skwd-panel-rgb), 0.92) !important;
+    --background-nested-floating: rgba(var(--skwd-panel-alt-rgb), 0.92) !important;
+    --background-mobile-primary: var(--skwd-content-surface) !important;
+    --background-mobile-secondary: var(--skwd-rail-surface) !important;
+    --background-base-lowest: rgba(var(--skwd-backdrop-rgb), 0.72) !important;
+    --background-base-lower: var(--skwd-content-surface) !important;
+    --background-base-low: var(--skwd-rail-surface) !important;
+    --background-surface-high: rgba(var(--skwd-panel-alt-rgb), 0.68) !important;
+    --background-surface-higher: rgba(var(--skwd-panel-raised-rgb), 0.76) !important;
+    --background-surface-highest: rgba(var(--skwd-panel-raised-rgb), 0.88) !important;
+    --bg-base-primary: var(--skwd-content-surface) !important;
+    --bg-base-secondary: var(--skwd-rail-surface) !important;
+    --bg-base-tertiary: rgba(var(--skwd-backdrop-rgb), 0.60) !important;
+    --bg-surface-overlay: rgba(var(--skwd-panel-rgb), 0.92) !important;
+    --bg-surface-raised: rgba(var(--skwd-panel-raised-rgb), 0.92) !important;
+    --background-modifier-hover: rgba(var(--skwd-panel-text-rgb), 0.06) !important;
+    --background-modifier-active: rgba(var(--skwd-panel-text-rgb), 0.10) !important;
+    --background-modifier-selected: rgba(var(--skwd-panel-text-rgb), 0.12) !important;
+    --background-modifier-accent: rgba(var(--skwd-panel-text-rgb), 0.05) !important;
+    --background-mod-subtle: rgba(var(--skwd-panel-text-rgb), 0.06) !important;
+    --background-mod-normal: rgba(var(--skwd-panel-text-rgb), 0.10) !important;
+    --background-mod-strong: rgba(var(--skwd-panel-text-rgb), 0.12) !important;
+    --background-message-hover: rgba(var(--skwd-panel-text-rgb), 0.04) !important;
+    --bg-overlay-chat: transparent !important;
+    --home-background: transparent !important;
+
+    --text-normal: var(--skwd-content-text) !important;
+    --text-default: var(--skwd-content-text) !important;
+    --text-primary: var(--skwd-content-text) !important;
+    --text-strong: var(--skwd-content-text) !important;
+    --text-secondary: var(--skwd-panel-secondary) !important;
+    --text-muted: var(--skwd-panel-muted) !important;
+    --text-link: var(--skwd-accent) !important;
+    --text-danger: {{colors.error.default.hex}} !important;
+    --text-brand: var(--skwd-accent) !important;
+    --header-primary: var(--skwd-content-text) !important;
+    --header-secondary: var(--skwd-panel-secondary) !important;
+
+    --interactive-normal: var(--skwd-panel-secondary) !important;
+    --interactive-hover: var(--skwd-panel-text) !important;
+    --interactive-active: var(--skwd-accent) !important;
+    --interactive-muted: var(--skwd-outline) !important;
+    --interactive-text-default: var(--skwd-panel-secondary) !important;
+    --interactive-text-hover: var(--skwd-panel-text) !important;
+    --interactive-text-active: var(--skwd-panel-text) !important;
+    --interactive-text-muted: var(--skwd-panel-muted) !important;
+    --interactive-background-hover: rgba(var(--skwd-panel-text-rgb), 0.06) !important;
+    --interactive-background-active: rgba(var(--skwd-panel-text-rgb), 0.10) !important;
+    --interactive-background-selected: rgba(var(--skwd-accent-rgb), 0.14) !important;
+
+    --channels-default: var(--skwd-panel-secondary) !important;
+    --channel-icon: var(--skwd-panel-secondary) !important;
+    --channel-text-area-placeholder: var(--skwd-editor-placeholder) !important;
+
+    --brand-experiment: var(--skwd-accent) !important;
+    --brand-experiment-560: var(--skwd-accent) !important;
+
+    --scrollbar-thin-thumb: rgba(var(--skwd-accent-rgb), 0.4) !important;
+    --scrollbar-thin-track: transparent !important;
+    --scrollbar-auto-thumb: rgba(var(--skwd-accent-rgb), 0.4) !important;
+    --scrollbar-auto-track: transparent !important;
+
+    --input-background: var(--skwd-editor-surface) !important;
+    --input-placeholder-text: var(--skwd-editor-placeholder) !important;
+    --channeltextarea-background: var(--skwd-editor-surface) !important;
+    --chat-background-default: var(--skwd-editor-surface) !important;
+    --input-background-default: var(--skwd-editor-surface) !important;
+    --input-background-hover: var(--skwd-editor-surface-hover) !important;
+    --input-background-focused: var(--skwd-editor-surface-hover) !important;
+    --input-border-default: rgba(var(--skwd-outline-rgb), 0.30) !important;
+    --input-border-hover: rgba(var(--skwd-outline-rgb), 0.42) !important;
+    --input-border-focused: var(--skwd-accent) !important;
+    --input-placeholder-text-default: var(--skwd-editor-placeholder) !important;
+
+    --border-subtle: rgba(var(--skwd-outline-soft-rgb), 0.3) !important;
+    --border-strong: rgba(var(--skwd-outline-rgb), 0.4) !important;
+
+    --red-400: {{colors.error.default.hex}} !important;
+
+    --focus-primary: var(--skwd-accent) !important;
+    --control-brand-foreground: var(--skwd-accent) !important;
+    --control-brand-foreground-new: var(--skwd-accent) !important;
+    --control-secondary-background-default: rgba(var(--skwd-panel-raised-rgb), 0.58) !important;
+    --control-secondary-background-hover: rgba(var(--skwd-panel-raised-rgb), 0.76) !important;
+    --control-secondary-background-active: rgba(var(--skwd-panel-raised-rgb), 0.88) !important;
+    --control-secondary-border-default: rgba(var(--skwd-outline-rgb), 0.30) !important;
+    --control-secondary-border-hover: rgba(var(--skwd-outline-rgb), 0.42) !important;
+    --control-secondary-border-active: rgba(var(--skwd-outline-rgb), 0.50) !important;
+    --control-secondary-text-default: var(--skwd-panel-secondary) !important;
+    --control-secondary-text-hover: var(--skwd-panel-text) !important;
+    --control-secondary-text-active: var(--skwd-panel-text) !important;
+    --control-secondary-icon-default: var(--skwd-panel-secondary) !important;
+    --control-secondary-icon-hover: var(--skwd-panel-text) !important;
+    --control-secondary-icon-active: var(--skwd-panel-text) !important;
+    --control-icon-only-icon-default: var(--skwd-panel-secondary) !important;
+    --control-icon-only-icon-hover: var(--skwd-panel-text) !important;
+    --control-icon-only-icon-active: var(--skwd-panel-text) !important;
+    --control-icon-only-background-hover: rgba(var(--skwd-panel-text-rgb), 0.06) !important;
+    --control-icon-only-background-active: rgba(var(--skwd-panel-text-rgb), 0.10) !important;
+    --mention-foreground: var(--skwd-accent) !important;
+    --mention-background: rgba(var(--skwd-accent-rgb), 0.12) !important;
+    --info-danger-foreground: {{colors.error.default.hex}} !important;
+    --status-danger: {{colors.error.default.hex}} !important;
+    --button-secondary-background: rgba(var(--skwd-panel-raised-rgb), 0.58) !important;
+    --modal-background: rgba(var(--skwd-panel-rgb), 0.92) !important;
+    --modal-footer-background: rgba(var(--skwd-panel-alt-rgb), 0.88) !important;
+    --card-background-default: rgba(var(--skwd-panel-alt-rgb), 0.48) !important;
+    --card-primary-bg: rgba(var(--skwd-panel-alt-rgb), 0.48) !important;
+    --card-secondary-bg: rgba(var(--skwd-panel-raised-rgb), 0.48) !important;
+}
+
+
+html, body {
+    background: var(--skwd-backdrop) !important;
+}
+
+#app-mount {
+    background: transparent !important;
+}
+
+nav[class*="guilds"] {
+    background: rgba(var(--skwd-backdrop-rgb), 0.72) !important;
+    backdrop-filter: blur(24px) saturate(1.6) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(1.6) !important;
+}
+
+div[class*="sidebar_"] {
+    background: var(--skwd-rail-surface) !important;
+    backdrop-filter: blur(20px) saturate(1.5) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+}
+
+div[class*="sidebar_"] header[class*="header"] {
+    background: transparent !important;
+}
+
+div[class*="sidebar_"] div[class*="content"] {
+    background: transparent !important;
+}
+
+div[class*="chatContent"],
+main[class*="chatContent"] {
+    background: var(--skwd-content-surface) !important;
+    backdrop-filter: blur(20px) saturate(1.4) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.4) !important;
+}
+
+div[class*="messagesWrapper"],
+ol[class*="scrollerInner"] {
+    background: transparent !important;
+}
+
+div[class*="message_"][class*="cozy_"]:hover {
+    background: rgba(var(--skwd-panel-text-rgb), 0.04) !important;
+}
+
+form[class*="chatBottom"],
+div[class*="form_"] {
+    background: transparent !important;
+}
+
+div[class*="channelTextArea"] {
+    --text-normal: var(--skwd-editor-text) !important;
+    --text-default: var(--skwd-editor-text) !important;
+    --text-muted: var(--skwd-editor-placeholder) !important;
+    --interactive-normal: var(--skwd-editor-secondary) !important;
+    --interactive-hover: var(--skwd-editor-text) !important;
+    --interactive-active: var(--skwd-accent) !important;
+    --channel-text-area-placeholder: var(--skwd-editor-placeholder) !important;
+    --channeltextarea-background: var(--skwd-editor-surface) !important;
+    --chat-background-default: var(--skwd-editor-surface) !important;
+    background: var(--skwd-editor-surface) !important;
+    color: var(--skwd-editor-text) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(var(--skwd-outline-soft-rgb), 0.25) !important;
+}
+
+/* Newer Discord builds paint an opaque scrollableContainer inside the
+   channelTextArea. Theme it explicitly so it cannot split the semantic pair. */
+div[class*="channelTextArea"] div[class*="scrollableContainer"] {
+    background: var(--skwd-editor-surface) !important;
+    color: var(--skwd-editor-text) !important;
+}
+
+div[class*="channelTextArea"] :is(
+    [class*="slateTextArea"],
+    [class*="editor"],
+    [contenteditable="true"],
+    textarea,
+    input
+) {
+    color: var(--skwd-editor-text) !important;
+    caret-color: var(--skwd-accent) !important;
+}
+
+div[class*="channelTextArea"] [class*="placeholder"] {
+    color: var(--skwd-editor-placeholder) !important;
+}
+
+div[class*="channelTextArea"] :is(button, [role="button"]) {
+    color: var(--skwd-editor-secondary) !important;
+}
+
+div[class*="channelTextArea"] :is(button, [role="button"]):hover {
+    color: var(--skwd-editor-text) !important;
+}
+
+div[class*="typing_"] {
+    background: transparent !important;
+}
+
+div[class*="membersWrap"] {
+    background: var(--skwd-rail-surface) !important;
+    backdrop-filter: blur(20px) saturate(1.5) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+}
+
+div[class*="members_"] {
+    background: transparent !important;
+}
+
+section[class*="title"],
+div[class*="title_"][class*="container"] {
+    background: var(--skwd-chrome-surface) !important;
+    backdrop-filter: blur(20px) saturate(1.5) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+    border-bottom: 1px solid rgba(var(--skwd-outline-soft-rgb), 0.18) !important;
+}
+
+section[class*="panels"],
+div[class*="panels"] {
+    background: var(--skwd-chrome-surface) !important;
+    backdrop-filter: blur(24px) saturate(1.5) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+}
+
+div[class*="layerContainer"] div[class*="popout"],
+div[class*="layerContainer"] div[class*="modal"],
+div[class*="layer"] div[class*="popout"],
+div[class*="layer"] div[class*="modal"],
+div[class*="popout"][class*="root"],
+div[class*="modal"][class*="root"] {
+    background: rgba(var(--skwd-panel-rgb), 0.92) !important;
+    backdrop-filter: blur(32px) saturate(1.8) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(1.8) !important;
+    border: 1px solid rgba(var(--skwd-outline-rgb), 0.42) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35) !important;
+}
+
+div[class*="backdrop"] {
+    background: rgba(0, 0, 0, 0.5) !important;
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+}
+
+div[class*="userPopoutOuter"],
+div[class*="userProfileOuter"] {
+    background: rgba(var(--skwd-panel-rgb), 0.92) !important;
+    backdrop-filter: blur(32px) saturate(1.8) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(1.8) !important;
+}
+
+div[class*="menu_"] {
+    background: rgba(var(--skwd-panel-rgb), 0.92) !important;
+    backdrop-filter: blur(28px) saturate(1.7) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(1.7) !important;
+    border: 1px solid rgba(var(--skwd-outline-rgb), 0.38) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
+}
+
+div[class*="searchBar"] {
+    background: rgba(var(--skwd-panel-alt-rgb), 0.58) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-radius: 8px !important;
+}
+
+div[class*="searchBar"] input {
+    color: var(--skwd-panel-text) !important;
+}
+
+div[class*="searchResultsWrap"] {
+    background: rgba(var(--skwd-panel-rgb), 0.92) !important;
+    backdrop-filter: blur(28px) saturate(1.6) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(1.6) !important;
+}
+
+article[class*="embedWrapper"] {
+    background: rgba(var(--skwd-panel-alt-rgb), 0.48) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-color: rgba(var(--skwd-outline-soft-rgb), 0.30) !important;
+    border-radius: 10px !important;
+}
+
+code {
+    background: rgba(var(--skwd-panel-alt-rgb), 0.58) !important;
+    border-color: rgba(var(--skwd-outline-soft-rgb), 0.25) !important;
+    border-radius: 6px !important;
+}
+
+pre {
+    background: rgba(var(--skwd-panel-alt-rgb), 0.48) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-color: rgba(var(--skwd-outline-soft-rgb), 0.25) !important;
+    border-radius: 10px !important;
+}
+
+div[class*="contentRegion"],
+div[class*="standardSidebarView"] {
+    background: var(--skwd-content-surface) !important;
+    backdrop-filter: blur(20px) saturate(1.4) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.4) !important;
+}
+
+div[class*="sidebarRegion"] {
+    background: var(--skwd-rail-surface) !important;
+    backdrop-filter: blur(20px) saturate(1.5) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+}
+
+div[class*="cardPrimary"],
+div[class*="cardSecondary"] {
+    background: rgba(var(--skwd-panel-alt-rgb), 0.48) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-radius: 10px !important;
+}
+
+div[class*="toolbar"] > div[class*="iconWrapper"]:hover {
+    background: rgba(var(--skwd-panel-text-rgb), 0.08) !important;
+    border-radius: 8px !important;
+}
+
+div[class*="container_"][class*="thread"] {
+    background: rgba(var(--skwd-panel-alt-rgb), 0.48) !important;
+    backdrop-filter: blur(20px) saturate(1.5) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+}
+
+div[class*="connection_"] {
+    background: rgba(var(--skwd-panel-raised-rgb), 0.58) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+}
+
+div[class*="reaction_"] {
+    background: rgba(var(--skwd-panel-alt-rgb), 0.48) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    border: 1px solid rgba(var(--skwd-outline-soft-rgb), 0.22) !important;
+    border-radius: 8px !important;
+}
+
+div[class*="sidebar_"],
+div[class*="membersWrap"],
+div[class*="panels"],
+nav[class*="guilds"] {
+    border: none !important;
+}
+
+div[class*="autocomplete"] {
+    background: rgba(var(--skwd-panel-rgb), 0.92) !important;
+    backdrop-filter: blur(28px) saturate(1.7) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(1.7) !important;
+    border-radius: 10px !important;
+    border: 1px solid rgba(var(--skwd-outline-rgb), 0.38) !important;
+}
+
+div[class*="tooltip_"] {
+    background: rgba(var(--skwd-panel-raised-rgb), 0.92) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-radius: 8px !important;
+}
+
+div[class*="unreadBar"] {
+    background: rgba(var(--skwd-accent-rgb), 0.78) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-radius: 20px !important;
+}
+
+div[class*="channelAttachmentArea"],
+ul[class*="attachedBars"] {
+    background: transparent !important;
+}

@@ -1,0 +1,32 @@
+* {
+    background:                  {{colors.surface.default.hex}};
+    background-alt:              {{colors.surface_container.default.hex}};
+    foreground:                  {{colors.on_surface.default.hex}};
+    selected:                    {{colors.primary.default.hex}};
+    active:                      {{colors.tertiary.default.hex}};
+    urgent:                      {{colors.error.default.hex}};
+    lightbg:                     {{colors.surface_container.default.hex}};
+    lightfg:                     {{colors.primary.default.hex}};
+    red:                         {{colors.error.default.hex}};
+    blue:                        {{colors.tertiary.default.hex}};
+    border-color:                {{colors.primary.default.hex}};
+    separatorcolor:              {{colors.outline.default.hex}};
+    normal-background:           {{colors.surface.default.hex}};
+    normal-foreground:           {{colors.on_surface.default.hex}};
+    alternate-normal-background: {{colors.surface_container.default.hex}};
+    alternate-normal-foreground: {{colors.on_surface.default.hex}};
+    selected-normal-background:  {{colors.primary.default.hex}};
+    selected-normal-foreground:  {{colors.on_primary.default.hex}};
+    active-background:           {{colors.surface.default.hex}};
+    active-foreground:           {{colors.tertiary.default.hex}};
+    alternate-active-background: {{colors.surface_container.default.hex}};
+    alternate-active-foreground: {{colors.tertiary.default.hex}};
+    selected-active-background:  {{colors.tertiary.default.hex}};
+    selected-active-foreground:  {{colors.on_tertiary.default.hex}};
+    urgent-background:           {{colors.surface.default.hex}};
+    urgent-foreground:           {{colors.error.default.hex}};
+    alternate-urgent-background: {{colors.surface_container.default.hex}};
+    alternate-urgent-foreground: {{colors.error.default.hex}};
+    selected-urgent-background:  {{colors.error.default.hex}};
+    selected-urgent-foreground:  {{colors.on_error.default.hex}};
+}
