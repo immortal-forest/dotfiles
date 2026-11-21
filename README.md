@@ -1,15 +1,52 @@
+<div align="center">
+
 # dotfiles
 
-My Arch Linux setup: Hyprland, and **astralis**, a desktop shell I wrote in
-[Quickshell](https://quickshell.org) (QML). Everything takes its colours from
-the wallpaper: the shell, Hyprland's borders, the terminals, Neovim, GTK and Qt
-apps, cava, Spotify and Firefox/Zen.
+Hyprland on Arch, with **astralis**: a desktop shell written in
+[Quickshell](https://quickshell.org). Every colour comes from the wallpaper.
+
+![Last commit](https://img.shields.io/github/last-commit/immortal-forest/dotfiles?style=for-the-badge&labelColor=1d1212&color=f2b8a9)
+![Hyprland](https://img.shields.io/badge/Hyprland-Lua_config-f2b8a9?style=for-the-badge&labelColor=1d1212)
+![Quickshell](https://img.shields.io/badge/Quickshell-0.3-f2b8a9?style=for-the-badge&labelColor=1d1212)
+![Arch Linux](https://img.shields.io/badge/Arch-Linux-f2b8a9?style=for-the-badge&labelColor=1d1212&logo=archlinux&logoColor=f2b8a9)
+
+<img src=".github/assets/hero.webp" alt="astralis on Hyprland: the visualizer along the bottom edge, synced lyrics with romaji and the cover-art widget">
+
+</div>
+
+The shell, Hyprland's borders, the terminals, Neovim, GTK and Qt apps, cava,
+Spotify and Firefox/Zen all take their colours from the wallpaper.
 
 ## astralis
 
 One pill at the top of the screen holds the workspaces, the clock, what's
 playing, the tray and the status icons. Every surface grows out of it and folds
-back into it:
+back into it.
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/overview.webp" alt="Overview"><br><sub>Overview: clock, weather, now playing, quick settings, battery and system</sub></td>
+    <td width="50%"><img src=".github/assets/launcher.webp" alt="Launcher"><br><sub>Launcher</sub></td>
+  </tr>
+  <tr>
+    <td><img src=".github/assets/media.webp" alt="Media"><br><sub>Media, with synced lyrics and romaji on the desktop</sub></td>
+    <td><img src=".github/assets/notifications.webp" alt="Notifications"><br><sub>Notifications</sub></td>
+  </tr>
+  <tr>
+    <td><img src=".github/assets/calendar.webp" alt="Calendar"><br><sub>Calendar with the week's weather</sub></td>
+    <td><img src=".github/assets/mixer.webp" alt="Mixer"><br><sub>Mixer: brightness, output and per-app volume</sub></td>
+  </tr>
+  <tr>
+    <td><img src=".github/assets/sysmon.webp" alt="System monitor"><br><sub>System monitor</sub></td>
+    <td><img src=".github/assets/settings.webp" alt="Settings"><br><sub>Settings</sub></td>
+  </tr>
+  <tr>
+    <td><img src=".github/assets/lock.webp" alt="Lock screen"><br><sub>Lock screen</sub></td>
+    <td><img src=".github/assets/power.webp" alt="Power menu"><br><sub>Power menu</sub></td>
+  </tr>
+</table>
+
+From the pill:
 
 - **Launcher**: fuzzy app search. Ctrl+Enter opens an app once on the NVIDIA
   GPU, Ctrl+G pins it there.
