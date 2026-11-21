@@ -402,6 +402,20 @@ class Moebooru:
         path = urllib.parse.urlparse(it["file"]).path
         return it["file"], self.site + "/", os.path.splitext(urllib.parse.unquote(path))[1] or ".jpg"
 
+    def stem(self, it):
+        """post.json tags are untyped, so read the artist off the post page: name the file after it, not the post id."""
+        if not it["artist"]:
+            try:
+                page = http(f"{self.site}/post/show/{it['id']}", self.site + "/").decode("utf-8", "replace")
+                found = re.findall(r'tag-type-artist"><a href="/artist/show\?name=([^"&]+)"', page)
+                if found:
+                    name = urllib.parse.unquote(found[0])               # "minglu_(gululu)" -> "minglu"
+                    bare = name.rsplit("_(", 1)[0]
+                    it["artist"] = (bare if len(bare) >= 3 else name).replace("_", " ")
+            except Exception:
+                pass                                                    # no artist: keep <chars>_<site>_<id>
+        return image_stem(it)
+
 
 class Pixiv:
     name, kind, REF = "pixiv", "image", "https://www.pixiv.net/"
@@ -516,6 +530,9 @@ def download(it, folder):
                 lib_hash["map"][os.path.relpath(final, LIB)] = h
         with scan_lock:                                                # one skwd scan at a time
             subprocess.run(["skwd-wall-scan"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
+            tagger = os.path.join(os.path.dirname(os.path.realpath(__file__)), "wall-tags")
+            if os.access(tagger, os.X_OK):                             # skwd search only matches tags
+                subprocess.run([tagger], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
         with jobs_lock:
             jobs[uid].update(state="done", path=final)
     except Exception as e:
