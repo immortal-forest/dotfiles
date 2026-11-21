@@ -65,8 +65,8 @@ links into `$HOME`:
 | `icons` | `~/.local/share/icons` | the Google.Violet cursor |
 | `git` | `~/.gitconfig` | my name and signing key, so skip it if you're not me |
 
-`system/` isn't linked. It holds the patched skwd-wall PKGBUILD, the build
-script for Obel Mono Lig and a udev rule (see [Extras](#extras)).
+`system/` isn't linked. It holds the PKGBUILDs for our own builds (see
+[Built packages](#built-packages)) and a udev rule (see [Extras](#extras)).
 
 ## Install
 
@@ -83,12 +83,15 @@ cd ~/dotfiles
 1. installs whatever is missing from the Arch repos and the AUR (it builds
    yay if there's no AUR helper). It never upgrades or replaces anything that
    is already installed.
-2. installs the two fonts that aren't packaged: Outfit (the shell's UI font) and
-   Obel Mono, then builds Obel Mono Lig, our ligature version that Ghostty uses
-3. links every package. Anything in the way is moved to
+2. installs our own builds from the
+   [packages release](https://github.com/immortal-forest/dotfiles/releases/tag/packages):
+   the patched skwd-wall and Obel Mono Lig. Each download has to match the
+   sha256 pinned in `setup.sh`.
+3. downloads Outfit, the shell's UI font
+4. links every package. Anything in the way is moved to
    `~/.dotfiles-backup/<time>/`. An existing `~/.gitconfig` of yours is kept.
-4. clones the tmux plugin manager and points starship at a prompt
-5. checks the GPU settings against your machine
+5. clones the tmux plugin manager and points starship at a prompt
+6. checks the GPU settings against your machine
 
 On a fresh system that's about 1.2 GB of packages. It's safe to run again after
 a `git pull`.
@@ -96,10 +99,10 @@ a `git pull`.
 | Flag | |
 |---|---|
 | `--dry-run` | print what it would do, change nothing |
-| `--no-packages` | skip pacman and the AUR |
-| `--no-fonts` | skip the font downloads |
+| `--no-packages` | skip pacman, the AUR and our builds |
+| `--no-fonts` | skip the Outfit download |
 | `--skip git,kitty` | don't link these packages |
-| `--extras` | also build the patched skwd-wall and install the udev rule |
+| `--extras` | also install the udev rule |
 | `--yes` | don't ask before installing packages |
 
 ### Before you log in
@@ -129,13 +132,27 @@ wallpaper: the shell and every themed app recolour.
 
 ### Extras
 
-`./setup.sh --extras` adds two things that need sudo:
+`./setup.sh --extras` also installs a udev rule (needs sudo) that lets the
+`wheel` group change the ACPI power profile, so the overview can switch it
+without root.
 
-- **The patched skwd-wall**: the picker only offers your wallpaper folders,
-  with no "All wallpapers" entry. It's built from `system/skwd-wall` with makepkg and
-  takes a few minutes. Its version has to match `skwd-deck-bin` (`_ver` in the PKGBUILD).
-- **A udev rule** that lets the `wheel` group change the ACPI power profile, so
-  the overview can switch it without root
+## Built packages
+
+Two things here aren't in the repos or the AUR, so they're built from
+`system/` and attached to the
+[packages release](https://github.com/immortal-forest/dotfiles/releases/tag/packages):
+
+- **skwd-wall-v2**, patched: the picker only offers your wallpaper folders,
+  with no "All wallpapers" entry. It replaces `skwd-wall-v2-bin` and needs
+  `skwd-deck-bin` and `skwd-paper-bin` of the same version.
+- **ttf-obel-mono-lig**: [Obel Mono](https://typographic.systems) with
+  programming ligatures (`->` `=>` `!=` `::` and more), made by
+  `system/obel-mono-lig/build.py`. Ghostty uses it.
+
+GitHub Actions (`.github/workflows/packages.yml`) builds both on Arch whenever
+a PKGBUILD changes, and replaces the release's files and its `SHA256SUMS`,
+which `setup.sh` checks every download against. To update one, bump the
+version in its PKGBUILD and push. `gh workflow run packages` rebuilds by hand.
 
 ## Keys
 

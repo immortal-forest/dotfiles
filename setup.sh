@@ -2,17 +2,17 @@
 # setup.sh: set these dotfiles up on an Arch machine.
 #
 # Installs the packages they use (only what's missing, it never upgrades
-# anything), fetches the fonts that aren't packaged, links every package into
-# $HOME with GNU stow and clones the tmux plugin manager. Anything already in
-# the way is moved to ~/.dotfiles-backup/<time>/ first, so nothing is lost.
+# anything) and our own builds from the GitHub release (the patched skwd-wall,
+# Obel Mono Lig), fetches the Outfit font, links every package into $HOME with
+# GNU stow and clones the tmux plugin manager. Anything already in the way is
+# moved to ~/.dotfiles-backup/<time>/ first, so nothing is lost.
 # Safe to run again after a `git pull`.
 #
 #   ./setup.sh                  everything below
-#   ./setup.sh --no-packages    skip pacman / AUR
-#   ./setup.sh --no-fonts       skip the font downloads
+#   ./setup.sh --no-packages    skip pacman, the AUR and our builds
+#   ./setup.sh --no-fonts       skip the Outfit download
 #   ./setup.sh --skip git,kitty don't link these packages
-#   ./setup.sh --extras         also build the patched skwd-wall and install
-#                               the platform-profile udev rule (both need sudo)
+#   ./setup.sh --extras         also install the platform-profile udev rule (sudo)
 #   ./setup.sh --dry-run        print what would happen, change nothing
 #   ./setup.sh --yes            don't ask before installing packages
 set -euo pipefail
@@ -40,7 +40,7 @@ run() {
     if [ $dry -eq 1 ]; then printf '    %swould run:%s %s\n' "$dim" "$off" "$*"; else "$@"; fi
 }
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -87,14 +87,18 @@ repo_pkgs=(
     ttf-material-symbols-variable ttf-jetbrains-mono-nerd ttf-nerd-fonts-symbols-mono
     noto-fonts noto-fonts-cjk noto-fonts-emoji
 )
-# "a|b": install a unless a or b is already there (b is a self-built variant,
-# e.g. the patched skwd-wall from --extras, which must not be swapped out)
+# "a|b": install a unless a or b is already there
 aur_pkgs=(
-    "skwd-deck-bin|skwd-deck" "skwd-paper-bin|skwd-paper" "skwd-wall-v2-bin|skwd-wall-v2" # wallpaper daemon + picker
+    "skwd-deck-bin|skwd-deck" "skwd-paper-bin|skwd-paper" # wallpaper daemon (the picker is ours, below)
     spicetify-bin                             # Spotify theming (not spicetify-cli-git, it blanks Spotify)
     python-pywalfox                           # Firefox / Zen theming
     zen-browser-bin                           # the browser Super+F opens
 )
+# Our own builds (PKGBUILDs in system/), built by .github/workflows/packages.yml
+# and attached to the "packages" release with a SHA256SUMS. An installed
+# skwd-wall-v2 or skwd-wall-v2-bin is left alone.
+release=https://github.com/immortal-forest/dotfiles/releases/download/packages
+built_pkgs=(skwd-wall-v2 ttf-obel-mono-lig)
 has_nvidia() { grep -qs 0x10de /sys/bus/pci/devices/*/vendor; }
 has_nvidia && repo_pkgs+=(nvidia-prime) # prime-run, for the launcher's "open on NVIDIA"
 
@@ -163,12 +167,50 @@ install_packages() {
     fi
 }
 
-# --- fonts that aren't in the repos -------------------------------------------
-
 # (no grep -q: under pipefail its early exit would fail the pipe)
 have_font() { fc-list : family | tr ',' '\n' | grep -xF "$1" >/dev/null; }
 
 fetch() { curl -fsSL --retry 3 -o "$2" "$1"; }
+
+# Download our builds, check each against the release's SHA256SUMS and install
+# them with pacman -U. Runs after the AUR: skwd-wall-v2 needs skwd-deck and skwd-paper.
+install_built() {
+    local name line file tmp
+    local -a want=() files=() flags=(--needed)
+    [ $yes -eq 1 ] && flags+=(--noconfirm)
+    for name in "${built_pkgs[@]}"; do
+        pacman -T "$name" >/dev/null && continue                                 # installed, or provided
+        [ "$name" = ttf-obel-mono-lig ] && have_font "Obel Mono Lig" && continue # e.g. in ~/.local/share/fonts
+        want+=("$name")
+    done
+    if [ ${#want[@]} -eq 0 ]; then info "our builds: installed"; return 0; fi
+    if [ $dry -eq 1 ]; then info "would download from the packages release: ${want[*]}"; return 0; fi
+
+    tmp=$(mktemp -d)
+    if ! fetch "$release/SHA256SUMS" "$tmp/SHA256SUMS"; then
+        warn "couldn't reach the packages release, skipped ${want[*]}"
+        rm -rf "$tmp"
+        return 0
+    fi
+    for name in "${want[@]}"; do
+        # each line: <sha256>  <name>-<version>-<rel>-<arch>.pkg.tar.zst
+        line=$(grep -E "  ${name}-[0-9][^ ]*\.pkg\.tar\.zst\$" "$tmp/SHA256SUMS" | head -1 || true)
+        file=${line##* }
+        if [ -n "$file" ] && fetch "$release/$file" "$tmp/$file" &&
+            (cd "$tmp" && echo "$line" | sha256sum -c --status); then
+            files+=("$tmp/$file")
+        else
+            warn "couldn't get $name from the release, or its checksum didn't match"
+        fi
+    done
+    if [ ${#files[@]} -gt 0 ]; then
+        info "our builds: ${files[*]##*/}"
+        run sudo pacman -U "${flags[@]}" "${files[@]}" || warn "pacman couldn't install our builds"
+    fi
+    rm -rf "$tmp"
+}
+
+# --- fonts that aren't packaged --------------------------------------------
 
 # Outfit: the shell's UI font (OFL), straight from the Google Fonts repo.
 install_outfit() {
@@ -179,38 +221,11 @@ install_outfit() {
         fetch "$gf/OFL.txt" "$fonts_dir/Outfit/OFL.txt"
 }
 
-# Obel Mono (OFL) and "Obel Mono Lig", our ligature build of it that Ghostty
-# uses (system/obel-mono-lig/build.py).
-install_obel() {
-    local ver=1.004 tmp src f out
-    [ $dry -eq 1 ] && { info "would download Obel Mono $ver and build Obel Mono Lig into $fonts_dir"; return; }
-    tmp=$(mktemp -d)
-    fetch "https://typographic.systems/download/ObelMono-$ver.zip" "$tmp/obel.zip" &&
-        bsdtar -xf "$tmp/obel.zip" -C "$tmp" || { rm -rf "$tmp"; return 1; }
-    src="$tmp/ObelMono-$ver/ObelMono/ttf/variable"
-    [ -d "$src" ] || { rm -rf "$tmp"; return 1; }
-    mkdir -p "$fonts_dir/ObelMono" "$fonts_dir/ObelMonoLig"
-    cp "$src"/*.ttf "$tmp/ObelMono-$ver/OFL.txt" "$fonts_dir/ObelMono/" &&
-        cp "$tmp/ObelMono-$ver/OFL.txt" "$fonts_dir/ObelMonoLig/" || { rm -rf "$tmp"; return 1; }
-    for f in "$src"/*.ttf; do
-        out=$(basename "$f")
-        out=${out/ObelMono/ObelMonoLig}
-        uv run -q --with fonttools python "$repo/system/obel-mono-lig/build.py" \
-            "$f" "$fonts_dir/ObelMonoLig/$out" >/dev/null || { rm -rf "$tmp"; return 1; }
-    done
-    rm -rf "$tmp"
-}
-
 install_fonts() {
     local changed=0
     if have_font Outfit; then info "Outfit: installed"
     elif install_outfit; then [ $dry -eq 1 ] || info "Outfit: done"; changed=1
     else warn "couldn't download Outfit (https://fonts.google.com/specimen/Outfit)"; fi
-
-    if have_font "Obel Mono Lig"; then info "Obel Mono Lig: installed"
-    elif ! command -v uv >/dev/null && [ $dry -eq 0 ]; then warn "Obel Mono Lig needs uv to build; install uv and run again"
-    elif install_obel; then [ $dry -eq 1 ] || info "Obel Mono Lig: done"; changed=1
-    else warn "couldn't build Obel Mono Lig (https://typographic.systems); Ghostty falls back to another mono font"; fi
 
     [ $changed -eq 1 ] && [ $dry -eq 0 ] && fc-cache -f "$fonts_dir" >/dev/null
     return 0
@@ -320,25 +335,6 @@ post_link() {
 
 # --- extras (--extras) -----------------------------------------------------
 
-# skwd-wall with the astralis patch (system/skwd-wall): per-folder picker only.
-# Builds with makepkg (-s pulls the Rust build tools in, -r removes them after)
-# and replaces skwd-wall-v2-bin; pacman asks before swapping it out.
-build_skwd() {
-    local want have deck tmp
-    want=$(cd "$repo/system/skwd-wall" && bash -c 'source PKGBUILD; echo "$pkgver-$pkgrel"')
-    have=$(pacman -Q skwd-wall-v2 2>/dev/null | cut -d' ' -f2 || true)
-    if [ "$have" = "$want" ]; then info "patched skwd-wall $want: installed"; return; fi
-    deck=$(pacman -Q skwd-deck-bin 2>/dev/null | cut -d' ' -f2 | cut -d- -f1 || true)
-    if [ -n "$deck" ] && [ "$deck" != "${want%-*}" ]; then
-        warn "the patched skwd-wall is ${want%-*} but skwd-deck-bin is $deck; mismatched versions show a warning in the picker. Bump _ver in system/skwd-wall/PKGBUILD."
-    fi
-    confirm "Build and install the patched skwd-wall $want (takes a few minutes)?" || return 0
-    tmp=$(mktemp -d)
-    cp "$repo/system/skwd-wall/"* "$tmp/"
-    (cd "$tmp" && run makepkg -si -r) || warn "the patched skwd-wall didn't build"
-    rm -rf "$tmp"
-}
-
 # Lets the wheel group switch the ACPI platform profile, so the overview's
 # power-profile control works without root.
 install_udev() {
@@ -378,6 +374,7 @@ check_machine() {
 if [ $do_packages -eq 1 ]; then
     step "Packages"
     install_packages
+    install_built
 fi
 if [ $do_fonts -eq 1 ]; then
     step "Fonts"
@@ -391,7 +388,6 @@ post_link
 
 if [ $extras -eq 1 ]; then
     step "Extras"
-    build_skwd
     install_udev
 fi
 

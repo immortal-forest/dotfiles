@@ -1,0 +1,60 @@
+name: packages
+
+# Builds our packages in system/ (the patched skwd-wall, Obel Mono Lig) on Arch
+# and puts them on the "packages" release with a SHA256SUMS that setup.sh checks.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - system/skwd-wall/**
+      - system/obel-mono-lig/**
+      - .github/workflows/packages.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: packages
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed base-devel git github-cli
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          useradd -m builder
+          mkdir out
+          for dir in system/skwd-wall system/obel-mono-lig; do
+            name=$(basename "$dir")
+            # makedepends plus the depends that are in the repos. skwd-deck and
+            # skwd-paper are AUR-only and not needed to build, hence makepkg -d.
+            deps=$(bash -c "source $dir/PKGBUILD; printf '%s\n' \"\${makedepends[@]}\" \"\${depends[@]}\"")
+            repo_deps=$(for d in $deps; do d=${d%%[<>=]*}; pacman -Si "$d" >/dev/null 2>&1 && echo "$d"; done)
+            pacman -S --noconfirm --needed $repo_deps
+            cp -r "$dir" /home/builder/
+            chown -R builder: /home/builder
+            su builder -c "cd /home/builder/$name && makepkg -f -d --noconfirm"
+            find /home/builder/$name -maxdepth 1 -name '*.pkg.tar.zst' ! -name '*-debug-*' -exec cp {} out/ \;
+          done
+          cd out && sha256sum *.pkg.tar.zst > SHA256SUMS && cat SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view packages >/dev/null 2>&1 ||
+            gh release create packages --target "$GITHUB_SHA" --title "Built packages" \
+              --notes "Built by .github/workflows/packages.yml from system/. setup.sh installs them and checks them against SHA256SUMS."
+          gh release upload packages out/* --clobber
+          # keep only what this run built
+          gh release view packages --json assets -q '.assets[].name' | while read -r asset; do
+            [ -e "out/$asset" ] || gh release delete-asset packages "$asset" -y
+          done

@@ -3,7 +3,7 @@
 # Patch: per-folder only (no "All wallpapers"/root entries, Ctrl+M disabled),
 #        (top filter bar: hidden at launch via config, Shift+Up toggles it — stock).
 pkgname=skwd-wall-v2
-_ver=1.0.0-beta.26
+_ver=1.0.0-beta.29
 pkgver=${_ver//-/_}
 pkgrel=1.2
 pkgdesc='GPU-rendered graphical client for the Skwd wallpaper suite v2 (astralis patches)'
@@ -16,7 +16,7 @@ makedepends=(cargo clang gcc lld pkgconf patchelf shaderc vulkan-headers wayland
 options=(!debug !lto)
 source=("skwd-suite-${_ver}.tar.xz::https://github.com/liixini/skwd-wall/releases/download/v${_ver}/skwd-suite-${_ver}.tar.xz"
         astralis.patch)
-sha256sums=('681f81332824657307201c922cbe5c4566267d4ceb5a507647d37b6c35b49b46'
+sha256sums=('da903c5e999ad7792dcb3b5e5d7db1820de092abe92942329211483518617df4'
             SKIP)
 
 prepare() {

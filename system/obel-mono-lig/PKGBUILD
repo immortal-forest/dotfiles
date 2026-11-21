@@ -1,0 +1,26 @@
+# Obel Mono Lig: Obel Mono with programming ligatures, built by build.py.
+# Ghostty uses it. Update: bump pkgver and the zip's sha256 when Obel Mono
+# releases, then makepkg.
+pkgname=ttf-obel-mono-lig
+pkgver=1.004
+pkgrel=1
+pkgdesc='Obel Mono with programming ligatures (-> => != :: and more)'
+arch=(any)
+url='https://typographic.systems'
+license=(OFL-1.1)
+makedepends=(python-fonttools)
+source=("ObelMono-$pkgver.zip::https://typographic.systems/download/ObelMono-$pkgver.zip"
+        build.py)
+sha256sums=('a142cf11ed346a84100dc5aa0feb714e7a8cd9e3f26b6f5248025c0a91e895e1'
+            '2e310b191437db16c5f4e111d127abb1f7c31162af13c457f61c5876f1193c84')
+
+build() {
+  local src="ObelMono-$pkgver/ObelMono/ttf/variable"
+  python build.py "$src/ObelMono[wght].ttf" "ObelMonoLig[wght].ttf"
+  python build.py "$src/ObelMono-Italic[wght].ttf" "ObelMonoLig-Italic[wght].ttf"
+}
+
+package() {
+  install -Dm644 -t "$pkgdir/usr/share/fonts/ObelMonoLig" ObelMonoLig*.ttf
+  install -Dm644 "ObelMono-$pkgver/OFL.txt" "$pkgdir/usr/share/licenses/$pkgname/OFL.txt"
+}
