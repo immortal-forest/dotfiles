@@ -76,6 +76,7 @@
     "resolutionPresets": [],
     "show": {
       "colors": false,
+      "download": true,
       "favourites": false,
       "folder": true,
       "orient": false,
@@ -97,8 +98,7 @@
         "static": true,
         "video": true,
         "we": false
-      },
-      "download": true
+      }
     },
     "sticky": true,
     "visualStyle": "match"
@@ -128,6 +128,11 @@
     "imageOptimizePreset": "quality",
     "imageOptimizeResolution": "4k"
   },
+  "sources": {
+    "youtube": {
+      "enabled": true
+    }
+  },
   "theme": {
     "engine": "matugen"
   },
@@ -135,10 +140,5 @@
     "durationMs": 2100,
     "previewFps": 60,
     "shader": "inkwell-drop"
-  },
-  "sources": {
-    "youtube": {
-      "enabled": true
-    }
   }
 }
