@@ -17,6 +17,9 @@ Hyprland on Arch, with **astralis**: a desktop shell written in
 The shell, Hyprland's borders, the terminals, Neovim, GTK and Qt apps, cava,
 Spotify and Firefox/Zen all take their colours from the wallpaper.
 
+There's also **quartz**, a lighter second shell in
+[its own repo](https://github.com/immortal-forest/quartz).
+
 ## astralis
 
 One pill at the top of the screen holds the workspaces, the clock, what's
@@ -46,40 +49,43 @@ back into it.
   </tr>
 </table>
 
-From the pill:
+### In the pill
 
-- **Launcher**: fuzzy app search. Ctrl+Enter opens an app once on the NVIDIA
-  GPU, Ctrl+G pins it there.
-- **Clipboard history** with image previews
-- **Media**, **calendar**, **audio mixer** with per-app volume, **Wi-Fi and Bluetooth**
-- **Notifications**: history, Do Not Disturb with quiet hours, and a rule for
-  every installed app
-- **System monitor**, **screen recorder** (whole screen or a region), **settings**
+| | What it does |
+|:---|:---|
+| **Launcher** | Fuzzy app search. Ctrl + Enter opens an app once on the NVIDIA GPU, Ctrl + G pins it there |
+| **Clipboard** | History with image previews |
+| **Media** | Now playing, with a seek bar and controls |
+| **Calendar** | The month, with the week's weather |
+| **Mixer** | Brightness, output device and per-app volume |
+| **Wi-Fi and Bluetooth** | Connect, pair and forget. Each saved network has its own auto-connect, metered and password settings |
+| **Notifications** | History, Do Not Disturb with quiet hours, and a rule for every installed app |
+| **System monitor** | CPU, GPU and memory with temperatures, network and disk |
+| **Screen recorder** | The whole screen or a region |
+| **Settings** | Appearance, input, keybinds, idle and lock, notifications, widgets and more |
+| **Indicators** | Volume, brightness and the mic show in the pill when you press their keys |
 
-On the desktop:
+### On the desktop
 
-- **Overview** (Super+O): weather with a 12-hour temperature curve, system load,
-  the power profile
-- **Cover art and synced lyrics**: lyrics come from NetEase, LRCLIB and Kugou,
-  word-timed where they exist, with romaji for Japanese lines
-- **Depth clock**: a clock that sits behind the wallpaper's subject. A depth
-  model (Depth Anything V2 Small) cuts out the foreground. It downloads about
-  140 MB the first time you turn it on.
-- **Visualizer** (Super+B): an audio wave along the screen edges
-- **Retroact Rain** (Super+Shift+W): rain that falls, hangs in mid-air and
-  rises again, refracting the wallpaper. It also plays when you pick a new wallpaper.
+| | What it does |
+|:---|:---|
+| **Overview** | Clock, weather with a 12-hour temperature curve, now playing, quick settings, battery, system load and the power profile |
+| **Lyrics** | Synced lyrics next to the cover art, from NetEase, LRCLIB and Kugou. Word-timed where they exist, with romaji for Japanese lines |
+| **Depth&nbsp;clock** | A clock that sits behind the wallpaper's subject. A depth model (Depth Anything V2 Small) cuts out the foreground; it downloads about 140 MB the first time you turn it on |
+| **Visualizer** | An audio wave along the screen edges |
+| **Retroact&nbsp;Rain** | Rain that falls, hangs in mid-air and rises again, refracting the wallpaper. It also plays when you pick a new wallpaper |
+| **App nap** | Hides the focused app, freezes it and pushes its memory to swap until you bring it back |
+| **Lock&nbsp;screen** | Clock, now playing and the password field |
+| **Power&nbsp;menu** | Lock, screen off, log out, suspend, hibernate, reboot, shut down |
 
-Plus a lock screen, a power menu, on-screen indicators, and **app nap**
-(Super+Ctrl+M): the focused app is hidden, frozen and its memory pushed to swap
-until you bring it back.
+Every shortcut is in [Keys](#keys).
 
-Colours are Material 3, made from the wallpaper by
+### Colours and wallpapers
+
+Material 3 colours, made from the wallpaper by
 [matugen](https://github.com/InioX/matugen). Settings › Appearance can switch
 the terminals and apps to a base16 palette instead. Wallpapers are drawn and
 picked by [skwd-wall](https://github.com/liixini/skwd-wall).
-
-There's also **quartz**, a lighter second shell in
-[its own repo](https://github.com/immortal-forest/quartz).
 
 ## What's in here
 
