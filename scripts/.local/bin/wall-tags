@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""wall-tags — give every skwd-wall wallpaper search tags derived from its path.
+
+skwd's search box only matches tags (typed words are resolved against the tag
+vocabulary; 2–3 words are tried joined with '-'), so an untagged library finds
+nothing. Tags come from:
+  • the top folder  — franchise or colour theme (wuthering-waves + wuwa, tokyo-night, catppuccin + mocha …)
+  • the subfolder   — character (xiangli-yao) or kind (group, scenery, cutscene, key-art, live, live2d, echo)
+  • the file name   — every word of `character_descriptor_artist` (changli, moonlit, lantern, jvn …),
+                      plurals folded onto the singular when both occur ("bubbles" → "bubble")
+  • videos          — live
+
+  wall-tags            tag wallpapers that have no tags yet (run after adding wallpapers)
+  wall-tags --all      re-derive tags for every wallpaper (overwrites hand-made tags)
+  wall-tags -n [--all] dry run: print key → tags, change nothing
+"""
+import json, os, re, socket, sqlite3, sys, unicodedata
+
+DB = os.path.expanduser("~/.local/share/skwd-wall-v2/wall.sqlite")
+SOCK = f"/run/user/{os.getuid()}/skwd-wall-v2/wall.sock"
+
+# folder → extra tags (the folder's own slug is always added)
+FOLDER_ALIASES = {
+    "wuthering-waves": ["wuwa"], "catppuccin-latte": ["catppuccin", "latte"],
+    "catppuccin-mocha": ["catppuccin", "mocha"], "gruvbox-retro": ["gruvbox", "retro"],
+    "nordic-blue": ["nord", "nordic"], "synth-wave": ["synthwave"], "graphite-mono": ["graphite", "monochrome"],
+    "decay-green": ["decay"], "edge-runner": ["edgerunners", "cyberpunk"], "material-sakura": ["material", "sakura"],
+    "frosted-glass": ["glass"], "pixel-art": ["pixel"],
+}
+KIND_FOLDERS = {"cutscenes": "cutscene", "echoes": "echo", "live": "live", "live2d": "live2d",
+                "group": "group", "scenery": "scenery", "key-art": "key-art", "unsorted": None, "other": None}
+# multi-word names kept as one hyphenated tag (characters, places, artist handles that would
+# otherwise leak misleading words such as "rain" from rain_sama)
+PHRASES = ["xiangli yao", "ninth seal", "geshu lin", "black shores", "rain world", "rain sama", "hit by hit",
+           "yuuchi ir", "qi sheng ao", "yu yang", "nicky w", "fatqueen info", "key art"]
+STOP = {"the", "of", "and", "in", "on", "at", "with", "by", "to", "for", "from", "under", "over", "into",
+        "its", "her", "his", "my", "your", "our", "vs", "ver", "jpg", "png"}
+VIDEO = (".mp4", ".webm", ".mkv", ".mov")
+
+
+def slug(s):
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+
+
+def words(stem):
+    s = " " + re.sub(r"[_\s.\-]+", " ", stem.lower()) + " "
+    for p in PHRASES:
+        s = s.replace(f" {p} ", f" {p.replace(' ', '-')} ")
+    out = []
+    for w in s.split():
+        if w in STOP or w.isdigit() or len(w) < 3 or re.fullmatch(r"v\d+|\d+[a-z]?|[a-z]\d+", w):
+            continue
+        out.append(w)
+    return out
+
+
+def raw_tags(key):
+    rel = key.split(":", 1)[1]
+    parts = rel.split("/")
+    folders, stem, ext = parts[:-1], os.path.splitext(parts[-1])[0], os.path.splitext(parts[-1])[1].lower()
+    tags = []
+    for i, f in enumerate(folders):
+        s = slug(f)
+        if s in KIND_FOLDERS:
+            if KIND_FOLDERS[s]:
+                tags.append(KIND_FOLDERS[s])
+            continue
+        tags.append(s)
+        if i == 0:
+            tags += FOLDER_ALIASES.get(s, [])
+    tags += words(stem)
+    if ext in VIDEO and "live" not in tags:
+        tags.append("live")
+    return tags
+
+
+def fold_plurals(per_key):
+    vocab = {t for ts in per_key.values() for t in ts}
+    def canon(t):
+        for cut in ("es", "s"):
+            if t.endswith(cut) and not t.endswith("ss") and t[: -len(cut)] in vocab and len(t) - len(cut) >= 3:
+                return t[: -len(cut)]
+        return t
+    out = {}
+    for k, ts in per_key.items():
+        seen = []
+        for t in map(canon, ts):
+            if t not in seen:
+                seen.append(t)
+        out[k] = seen
+    return out
+
+
+def rpc(sock, rid, method, params):
+    sock.sendall((json.dumps({"method": method, "params": params, "id": rid}) + "\n").encode())
+
+
+def main():
+    args = sys.argv[1:]
+    if "-h" in args or "--help" in args:
+        print(__doc__.strip()); return
+    dry, every = "-n" in args or "--dry-run" in args, "--all" in args
+    db = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    rows = db.execute("select key, coalesce(tags,'') from meta where hidden=0").fetchall()
+    per_key = fold_plurals({k: raw_tags(k) for k, _ in rows})
+    todo = [(k, per_key[k]) for k, cur in rows if every or not cur.strip()]
+    if dry:
+        for k, ts in todo:
+            print(f"{k}\t{' '.join(ts)}")
+        print(f"# {len(todo)} of {len(rows)} would be tagged, {len({t for _, ts in todo for t in ts})} distinct tags",
+              file=sys.stderr)
+        return
+    if not todo:
+        print("nothing to tag"); return
+    s = socket.socket(socket.AF_UNIX); s.connect(SOCK); s.settimeout(30)
+    for i, (k, ts) in enumerate(todo):
+        rpc(s, 900000 + i, "wall.update_tags", {"key": k, "tags": ",".join(ts)})
+    want, ok, bad, f = {900000 + i for i in range(len(todo))}, 0, [], s.makefile("r")
+    for line in f:
+        m = json.loads(line)
+        if m.get("id") in want:
+            want.discard(m["id"])
+            if "result" in m:
+                ok += 1
+            else:
+                bad.append(m)
+            if not want:
+                break
+    print(f"tagged {ok} of {len(todo)} wallpapers" + (f"; {len(bad)} errors, first: {bad[0]}" if bad else ""))
+
+
+if __name__ == "__main__":
+    main()
