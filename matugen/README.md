@@ -30,7 +30,7 @@ This links `matugen/.config/matugen` → `~/.config/matugen`.
 ## What it does
 
 `matugen image <wallpaper>` reads `~/.config/matugen/config.toml`, renders every
-`[templates.*]` entry, and writes each to its **absolute** `output_path` (the paths
+`[templates.*]` entry, and writes each to its `output_path` (`~` is expanded; the paths
 point at the *deployed* config locations, not into this repo):
 
 | Template   | output_path                                                     | Notes |

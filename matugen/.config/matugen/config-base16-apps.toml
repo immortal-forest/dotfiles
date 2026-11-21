@@ -22,23 +22,23 @@ mode = "dark"
 
 [templates.kitty]
 input_path  = "~/.config/matugen/templates/kitty-b16"
-output_path = "/home/immortalforest/.config/kitty/colors.conf"
+output_path = "~/.config/kitty/colors.conf"
 
 [templates.ghostty]
 input_path  = "~/.config/matugen/templates/ghostty-b16"
-output_path = "/home/immortalforest/.config/ghostty/themes/matugen"
+output_path = "~/.config/ghostty/themes/matugen"
 
 [templates.spotify]
 input_path  = "~/.config/matugen/templates/spotify-b16.ini"
-output_path = "/home/immortalforest/.config/spicetify/Themes/Sleek/color.ini"
+output_path = "~/.config/spicetify/Themes/Sleek/color.ini"
 # No post_hook — setwall calls scripts/spotify-retheme once at the end (see
 # config.toml's [templates.spotify] for the apply-race that blanked Spotify).
 
 [templates.pywalfox]
 input_path  = "~/.config/matugen/templates/pywalfox-b16.json"
-output_path = "/home/immortalforest/.cache/wal/colors.json"
+output_path = "~/.cache/wal/colors.json"
 post_hook   = "command -v pywalfox >/dev/null 2>&1 && pywalfox update >/dev/null 2>&1 || true"
 
 [templates.nvim]
 input_path  = "~/.config/matugen/templates/nvim-b16.lua"
-output_path = "/home/immortalforest/.config/nvim/lua/themes/matugen.lua"
+output_path = "~/.config/nvim/lua/themes/matugen.lua"

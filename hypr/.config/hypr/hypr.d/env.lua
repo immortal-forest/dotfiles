@@ -26,4 +26,5 @@ hl.env("HYPRCURSOR_THEME", "Google.Violet")
 -- default search path OMITS ~/.local/share/icons — so a theme installed there
 -- (Google.Violet) isn't found and they fall back to a black cursor. Point
 -- XCURSOR_PATH at it explicitly (~/.icons is also symlinked as a backstop).
-hl.env("XCURSOR_PATH", "/home/immortalforest/.local/share/icons:/home/immortalforest/.icons:/usr/share/icons:/usr/share/pixmaps")
+local home = os.getenv("HOME")
+hl.env("XCURSOR_PATH", home .. "/.local/share/icons:" .. home .. "/.icons:/usr/share/icons:/usr/share/pixmaps")
