@@ -149,10 +149,8 @@ Two things here aren't in the repos or the AUR, so they're built from
   programming ligatures (`->` `=>` `!=` `::` and more), made by
   `system/obel-mono-lig/build.py`. Ghostty uses it.
 
-GitHub Actions (`.github/workflows/packages.yml`) builds both on Arch whenever
-a PKGBUILD changes, and replaces the release's files and its `SHA256SUMS`,
-which `setup.sh` checks every download against. To update one, bump the
-version in its PKGBUILD and push. `gh workflow run packages` rebuilds by hand.
+Both are built on Arch by GitHub Actions (`.github/workflows/packages.yml`),
+and `setup.sh` checks every download against the release's `SHA256SUMS`.
 
 ## Keys
 
