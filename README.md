@@ -79,8 +79,7 @@ the terminals and apps to a base16 palette instead. Wallpapers are drawn and
 picked by [skwd-wall](https://github.com/liixini/skwd-wall).
 
 There's also **quartz**, a lighter second shell in
-[its own repo](https://github.com/immortal-forest/quartz). `rice quartz` and
-`rice astralis` switch between the two.
+[its own repo](https://github.com/immortal-forest/quartz).
 
 ## What's in here
 
