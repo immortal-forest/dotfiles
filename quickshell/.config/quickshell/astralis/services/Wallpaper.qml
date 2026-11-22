@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 
 /**
  * astralis — wallpaper theming bridge.
@@ -116,5 +117,35 @@ Singleton {
         function onWallReseedChanged() { rethemeDebounce.restart(); }
         function onPaletteModeChanged() { rethemeDebounce.restart(); }
         function onBase16ShellChanged() { rethemeDebounce.restart(); }
+    }
+
+    /**
+     * Redraw the screens left after a monitor unplugs. skwd-walld (beta.26)
+     * reaps the still renderer that every output shares when ANY output
+     * departs, and only spawns a new one when an output is added, so pulling
+     * the MSI's cable left the laptop bare until it was plugged back in. 4 s
+     * after a removal with no re-add (a monitor waking from standby re-plugs
+     * within ~3 s, and skwd restores that itself), ask skwd to re-apply each
+     * connected output's current wallpaper.
+     */
+    readonly property string redrawScript: '
+        command -v skwd-helm >/dev/null && command -v jq >/dev/null || exit 0
+        skwd-helm current --json | jq -r ".outputs[] | select(.connected) | [.name, (.current // .path // empty)] | @tsv" |
+        while IFS="\t" read -r o p; do
+            [ -n "$p" ] && skwd-helm apply "$p" --output "$o"
+        done'
+    Timer {
+        id: redraw
+        interval: 4000
+        onTriggered: Quickshell.execDetached(["sh", "-c", root.redrawScript])
+    }
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name === "monitorremoved" || event.name === "monitorremovedv2")
+                redraw.restart();
+            else if (event.name === "monitoradded" || event.name === "monitoraddedv2")
+                redraw.stop();
+        }
     }
 }
