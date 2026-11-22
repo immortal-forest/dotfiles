@@ -12,12 +12,16 @@ import Quickshell
  * The lock action is `loginctl lock-session`, which the astralis WlSessionLock
  * lockscreen (lock/Lock.qml) catches over D-Bus — no hyprlock, no lock_cmd (that
  * would loop, since our lock is triggered *by* the lock-session signal). A zero
- * timeout omits that listener entirely. Dim drops the backlight to 40% of its
- * CURRENT level (floored at 1% of max) — PROPORTIONAL, so it always dims and
- * never raises an already-low backlight (a fixed `set 10%` brightened a screen
- * sitting at 6%); brightnessctl -s saves the pre-dim value, -r restores it on
- * resume. Screen-off sets dpms via the Lua hl.dsp.dpms dispatcher; suspend
- * calls systemctl.
+ * timeout omits that listener entirely. Dim (scripts/idle-dim) drops every
+ * screen — laptop backlight via brightnessctl, external monitors via ddcutil
+ * DDC/CI — to 40% of its CURRENT level (floored at 1%) — PROPORTIONAL, so it
+ * always dims and never raises an already-low screen (a fixed `set 10%`
+ * brightened a screen sitting at 6%); the pre-dim levels are saved and put
+ * back on resume. Screen-off sets dpms via the Lua hl.dsp.dpms dispatcher; suspend
+ * calls systemctl. Screen-off and before_sleep_cmd first run `idle-dim
+ * release`, which puts the DDC monitors back while they're still awake: DDC
+ * sent to a monitor as it wakes from standby left the MSI re-plugged with no
+ * modes (blank), so nothing may talk DDC on the way back.
  *
  * Loaded at startup via a reference in shell.qml so the conf is written and the
  * daemon started on login; the debounce coalesces a burst of seg changes into
@@ -34,24 +38,27 @@ Singleton {
         return "hyprctl dispatch 'hl.dsp.dpms({ action = \"" + action + "\" })'";
     }
 
+    // Beside this file (not shellDir) so it resolves in dev harnesses too.
+    readonly property string idleDim: decodeURIComponent(String(Qt.resolvedUrl("../scripts/idle-dim")).replace(/^file:\/\//, ""))
+
     function buildConf() {
-        var out = "general {\n";
-        if (Flags.lockBeforeSleep)
-            out += "    before_sleep_cmd = loginctl lock-session\n";
-        out += "    after_sleep_cmd = " + root.dpms("on") + "\n"
+        var out = "general {\n"
+            + "    before_sleep_cmd = " + root.idleDim + " release"
+            + (Flags.lockBeforeSleep ? "; loginctl lock-session" : "") + "\n"
+            + "    after_sleep_cmd = " + root.dpms("on") + "\n"
             + "}\n";
 
         if (Flags.idleDimMin > 0)
             out += "\nlistener {\n"
                 + "    timeout = " + (Flags.idleDimMin * 60) + "\n"
-                + "    on-timeout = sh -c 'cur=$(brightnessctl get); mx=$(brightnessctl max); t=$((cur*2/5)); lo=$((mx/100)); [ \"$t\" -lt \"$lo\" ] && t=\"$lo\"; brightnessctl -s set \"$t\"'\n"
-                + "    on-resume = brightnessctl -r\n"
+                + "    on-timeout = " + root.idleDim + " dim\n"
+                + "    on-resume = " + root.idleDim + " restore\n"
                 + "}\n";
 
         if (Flags.idleScreenOffMin > 0)
             out += "\nlistener {\n"
                 + "    timeout = " + (Flags.idleScreenOffMin * 60) + "\n"
-                + "    on-timeout = " + root.dpms("off") + "\n"
+                + "    on-timeout = " + root.idleDim + " release; " + root.dpms("off") + "\n"
                 // Skipped while the power menu's Screen off holds its
                 // inhibitor: hypridle's resume fires on ANY activity, which
                 // would make "wake on touchpad/mouse: off" leak once this

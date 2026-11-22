@@ -234,7 +234,7 @@ SettingsPage {
                     id: dimRow
                     icon: "sun"
                     name: "Dim screen"
-                    caption: "Soften the backlight after idle"
+                    caption: "Soften every screen after idle"
 
                     SettingsSeg {
                         s: root.s
