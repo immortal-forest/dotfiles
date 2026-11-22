@@ -268,17 +268,22 @@ SettingsPage {
     Process {
         id: applyProc
         property string spec: ""
-        command: ["hyprctl", "keyword", "monitor", spec]
+        command: ["hyprctl", "eval", spec]
     }
 
     Process {
         id: revertProc
         property string spec: ""
-        command: ["hyprctl", "keyword", "monitor", spec]
+        command: ["hyprctl", "eval", spec]
     }
 
-    function specString(sp) {
-        return sp.mode + "," + sp.position + "," + sp.scale + ",transform," + sp.transform;
+    // `hyprctl keyword` is "unknown request" on this Lua-configured Hyprland;
+    // `hyprctl eval` with the same hl.monitor call the overlay writes works.
+    function specLua(output, sp) {
+        return "hl.monitor({ output = \"" + output + "\", mode = \"" + sp.mode + "\", position = \""
+            + sp.position + "\", scale = " + sp.scale + ", transform = " + sp.transform
+            + (sp.bitdepth ? ", bitdepth = " + sp.bitdepth : "")
+            + (sp.cm ? ", cm = \"" + sp.cm + "\"" : "") + " })";
     }
 
     /**
@@ -298,17 +303,21 @@ SettingsPage {
             mode: mon.width + "x" + mon.height + "@" + mon.refresh,
             position: mon.x + "x" + mon.y,
             scale: mon.scale,
-            transform: mon.transform
+            transform: mon.transform,
+            bitdepth: mon.bitdepth,
+            cm: mon.cm
         };
         root.pendSpec = {
             mode: res.w + "x" + res.h + "@" + hz,
             position: p ? p.x + "x" + p.y : mon.x + "x" + mon.y,
             scale: card.pickScale,
-            transform: card.pickTransform
+            transform: card.pickTransform,
+            bitdepth: mon.bitdepth,
+            cm: mon.cm
         };
         root.pendingOut = mon.name;
         if (root.setStore.liveApply) {
-            applyProc.spec = mon.name + "," + specString(root.pendSpec);
+            applyProc.spec = specLua(mon.name, root.pendSpec);
             applyProc.running = true;
         }
         root.countdown = 12;
@@ -325,11 +334,47 @@ SettingsPage {
     function keep() {
         if (root.pendingOut.length === 0)
             return;
+        // Save EVERY display, not just the edited one: an unsaved display
+        // falls back to monitor.lua's auto-* rule on reload and lands relative
+        // to the saved one, so the arrangement drifted (laptop pinned at
+        // -9920, monitor auto-left of it again). Positions are shifted so the
+        // top-left display sits at 0x0, and keyed by description so a monitor
+        // keeps its spec when it moves to another port (DP-1 vs DP-3).
+        var specs = [];
+        var minX = Infinity, minY = Infinity;
+        for (var i = 0; i < root.monitors.length; i++) {
+            var m = root.monitors[i];
+            var sp = m.name === root.pendingOut ? root.pendSpec : {
+                mode: m.width + "x" + m.height + "@" + m.refresh,
+                position: m.x + "x" + m.y,
+                scale: m.scale,
+                transform: m.transform,
+                bitdepth: m.bitdepth,
+                cm: m.cm
+            };
+            var xy = sp.position.split("x");
+            var px = parseInt(xy[0], 10), py = parseInt(xy[1], 10);
+            minX = Math.min(minX, px);
+            minY = Math.min(minY, py);
+            specs.push({ mon: m, sp: sp, x: px, y: py });
+        }
         var cur = root.setStore.get("monitors");
         var next = {};
         for (var k in cur)
             next[k] = cur[k];
-        next[root.pendingOut] = root.pendSpec;
+        for (var j = 0; j < specs.length; j++) {
+            var e = specs[j];
+            delete next[e.mon.name];
+            delete next["desc:" + e.mon.desc];
+            next[e.mon.desc.length > 0 ? "desc:" + e.mon.desc : e.mon.name] = {
+                mode: e.sp.mode,
+                position: (e.x - minX) + "x" + (e.y - minY),
+                scale: e.sp.scale,
+                transform: e.sp.transform,
+                bitdepth: e.sp.bitdepth,
+                cm: e.sp.cm
+            };
+        }
         var saved = "Saved. " + root.pendingOut + " set to " + root.pendSpec.mode + " · scale " + root.pendSpec.scale;
         root.setStore.set("monitors", next);
         root.cancelCountdown();
@@ -344,7 +389,7 @@ SettingsPage {
         if (root.pendingOut.length === 0)
             return;
         if (root.setStore.liveApply) {
-            revertProc.spec = root.pendingOut + "," + specString(root.prevSpec);
+            revertProc.spec = specLua(root.pendingOut, root.prevSpec);
             revertProc.running = true;
         }
         root.cancelCountdown();

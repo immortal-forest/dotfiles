@@ -363,18 +363,22 @@ Singleton {
         }
 
         // 画 display tree — one whole-spec monitor line per stored output
-        // ({ mode, position, scale, transform }, written by the Display page
-        // on a confirmed Keep). `monitor` is last-wins per output, so the
-        // overlay re-asserts the shell-picked spec over hypr.d/monitor.lua;
-        // hand-written extras on that output (bitdepth 10) fall back to their
-        // defaults while an entry is stored — unset("monitors") to revert.
+        // ({ mode, position, scale, transform, bitdepth, cm }, written by the
+        // Display page on a confirmed Keep). `monitor` is last-wins per
+        // output, so the overlay re-asserts the shell-picked spec over
+        // hypr.d/monitor.lua. The page copies the live bitdepth/cm into the
+        // spec so monitor.lua's extras (10-bit, cm = "edid") survive; entries
+        // saved before that lack them and fall back to defaults.
+        // unset("monitors") to revert.
         if (root.has("monitors")) {
             var mons = root.get("monitors");
             for (var mName in mons) {
                 var m = mons[mName];
                 lua.push("hl.monitor({ output = \"" + mName + "\", mode = \"" + m.mode
                     + "\", position = \"" + m.position + "\", scale = " + m.scale
-                    + ", transform = " + m.transform + " })");
+                    + ", transform = " + m.transform
+                    + (m.bitdepth ? ", bitdepth = " + m.bitdepth : "")
+                    + (m.cm ? ", cm = \"" + m.cm + "\"" : "") + " })");
             }
         }
 

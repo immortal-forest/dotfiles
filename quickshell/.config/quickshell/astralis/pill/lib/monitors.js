@@ -48,6 +48,7 @@ function parse(jsonText) {
             .filter(function (m) { return m !== null; });
         return {
             name: mon.name,
+            desc: mon.description || "",
             width: mon.width,
             height: mon.height,
             refresh: Number.isFinite(mon.refreshRate) ? Math.round(mon.refreshRate) : 0,
@@ -55,6 +56,11 @@ function parse(jsonText) {
             x: mon.x,
             y: mon.y,
             transform: mon.transform || 0,
+            // Carried into every spec the Display page applies or keeps, so it
+            // doesn't drop monitor.lua's extras (10-bit, cm = "edid"). 0 / ""
+            // = leave the key out.
+            bitdepth: /2101010/.test(mon.currentFormat || "") ? 10 : 0,
+            cm: mon.colorManagementPreset || "",
             modes: modes
         };
     });
