@@ -22,3 +22,7 @@ quickshell/.config/quickshell/astralis/graphify-out/
 
 # astralis build-spec kit — agent prompts, local only.
 quickshell/.config/quickshell/astralis/astralis-*.md
+
+# Written by the shell from Settings › Idle / Lock (services/Hypridle.qml);
+# the settings live in ~/.cache/astralis/flags.json, per machine.
+hypr/.config/hypr/hypridle.conf
