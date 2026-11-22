@@ -1,4 +1,6 @@
-theme = matugen
+# Colours: generated per wallpaper by matugen (not in git). Optional include,
+# so a fresh clone has no "theme not found" error before the first wallpaper.
+config-file = ?themes/matugen
 
 cursor-style = block
 

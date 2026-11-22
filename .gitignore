@@ -26,3 +26,6 @@ quickshell/.config/quickshell/astralis/astralis-*.md
 # Written by the shell from Settings › Idle / Lock (services/Hypridle.qml);
 # the settings live in ~/.cache/astralis/flags.json, per machine.
 hypr/.config/hypr/hypridle.conf
+
+# Ghostty colours, written by matugen on every wallpaper (setwall).
+ghostty/.config/ghostty/themes/matugen
