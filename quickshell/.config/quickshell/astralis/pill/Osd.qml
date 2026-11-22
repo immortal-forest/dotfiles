@@ -52,7 +52,7 @@ Item {
         return u.indexOf("file:") === 0 ? u + "#" + Players.keyFor(subject) : u;
     }
 
-    readonly property real brightness: Backlight.brightness
+    readonly property real brightness: Brightness.levelOf(root.screenName)
     property bool recordStarted: false
 
     readonly property var sink: Pipewire.defaultAudioSink
@@ -240,10 +240,12 @@ Item {
         }
     }
 
+    // Only this screen's own brightness flashes its OSD.
     Connections {
-        target: Backlight
-        function onChanged() {
-            root.flash("brightness");
+        target: Brightness
+        function onChanged(name) {
+            if (name === root.screenName)
+                root.flash("brightness");
         }
     }
 

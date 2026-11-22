@@ -15,8 +15,8 @@ import "../../config"
 /**
  * astralis — volume mixer surface (Ricelin Mixer.qml layout). "調 MIXER"
  * header with output/input route pickers and mute chips on the right, a
- * hairline divider, then a row of vertical ink-faders: a laptop-backlight
- * brightness fader (leftmost, only when a panel is present), the default sink
+ * hairline divider, then a row of vertical ink-faders: one brightness fader
+ * per screen (leftmost; laptop backlight and DDC monitors), the default sink
  * (master) plus one per Pipewire playback stream, each an M3 Expressive slider (thick track, gapped
  * handle bar, stop dots), the app icon and a short label beneath.
  * Hover targets a fader column; the wheel nudges the targeted fader and
@@ -95,8 +95,8 @@ PillSurface {
         return out;
     }
 
-    /** Brightness column only exists on machines with a laptop panel. */
-    readonly property int brCount: Backlight.present ? 1 : 0
+    /** One brightness column per screen with a control (panel backlight or DDC). */
+    readonly property int brCount: Brightness.outputs.length
     readonly property int faderCount: brCount + 1 + streamGroups.length
 
     /**
@@ -395,6 +395,7 @@ PillSurface {
             brightnessLocal = -1;
         } else {
             refreshCodecs();
+            Brightness.refresh(); // pick up changes made with the monitor's own buttons
         }
     }
 
@@ -610,15 +611,22 @@ PillSurface {
         property string iconSource: ""
         property string glyph: "music"
         property bool focused: false
-        /** Backlight column: value/set route to the Backlight singleton, no mute. */
+        /**
+         * Brightness column for `output`, no mute: the laptop panel keeps the
+         * debounced brightnessLocal scheme; a DDC monitor goes straight to
+         * Brightness, which is already optimistic and coalesces its writes.
+         */
         property bool brightnessMode: false
+        property string output: ""
+        readonly property bool panelMode: brightnessMode && Brightness.isPanel(output)
 
-        readonly property bool ready: brightnessMode ? Backlight.present
+        readonly property bool ready: brightnessMode ? Brightness.presentOn(output)
             : (node !== null && node.audio !== null)
         readonly property real value: {
             // node.audio.volume / Backlight.brightness can arrive NaN; Math.max
             // and Math.min pass NaN through, which formats as "NaN%".
-            var v = brightnessMode ? root.brightnessShown
+            var v = panelMode ? root.brightnessShown
+                : brightnessMode ? Brightness.levelOf(output)
                 : (ready ? node.audio.volume : 0);
             v = Number.isFinite(v) ? v : 0;
             return Math.max(0, Math.min(fader.faderMax, v));
@@ -634,8 +642,10 @@ PillSurface {
 
         function setVolume(v) {
             v = Math.max(0, Math.min(fader.faderMax, v));
-            if (brightnessMode)
+            if (panelMode)
                 root.setBrightness(v);
+            else if (brightnessMode)
+                Brightness.set(output, v);
             else if (ready)
                 for (var i = 0; i < nodes.length; i++)
                     if (nodes[i] && nodes[i].audio)
@@ -876,25 +886,24 @@ PillSurface {
         readonly property real colW: root.width / Math.max(1, root.faderCount)
 
         /**
-         * Laptop-backlight brightness, leftmost like Ricelin's fader order; a
-         * Loader so machines without a panel skip the column entirely.
-         * Ricelin also carries ddcutil-brightness and vibrance (nvibrant)
-         * faders here; both are omitted — neither tool is installed on this
-         * machine, and Backlight covers the panel that is.
+         * One brightness fader per screen, leftmost like Ricelin's fader
+         * order, in the screens' left-to-right layout: the laptop panel
+         * (Backlight) and any DDC/CI monitor (ddcutil), labelled "Laptop" /
+         * the monitor's maker.
          */
-        Loader {
-            active: Backlight.present
-            visible: active
-            width: active ? faderRow.colW : 0
-            height: faderRow.height
+        Repeater {
+            model: Brightness.outputs
 
-            sourceComponent: InkFader {
+            InkFader {
+                required property string modelData
+                required property int index
                 width: faderRow.colW
                 height: faderRow.height
                 brightnessMode: true
-                label: "Brightness"
+                output: modelData
+                label: Brightness.labelOf(modelData)
                 glyph: "sun"
-                focused: root.focusIndex === 0
+                focused: root.focusIndex === index
             }
         }
 
@@ -928,7 +937,9 @@ PillSurface {
     Text {
         anchors.top: faderRow.top
         anchors.topMargin: 40 * root.s
-        anchors.horizontalCenter: parent.horizontalCenter
+        // In the gap between the last brightness fader and Master — with
+        // several screens the surface centre is a fader column.
+        x: root.brCount > 0 ? faderRow.x + root.brCount * faderRow.colW - width / 2 : (parent.width - width) / 2
         visible: root.streams.length === 0
         text: "Nothing playing"
         color: Qt.alpha(Colors.on_surface_variant, 0.65)

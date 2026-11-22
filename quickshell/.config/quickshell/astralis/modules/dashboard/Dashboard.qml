@@ -65,6 +65,7 @@ PanelWindow {
             root.captureRev++;
             profileProbe.running = true;
             profileFile.reload();
+            Brightness.refresh();
             Qt.callLater(() => focusScope.forceActiveFocus());
         } else {
             root.commitBrightnessNow();
@@ -177,6 +178,9 @@ PanelWindow {
      * move — the Mixer's scheme. -1 = follow Backlight.brightness.
      */
     property real brightnessLocal: -1
+    /** The output this dashboard is on; its brightness slider drives that screen. */
+    readonly property string brOut: root.screen ? root.screen.name : ""
+    readonly property bool brPanel: Brightness.isPanel(brOut)
     readonly property real brightnessShown: brightnessLocal >= 0 ? brightnessLocal : Backlight.brightness
     function setBrightness(v) {
         if (!Backlight.hasCtl)
@@ -1301,14 +1305,15 @@ PanelWindow {
                                 onIconClicked: if (root.sink && root.sink.audio) root.sink.audio.muted = !root.sink.audio.muted
                                 onMoved: (v) => { if (root.sink && root.sink.audio) root.sink.audio.volume = v / 100; }
                             }
+                            // This screen's brightness: panel backlight, or DDC on a monitor.
                             SliderRow {
-                                visible: Backlight.present
+                                visible: Brightness.presentOn(root.brOut)
                                 icon: "sun"
                                 label: "Brightness"
                                 enter: qsBox.seg(6)
-                                value: root.brightnessShown * 100
-                                onMoved: (v) => root.setBrightness(v / 100)
-                                onReleased: root.commitBrightnessNow()
+                                value: (root.brPanel ? root.brightnessShown : Brightness.levelOf(root.brOut)) * 100
+                                onMoved: (v) => root.brPanel ? root.setBrightness(v / 100) : Brightness.set(root.brOut, v / 100)
+                                onReleased: if (root.brPanel) root.commitBrightnessNow()
                             }
                         }
                     }

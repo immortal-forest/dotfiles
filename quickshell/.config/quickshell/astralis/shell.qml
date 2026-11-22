@@ -277,14 +277,15 @@ ShellRoot {
     /**
      * Hardware brightness keys route here (keybinds.lua:
      * `qs -c astralis ipc call brightness change -- -0.05`) so the change goes
-     * through the Backlight singleton and flashes the OSD, instead of a raw
-     * brightnessctl that the shell never sees. Negative deltas need `--` before
-     * them on the `qs ipc` CLI.
+     * through the Brightness singleton (focused monitor: panel backlight or
+     * DDC) and flashes that screen's OSD, instead of a raw brightnessctl that
+     * the shell never sees. Negative deltas need `--` before them on the
+     * `qs ipc` CLI.
      */
     IpcHandler {
         target: "brightness"
-        function change(delta: real): void { Backlight.change(delta); }
-        function set(v: real): void { Backlight.set(v); }
+        function change(delta: real): void { Brightness.changeFocused(delta); }
+        function set(v: real): void { Brightness.setFocused(v); }
     }
 
     /**

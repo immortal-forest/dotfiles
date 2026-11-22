@@ -1,4 +1,5 @@
 singleton Backlight Backlight.qml
+singleton Brightness Brightness.qml
 singleton ArtCache ArtCache.qml
 singleton Battery Battery.qml
 singleton CameraToggle CameraToggle.qml
