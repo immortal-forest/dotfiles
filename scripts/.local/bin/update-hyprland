@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+#
+# update-hyprland — rebuild the ALREADY-INSTALLED Hyprland (-git) stack IN ORDER, with yay.
+#
+# Why: on Arch, -git packages count as "building yourself" (per the Hyprland wiki
+# FAQ: https://wiki.hyprland.org/FAQ/). Every hypr* app links against the hypr*
+# libraries, so if one lib bumps its .so version and you don't rebuild the rest,
+# you get `error while loading shared libraries: ... cannot open shared object
+# file` or random crashes. The fix is to rebuild the whole stack together, in
+# dependency order. This script does exactly that.
+#
+# It builds each package as its own single-target `yay -S` invocation, strictly
+# in the order below — it never hands yay the whole list at once, because yay
+# resolves its own build order and would ignore ours (see the YAY_FLAGS note on
+# why --devel is deliberately absent).
+#
+# Scope: it rebuilds ONLY the hypr* packages you already have installed. It never
+# adds a new package from the ecosystem — the ordered lists below are just an
+# ordering template; the actual build set is the intersection with what's installed.
+#
+# Debug: builds with `!debug` (no *-debug packages produced) via a throwaway
+# makepkg.conf, and removes any existing hypr* -debug packages. Your global
+# /etc/makepkg.conf is left untouched.
+#
+# Usage:
+#   update-hyprland            # normal: rebuild only packages whose upstream commit changed
+#   update-hyprland --check    # just report what would be rebuilt, build nothing
+#   update-hyprland --force    # recovery: force a clean rebuild of the ENTIRE stack
+#                              #           (use this when you hit ".so missing" crashes)
+#
+# Recommended: run a full system upgrade first, so the stack is built against
+# your current libraries:   yay -Syu
+#
+set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Clean build environment.
+#
+# CMake's find_library searches every PATH entry BEFORE /usr/lib. ~/.zshrc adds
+# Spotify's install folder to PATH, so CMake picked Spotify's bundled
+# libEGL.so / libGLESv2.so and aquamarine failed to link ("undefined reference
+# to glDrawArrays ..."). System packages must never build against anything in
+# your home folder, so drop every PATH entry under $HOME (and relative entries),
+# and unset variables that steer compilers, linkers and CMake/pkg-config lookups.
+# ---------------------------------------------------------------------------
+CLEAN_PATH=""
+IFS=: read -ra _PATH_DIRS <<< "$PATH"
+for d in "${_PATH_DIRS[@]}"; do
+  [[ "$d" == /* && "$d" != "$HOME" && "$d" != "$HOME"/* ]] || continue
+  [[ ":$CLEAN_PATH:" == *":$d:"* ]] && continue      # drop duplicates
+  CLEAN_PATH+="${CLEAN_PATH:+:}$d"
+done
+export PATH="$CLEAN_PATH"
+unset LD_LIBRARY_PATH LIBRARY_PATH CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH \
+      CMAKE_PREFIX_PATH CMAKE_LIBRARY_PATH CMAKE_INCLUDE_PATH PKG_CONFIG_PATH
+
+# ---------------------------------------------------------------------------
+# ORDERING TEMPLATE ONLY — a package here is built solely if it's installed.
+# CORE order is MANDATORY (wiki FAQ order, plus split-out packages placed by
+# their real deps: hyprland-qt-support -> needs hyprlang; hyprtoolkit -> needs
+# aquamarine + hyprgraphics; hyprland-guiutils -> needs hyprtoolkit and is
+# itself a dep of hyprland).
+# ---------------------------------------------------------------------------
+CORE=(
+  hyprland-protocols-git
+  hyprwayland-scanner-git
+  hyprutils-git
+  hyprgraphics-git
+  hyprlang-git
+  hyprcursor-git
+  hyprland-qt-support-git          # lib (Qt); needs hyprlang
+  aquamarine-git
+  xdg-desktop-portal-hyprland-git
+  hyprwire-git
+  hyprtoolkit-git                  # needs aquamarine, hyprgraphics
+  hyprland-guiutils-git            # needs hyprtoolkit
+  hyprland-git
+)
+
+# hyprapps — any order, but only AFTER hyprland is rebuilt.
+APPS=(
+  hypridle-git
+  hyprpicker-git
+  hyprpolkitagent-git              # needs hyprtoolkit
+  hyprshot-git
+)
+
+# ---------------------------------------------------------------------------
+FORCE=0 CHECK=0
+case "${1:-}" in
+  -f|--force) FORCE=1 ;;
+  -n|--check) CHECK=1 ;;
+  "" ) ;;
+  * ) echo "Unknown option: $1  (use --check or --force)"; exit 2 ;;
+esac
+
+# What's actually installed from the ecosystem, as an AUR/foreign package.
+# (pacman -Qmq = foreign packages; drop the auto-generated *-debug packages.)
+mapfile -t INSTALLED < <(pacman -Qmq 2>/dev/null \
+  | grep -E '^(hypr|aquamarine|xdg-desktop-portal-hyprland)' \
+  | grep -v -- '-debug$' \
+  | sort)
+
+if ((${#INSTALLED[@]} == 0)); then
+  echo "No installed hypr* -git packages found. Installing everything."
+  INSTALLED=("${CORE[@]}" "${APPS[@]}")
+fi
+
+# Track which installed packages we've placed, so we can (a) never build one
+# that isn't installed, and (b) warn about any installed one not in the template.
+declare -A IS_INSTALLED=()
+for p in "${INSTALLED[@]}"; do IS_INSTALLED["$p"]=1; done
+
+installed() { [[ -n "${IS_INSTALLED[$1]:-}" ]]; }
+
+# Ordered build list = template order, filtered to installed packages only.
+BUILD=()
+declare -A PLACED=()
+for p in "${CORE[@]}" "${APPS[@]}"; do
+  if installed "$p"; then BUILD+=("$p"); PLACED["$p"]=1; fi
+done
+# Any installed hypr* package the template didn't know about: build it last
+# (FAQ: apps may go in any order after hyprland) and warn so you can check it.
+EXTRA=()
+for p in "${INSTALLED[@]}"; do
+  [[ -n "${PLACED[$p]:-}" ]] || EXTRA+=("$p")
+done
+if ((${#EXTRA[@]})); then
+  printf '\033[1;33m! Installed but not in the known order, will build last: %s\033[0m\n' "${EXTRA[*]}"
+  BUILD+=("${EXTRA[@]}")
+fi
+
+# ---------------------------------------------------------------------------
+# Change detection (normal mode).
+#
+# This does what yay's --devel does, but per-package, so WE stay in control of
+# the build order. Every installed -git package carries the commit it was built
+# from at the end of its pkgver (0.57.2.r137.g6d6e935 -> 6d6e935); we compare
+# that against upstream HEAD of the package's URL via `git ls-remote`.
+# Differs / no hash / unreachable => rebuild.
+#
+# The installed pkgver is used rather than yay's vcs.json because that file
+# lives in ~/.cache and vanishes with a cache clean, which made every package
+# look stale. pacman's database is always there and is what's really installed.
+#
+# We do this ourselves instead of using `yay -S --devel <pkg>` because --devel
+# makes even a single-target call fan out to yay's GLOBAL devel check and pull
+# the whole out-of-date -git set into that one invocation, which yay then builds
+# in ITS OWN dependency order — defeating the ordering this script enforces.
+# ---------------------------------------------------------------------------
+
+# needs_rebuild <pkg> -> exit 0 if it should be rebuilt, 1 if up to date.
+# Errs on the side of rebuilding whenever we can't be sure.
+needs_rebuild() {
+  local pkg="$1" ver url remote
+  ver=$(pacman -Q "$pkg" 2>/dev/null | awk '{print $2}')
+  ver=${ver%-*}                                    # drop -pkgrel
+  [[ "$ver" =~ ([0-9a-f]{7,})$ ]] || return 0      # no commit in pkgver => rebuild
+  local have=${BASH_REMATCH[1]}
+
+  url=$(pacman -Qi "$pkg" 2>/dev/null | sed -n 's/^URL *: //p')
+  [[ -n "$url" ]] || return 0
+  remote=$(GIT_TERMINAL_PROMPT=0 timeout 30 git ls-remote "$url" HEAD 2>/dev/null | awk 'NR==1{print $1}')
+  [[ -n "$remote" ]] || return 0                   # upstream unreachable => rebuild
+  [[ "$remote" == "$have"* ]] && return 1          # installed build is upstream HEAD
+  return 0                                         # upstream moved => rebuild
+}
+
+# Decide the ACTUAL build set. --force rebuilds everything in BUILD; otherwise
+# only packages whose upstream commit moved since yay last built them.
+TO_BUILD=()
+if (( FORCE )); then
+  TO_BUILD=("${BUILD[@]}")
+  echo ":: --force: rebuilding the entire installed stack, in order."
+else
+  echo ":: Checking upstream commits (this hits the network)..."
+  for p in "${BUILD[@]}"; do
+    if needs_rebuild "$p"; then
+      TO_BUILD+=("$p")
+      printf '   \033[1;33m↻ %-32s\033[0m rebuild\n' "$p"
+    else
+      printf '   \033[0;32m✓ %-32s\033[0m up to date\n' "$p"
+    fi
+  done
+fi
+
+if ((${#TO_BUILD[@]} == 0)); then
+  echo -e "\n\033[1;32m✔ Everything is already up to date.\033[0m Nothing to rebuild."
+  exit 0
+fi
+
+echo -e "\n:: Will rebuild these packages individually, in order:"
+printf '   %s\n' "${TO_BUILD[@]}"
+(( CHECK )) && exit 0
+
+# Keep sudo warm so long compiles don't time out the credential and re-prompt.
+sudo -v || { echo "Need sudo to install packages."; exit 1; }
+( while true; do sudo -n true; sleep 50; kill -0 "$$" 2>/dev/null || exit; done ) &
+SUDO_KEEPALIVE=$!
+
+# Disable split -debug package generation for these builds WITHOUT touching your
+# global /etc/makepkg.conf: copy it to a throwaway config and append !debug, then
+# hand that to makepkg via yay's --mflags. (Your system default has `debug` in
+# OPTIONS, which is what creates the *-debug packages.)
+MAKEPKG_CONF=$(mktemp --suffix=.makepkg.conf)
+trap 'kill "$SUDO_KEEPALIVE" 2>/dev/null; rm -f "$MAKEPKG_CONF"' EXIT
+cat /etc/makepkg.conf > "$MAKEPKG_CONF"
+printf "\n# added by update-hyprland — no split debug packages\nOPTIONS+=('!debug')\n" >> "$MAKEPKG_CONF"
+
+# yay flags — NOTE: no --devel here, on purpose (see change-detection block above).
+# Each package is built as its own single-target invocation, so ordering is ours.
+#
+#   --rebuild          always build the target — we've already decided it's stale,
+#                      and without --devel yay wouldn't otherwise rebuild a -git pkg
+#   --answerclean All  "CleanBuild" every package (fresh checkout) — FAQ requirement,
+#                      and what pulls the latest upstream commit for a changed pkg
+#   --answerdiff None  don't stop to show PKGBUILD diffs
+#   --cleanafter       remove build sources after a successful install
+#   --removemake       remove makedepends pulled in for the build
+#   --noconfirm        don't prompt (comment this out if you want to review each)
+#   --mflags ...       build against the !debug config above (no -debug packages)
+#
+# (No --needed: we only ever build a package we've decided to rebuild, so the
+# fresh build should always be (re)installed — including same-version relinks
+# after an ABI/soname bump in --force mode.)
+YAY_FLAGS=(--rebuild --answerclean All --answerdiff None --cleanafter --removemake --noconfirm --mflags "--config=$MAKEPKG_CONF")
+
+# Remove any existing hypr* -debug packages (stale detached symbols). Verified
+# leaf packages — nothing depends on them. New builds won't recreate them.
+mapfile -t DBG < <(pacman -Qmq 2>/dev/null \
+  | grep -E '^(hypr|aquamarine|xdg-desktop-portal-hyprland)' \
+  | grep -- '-debug$' | sort)
+if ((${#DBG[@]})); then
+  echo -e "\n:: Removing ${#DBG[@]} existing -debug package(s):"
+  printf '   %s\n' "${DBG[@]}"
+  sudo pacman -R --noconfirm "${DBG[@]}" || echo "  (debug removal reported an issue; continuing)"
+fi
+
+build() {
+  local pkg="$1"
+  printf '\n\033[1;34m==> %s\033[0m\n' "$pkg"
+  # One package per invocation, --rebuild: yay builds exactly this one, in place,
+  # against the deps you already have — it pulls no NEW hypr* package and cannot
+  # reorder the build (nothing else is a target).
+  if ! yay -S "${YAY_FLAGS[@]}" "$pkg"; then
+    printf '\033[1;31m!! build failed at %s — stopping.\033[0m\n' "$pkg"
+    printf '   Do NOT keep going: a half-updated stack is what causes the crashes.\n'
+    exit 1
+  fi
+}
+
+echo -e "\n:: Rebuilding in wiki-FAQ order$( ((FORCE)) && echo ' (forced clean rebuild)' )..."
+for p in "${TO_BUILD[@]}"; do build "$p"; done
+
+echo -e "\n\033[1;32m✔ Done.\033[0m Restart your Hyprland session (or reboot) to load the new binaries."
