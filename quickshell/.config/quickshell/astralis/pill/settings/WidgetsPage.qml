@@ -75,6 +75,7 @@ SettingsPage {
 
     rows: [
         { item: editRow, kind: "toggle", get: function () { return Widgets.editing; }, set: function (v) { Widgets.editing = v; } },
+        { item: coveredRow, kind: "toggle", get: function () { return Widgets.hideCovered; }, set: function (v) { Widgets.set("hideCovered", v); } },
         { item: coverRow, kind: "toggle", get: function () { return Widgets.cover.on; }, set: function (v) { Widgets.set("cover", "on", v); } },
         { item: coverSizeRow, kind: "scrub", bump: function (d) { coverSizeScrub.bump(d); } },
         { item: radiusRow, kind: "seg", vals: root.radiusOptions.map(o => o.value), get: function () { return Widgets.cover.radius; }, set: function (v) { Widgets.set("cover", "radius", v); } },
@@ -164,12 +165,26 @@ SettingsPage {
                     name: "Edit layout"
                     sub: "Drag, resize and snap the widgets on screen"
                     icon: "cursor"
-                    last: true
 
                     LinkToggle {
                         s: root.s
                         on: Widgets.editing
                         onToggled: Widgets.editing = !Widgets.editing
+                    }
+                }
+
+                SettingsRow {
+                    id: coveredRow
+                    surface: root
+                    name: "Hide under windows"
+                    sub: "Fade cover and lyrics out while a tiled window covers them"
+                    icon: "app-window"
+                    last: true
+
+                    LinkToggle {
+                        s: root.s
+                        on: Widgets.hideCovered
+                        onToggled: Widgets.set("hideCovered", !Widgets.hideCovered)
                     }
                 }
             }

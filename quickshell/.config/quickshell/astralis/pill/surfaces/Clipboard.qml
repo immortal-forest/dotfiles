@@ -437,8 +437,9 @@ PillSurface {
                 opacity: row.selected || rowHover.hovered ? 1 : 0
                 visible: opacity > 0.01
                 color: row.selected ? Colors.surface_container_highest : Qt.alpha(Colors.on_surface, 0.03)
+                // The launcher's selection edge exactly: a 6% hairline, not a rule.
                 border.width: row.selected ? 1 : 0
-                border.color: Qt.alpha(Colors.outline_variant, 0.9)
+                border.color: Qt.alpha(Colors.on_surface, 0.06)
                 Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
             }
 

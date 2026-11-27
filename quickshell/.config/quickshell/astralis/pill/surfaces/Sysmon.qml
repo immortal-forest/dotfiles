@@ -378,7 +378,11 @@ PillSurface {
                     height: diskVal.height
                     Text {
                         anchors.left: parent.left
-                        anchors.baseline: diskVal.baseline
+                        // Baseline-aligned with the value. diskVal sits in the
+                        // Row beside this, out of reach of an anchor (siblings
+                        // and parent only: the anchor was dropped with a
+                        // warning and the label sat at the top), so bind y.
+                        y: diskRow.y + diskVal.y + diskVal.baselineOffset - baselineOffset
                         text: "Disk"
                         color: root.faint
                         font.family: Appearance.font.family
@@ -388,6 +392,7 @@ PillSurface {
                         font.letterSpacing: 1 * root.s
                     }
                     Row {
+                        id: diskRow
                         anchors.right: parent.right
                         spacing: 1 * root.s
                         Text {

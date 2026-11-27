@@ -62,7 +62,7 @@ PanelWindow {
             root._closing = false;
             closeTimer.stop();
             root.refreshHypr();
-            root.captureRev++;
+            captureArm.restart();
             profileProbe.running = true;
             profileFile.reload();
             Brightness.refresh();
@@ -217,8 +217,23 @@ PanelWindow {
         interval: 120
         onTriggered: root.refreshHypr()
     }
-    /** Bumped on open so the window thumbnails re-capture. */
-    property int captureRev: 0
+    /**
+     * The window thumbnails capture only once the board has risen. Each one is
+     * a full-resolution copy of its window (a 2560×1600 terminal is 16 MB),
+     * and taking them as the window mapped put every texture upload into the
+     * first frames: the board froze 240–330 ms before moving and then ran at
+     * ~50 fps (measured 2026-11-27; armed after the rise: first frame ~50 ms,
+     * median 12 ms). App icons stand in until they land. Disarmed when the
+     * window unmaps, so every open captures fresh and nothing is held closed.
+     */
+    property bool captureArmed: false
+    Timer {
+        id: captureArm
+        // when the last tile (order 8) has finished its rise, see Tile's inAnim
+        interval: 60 * Motion.mult + 8 * Motion.rowStagger * 2 + Motion.largeDur
+        onTriggered: root.captureArmed = root.open
+    }
+    onVisibleChanged: if (!visible) root.captureArmed = false
 
     /** Wi-Fi / Bluetooth state lines for the quick tiles. */
     readonly property string wifiSub: {
@@ -1948,10 +1963,8 @@ PanelWindow {
                     ScreencopyView {
                         id: shot
                         anchors.fill: parent
-                        captureSource: root.visible && win.modelData.tl ? win.modelData.tl.wayland : null
+                        captureSource: root.captureArmed && win.modelData.tl ? win.modelData.tl.wayland : null
                         live: false
-                        readonly property int rev: root.captureRev
-                        onRevChanged: if (root.open && hasContent) captureFrame()
                     }
                     IconImage {
                         anchors.centerIn: parent
@@ -2299,7 +2312,8 @@ PanelWindow {
      * Icon · fader · readout. The fader is the Mixer's ink-fader laid on its
      * side: a thick rounded track split by a thin handle bar with a gap either
      * side, active segment in primary (outline when muted), the rest in
-     * secondary_container with a stop dot at the far end. `value` is 0..100
+     * surface_container_highest (quiet under any palette, like the Mixer's)
+     * with a stop dot at the far end. `value` is 0..100
      * and host-owned; drags emit moved(v), let-go emits released().
      */
     component SliderRow: Item {
@@ -2384,7 +2398,7 @@ PanelWindow {
                 width: Math.max(0, track.width - x)
                 height: parent.height
                 visible: width > 0.5
-                color: Colors.secondary_container
+                color: Colors.surface_container_highest
                 topRightRadius: track.outerR
                 bottomRightRadius: track.outerR
                 topLeftRadius: Math.min(track.innerR, width / 2)
@@ -2397,7 +2411,7 @@ PanelWindow {
                 width: 4 * root.s
                 height: width
                 radius: width / 2
-                color: Colors.on_secondary_container
+                color: Colors.on_surface_variant
                 visible: inactiveSeg.width > 12 * root.s
             }
             Rectangle {

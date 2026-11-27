@@ -34,6 +34,7 @@ SettingsPage {
             { item: gapsInRow, kind: "scrub", bump: function (d) { gapsInScrub.bump(d); } },
             { item: gapsOutRow, kind: "scrub", bump: function (d) { gapsOutScrub.bump(d); } },
             { item: borderRow, kind: "scrub", bump: function (d) { borderScrub.bump(d); } },
+            { item: borderMotionRow, kind: "seg", vals: root.motionOptions.map(function (o) { return o.value; }), get: function () { return root.borderMotion; }, set: function (v) { root.borderMotion = v; root.setStore.set("borderMotion", v); } },
             { item: roundRow, kind: "scrub", bump: function (d) { roundScrub.bump(d); } },
             { item: resizeRow, kind: "toggle", get: function () { return root.resizeOnBorder; }, set: function (v) { root.resizeOnBorder = v; root.setStore.set("resizeOnBorder", v); } },
             { item: activeColRow, kind: "seg", vals: root.activeOptions.map(function (o) { return o.value; }), get: function () { return root.activeBorder; }, set: function (v) { root.activeBorder = v; root.setStore.set("activeBorder", v); } },
@@ -52,6 +53,13 @@ SettingsPage {
     property int borderSize: 2
     property int rounding: 10
     property bool resizeOnBorder: false
+    property string borderMotion: "focus"
+    readonly property var motionOptions: [
+        { label: "Spin", value: "loop" },
+        { label: "On AC", value: "onAc" },
+        { label: "Focus", value: "focus" },
+        { label: "Still", value: "still" }
+    ]
     property string activeBorder: ""
     property string inactiveBorder: ""
     property bool blurOn: true
@@ -81,6 +89,7 @@ SettingsPage {
         root.borderSize = root.numOr(root.setStore.get("borderSize"), 2);
         root.rounding = root.numOr(root.setStore.get("rounding"), 10);
         root.resizeOnBorder = root.setStore.get("resizeOnBorder") === true;
+        root.borderMotion = String(root.setStore.get("borderMotion"));
         root.activeBorder = String(root.setStore.get("activeBorder"));
         root.inactiveBorder = String(root.setStore.get("inactiveBorder"));
         root.blurOn = root.setStore.get("blurEnabled") === true;
@@ -278,6 +287,25 @@ SettingsPage {
                         onEdited: v => {
                             root.borderSize = v;
                             root.setStore.set("borderSize", v);
+                        }
+                    }
+                }
+
+                SettingsRow {
+                    id: borderMotionRow
+                    surface: root
+                    name: "Border motion"
+                    sub: "A constant spin redraws both screens every frame"
+                    captionOnFocus: true
+                    icon: "sparkles"
+
+                    SettingsSeg {
+                        s: root.s
+                        options: root.motionOptions
+                        value: root.borderMotion
+                        onPicked: (v) => {
+                            root.borderMotion = v;
+                            root.setStore.set("borderMotion", v);
                         }
                     }
                 }

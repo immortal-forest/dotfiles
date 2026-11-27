@@ -428,13 +428,11 @@ SettingsPage {
         anchors.left: parent.left
         anchors.right: parent.right
         height: 34 * root.s
-        radius: 10 * root.s
+        // The shell's button: a tinted stadium, no rule (architecture §2b-v).
+        radius: height / 2
         color: Qt.alpha(Colors.primary, checkArea.containsMouse && !root.checking ? 0.30 : 0.16)
-        border.width: 1
-        border.color: Qt.alpha(Colors.primary, checkArea.containsMouse && !root.checking ? 0.6 : 0.4)
         opacity: root.checking ? 0.55 : 1
         Behavior on color { ColorAnimation { duration: Motion.fast } }
-        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
         Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
 
         scale: (checkArea.pressed && !root.checking) ? 0.98 : 1

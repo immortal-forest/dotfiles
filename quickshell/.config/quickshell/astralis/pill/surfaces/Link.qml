@@ -1497,7 +1497,11 @@ PillSurface {
         }
     }
 
-    /** Pill action on an item page: outlined, `filled` (primary) or `danger` (error). */
+    /**
+     * Pill action on an item page: neutral (surface_container_highest),
+     * `filled` (primary) or `danger` (error tint). Never outlined: the shell
+     * marks a control with its fill, not a rule (architecture §2b-v).
+     */
     component ItemAction: Rectangle {
         id: iac
 
@@ -1515,9 +1519,7 @@ PillSurface {
         width: iacRow.implicitWidth + 26 * root.s
         radius: height / 2
         color: iac.danger ? Qt.alpha(Colors.error, 0.12)
-            : (iac.filled ? Colors.primary : "transparent")
-        border.width: iac.filled ? 0 : 1
-        border.color: iac.danger ? Qt.alpha(Colors.error, 0.45) : Qt.alpha(Colors.outline_variant, 0.6)
+            : (iac.filled ? Colors.primary : Colors.surface_container_highest)
         opacity: enabled ? 1 : 0.4
         Behavior on color { ColorAnimation { duration: Motion.fast } }
         Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
@@ -2867,13 +2869,13 @@ PillSurface {
                             anchors.verticalCenter: parent.verticalCenter
                             width: primaryLabel.implicitWidth + 18 * root.s
                             height: 20 * root.s
-                            radius: 7 * root.s
-                            color: primaryArea.containsMouse ? Colors.surface_container_highest : "transparent"
-                            border.width: 1
-                            border.color: primaryArea.containsMouse
-                                ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
+                            radius: height / 2
+                            // Neutral chip; hover is the M3 state layer (8% of
+                            // the content colour) folded into the fill.
+                            color: primaryArea.containsMouse
+                                ? Qt.tint(Colors.surface_container_highest, Qt.alpha(Colors.on_surface, 0.08))
+                                : Colors.surface_container_highest
                             Behavior on color { ColorAnimation { duration: Motion.fast } }
-                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
                             scale: primaryArea.pressed ? 0.92 : 1
                             Behavior on scale {
@@ -2921,17 +2923,16 @@ PillSurface {
                             anchors.verticalCenter: parent.verticalCenter
                             width: trustLabel.implicitWidth + 18 * root.s
                             height: 20 * root.s
-                            radius: 7 * root.s
-                            color: devItem.isTrusted ? Qt.alpha(Colors.primary, 0.12)
-                                : (trustArea.containsMouse ? Colors.surface_container_highest : "transparent")
-                            border.width: 1
-                            border.color: devItem.isTrusted
-                                ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
+                            radius: height / 2
+                            color: devItem.isTrusted
+                                ? Qt.alpha(Colors.primary, trustArea.containsMouse ? 0.24 : 0.18)
+                                : (trustArea.containsMouse
+                                    ? Qt.tint(Colors.surface_container_highest, Qt.alpha(Colors.on_surface, 0.08))
+                                    : Colors.surface_container_highest)
                             // BlueZ acknowledges the Trusted write a beat later,
                             // so the chip settles into the accent instead of
                             // flicking when the property comes back.
                             Behavior on color { ColorAnimation { duration: Motion.fast } }
-                            Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
                             scale: trustArea.pressed ? 0.92 : 1
                             Behavior on scale {
@@ -2981,11 +2982,9 @@ PillSurface {
                             anchors.verticalCenter: parent.verticalCenter
                             width: forgetLabel.implicitWidth + 18 * root.s
                             height: 20 * root.s
-                            radius: 7 * root.s
+                            radius: height / 2
                             color: forgetArea.containsMouse
                                 ? Qt.alpha(Colors.error, 0.2) : Qt.alpha(Colors.error, 0.12)
-                            border.width: 1
-                            border.color: Qt.alpha(Colors.error, 0.45)
                             Behavior on color { ColorAnimation { duration: Motion.fast } }
 
                             scale: forgetArea.pressed ? 0.92 : 1

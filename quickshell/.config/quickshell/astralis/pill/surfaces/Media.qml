@@ -488,11 +488,16 @@ PillSurface {
                         anchors.verticalCenter: parent.verticalCenter
                         height: 32 * root.s
                         width: bubInner.width + 18 * root.s
-                        radius: 11 * root.s
-                        color: isActive ? Qt.alpha(Colors.primary, 0.2) : Qt.alpha(Colors.on_surface, bubArea.containsMouse ? 0.1 : 0.045)
+                        // The shell's chip (§2b-v): a filled stadium, no rule.
+                        // The chosen player wears the primary tint (the
+                        // selection colour, kept light so its art and text
+                        // read); the rest are neutral chips.
+                        radius: height / 2
+                        color: isActive ? Qt.alpha(Colors.primary, 0.2)
+                            : bubArea.containsMouse
+                                ? Qt.tint(Colors.surface_container_highest, Qt.alpha(Colors.on_surface, 0.08))
+                                : Colors.surface_container_highest
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
-                        border.width: 1
-                        border.color: isActive ? Colors.primary : Qt.alpha(Colors.on_surface, 0.12)
 
                         Row {
                             id: bubInner

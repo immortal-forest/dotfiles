@@ -824,9 +824,8 @@ PillSurface {
                 Rectangle {
                     anchors.fill: parent
                     radius: 13 * root.s
-                    color: Qt.alpha(Colors.error, 0.06)
-                    border.width: 1
-                    border.color: Qt.alpha(Colors.error, 0.2)
+                    // A callout marked by its tint alone, no rule (§2b-v).
+                    color: Qt.alpha(Colors.error, 0.10)
                 }
 
                 Column {

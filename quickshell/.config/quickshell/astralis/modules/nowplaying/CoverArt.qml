@@ -45,7 +45,9 @@ PanelWindow {
     // app) — a browser or video player playing never shows here. Nothing shows
     // until a cover has actually decoded (no empty placeholder square); while
     // the placer is open it shows even with nothing playing.
-    readonly property bool shown: (Players.music && TrackInfo.art.length > 0 && slots.ready) || Widgets.editing
+    /** A tiled window covers this screen's desktop (NowPlaying.qml). */
+    property bool covered: false
+    readonly property bool shown: (Players.music && TrackInfo.art.length > 0 && slots.ready && !covered) || Widgets.editing
 
     color: "transparent"
     WlrLayershell.layer: win.layer

@@ -24,6 +24,10 @@ Singleton {
     readonly property var defaults: ({
         grid: 24,
         avoid: true,
+        // Fade the cover and lyrics out while a tiled window covers their
+        // screen's desktop: they otherwise keep animating (the lyrics sweep
+        // redraws every frame) and show through translucent windows.
+        hideCovered: true,
         // Song info (modules/nowplaying/CoverInfo.qml): info off|below|side|overlay|edge;
         // infoFields title|artist (+artist)|album (+artist+album); infoShow always|hover|playing;
         // infoFont "" = shell font; infoSize px, infoSub = detail size % of it; infoCase
@@ -66,6 +70,8 @@ Singleton {
     readonly property int grid: data.grid
     /** Placer anti-collision: frames slide around / stop at each other instead of overlapping. */
     readonly property bool avoid: data.avoid
+    /** Desktop widgets fade out while a tiled window covers their screen. */
+    readonly property bool hideCovered: data.hideCovered
 
     /** Placer open (not persisted). */
     property bool editing: false
@@ -86,6 +92,8 @@ Singleton {
             d.grid = keyOrObj;
         else if (widget === "avoid")
             d.avoid = keyOrObj;
+        else if (widget === "hideCovered")
+            d.hideCovered = keyOrObj;
         else if (typeof keyOrObj === "object")
             Object.assign(d[widget], keyOrObj);
         else
@@ -104,6 +112,7 @@ Singleton {
         });
         d.grid = root.data.grid;
         d.avoid = root.data.avoid;
+        d.hideCovered = root.data.hideCovered;
         root.data = d;
         saveTimer.restart();
     }
@@ -119,6 +128,8 @@ Singleton {
                 d.grid = o.grid;
             if (typeof o.avoid === "boolean")
                 d.avoid = o.avoid;
+            if (typeof o.hideCovered === "boolean")
+                d.hideCovered = o.hideCovered;
             ["cover", "lyrics", "depth"].forEach(function (w) {
                 if (o[w] && typeof o[w] === "object")
                     Object.keys(d[w]).forEach(function (k) {

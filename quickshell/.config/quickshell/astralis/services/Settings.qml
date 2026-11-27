@@ -98,6 +98,13 @@ Singleton {
         // doesn't automatically suit a workspace swap.
         animWindowStyle: "slide",            // "slide" | "popin <percent>%" | "gnomed"
         animWorkspaceStyle: "",              // "" (leaf default) | "slide" | "slidevert" | "fade" | "slidefade <percent>%" | "slidefadevert <percent>%"
+        // The border gradient's angle (hypr.d/animations.lua `borderangle`):
+        // "loop" spins forever, "onAc" spins only on mains power, "focus"
+        // sweeps once per focus change, "still" never moves. A loop redraws
+        // every border, and with them both screens and the blur behind
+        // translucent windows, every frame: Hyprland went 74% → 19% of the
+        // 780M with it off (2026-11-27), so the hand-written default is once.
+        borderMotion: "focus",
         // 飾 LOOK (hypr.d/general.lua + decorations.lua) — wired into
         // scalarKeywords/scalarLua below; the subpage just set()s them.
         gapsIn: 3,
@@ -210,6 +217,23 @@ Singleton {
         if (fallback !== undefined)
             return fallback;
         return root.defaults[key];
+    }
+
+    /** The border motion in force now: "onAc" resolves against the power source. */
+    function borderMotionNow() {
+        var m = String(root.get("borderMotion"));
+        if (m === "onAc")
+            return Battery.discharging ? "still" : "loop";
+        return m;
+    }
+
+    // "On AC" follows the plug: re-apply when the power source flips.
+    Connections {
+        target: Battery
+        function onDischargingChanged() {
+            if (root.get("borderMotion") === "onAc")
+                applyTimer.restart();
+        }
     }
 
     function set(key, value) {
@@ -353,6 +377,14 @@ Singleton {
                     + ", bezier = \"" + l.bezier + "\""
                     + (style.length > 0 ? ", style = \"" + style + "\"" : "") + " })");
             }
+        }
+
+        // 縁 border motion (see `defaults.borderMotion`). Its own leaf line,
+        // not part of animLeaves: borderangle's speed is on a different scale.
+        if (root.has("borderMotion")) {
+            var bm = root.borderMotionNow();
+            lua.push("hl.animation({ leaf = \"borderangle\", enabled = " + (bm !== "still")
+                + ", speed = 30, bezier = \"liner\", style = \"" + (bm === "loop" ? "loop" : "once") + "\" })");
         }
 
         // table-driven scalars (the Look/Input pages set() these keys)

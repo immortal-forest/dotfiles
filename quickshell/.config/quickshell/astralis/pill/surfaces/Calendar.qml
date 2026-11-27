@@ -934,16 +934,13 @@ PillSurface {
                         required property int modelData
                         width: 22 * root.s
                         height: 22 * root.s
-                        radius: Motion.rSmall * root.s
-                        color: navArea.containsMouse ? Colors.surface_container_highest : "transparent"
-                        // The outline is always drawn and only its colour
-                        // travels: toggling border.width instead snaps the ring
-                        // on with nothing to animate between.
-                        border.width: 1
-                        border.color: navArea.containsMouse
-                            ? Qt.alpha(Colors.outline_variant, 0.9) : "transparent"
+                        // A standard icon button, as everywhere else in the
+                        // shell: round, transparent at rest, and hover is the
+                        // M3 state layer (8% of the content colour), no ring.
+                        radius: width / 2
+                        color: navArea.pressed ? Qt.alpha(Colors.on_surface, 0.12)
+                            : navArea.containsMouse ? Qt.alpha(Colors.on_surface, 0.08) : "transparent"
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
-                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
                         Accessible.role: Accessible.Button
                         Accessible.name: nav.modelData < 0 ? "Previous month" : "Next month"
@@ -1622,14 +1619,13 @@ PillSurface {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 28 * root.s
                         height: 28 * root.s
-                        radius: Motion.rSmall * root.s
+                        // Round, filled, no ring: armed is said by the tertiary
+                        // tint alone (architecture §2b-v).
+                        radius: width / 2
                         readonly property bool armed: editor.titleVal.trim().length > 0
-                        color: addArea.containsMouse && armed ? Qt.alpha(Colors.tertiary, 0.22)
-                            : (armed ? Qt.alpha(Colors.tertiary, 0.12) : Colors.surface_container_highest)
-                        border.width: 1
-                        border.color: armed ? Qt.alpha(Colors.tertiary, 0.5) : Qt.alpha(Colors.outline_variant, 0.9)
+                        color: addArea.containsMouse && armed ? Qt.alpha(Colors.tertiary, 0.26)
+                            : (armed ? Qt.alpha(Colors.tertiary, 0.16) : Colors.surface_container_highest)
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
-                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
                         Accessible.role: Accessible.Button
                         Accessible.name: "Add event"
@@ -1837,14 +1833,13 @@ PillSurface {
                         anchors.verticalCenter: parent.verticalCenter
                         width: parent.width - extendBtn.width - clearSpan.width - 8 * root.s
                         height: 28 * root.s
-                        radius: Motion.rSmall * root.s
+                        // The shell's chip: a filled stadium, no rule (§2b-v).
+                        radius: height / 2
                         color: Colors.surface_container_highest
-                        border.width: 1
-                        border.color: Qt.alpha(Colors.outline_variant, 0.9)
 
                         Row {
                             anchors.left: parent.left
-                            anchors.leftMargin: 9 * root.s
+                            anchors.leftMargin: 11 * root.s
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 7 * root.s
 
@@ -1852,7 +1847,7 @@ PillSurface {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 9 * root.s
                                 height: 9 * root.s
-                                radius: 3 * root.s
+                                radius: width / 2
                                 color: Colors.tertiary
                             }
                             Text {
@@ -1876,14 +1871,11 @@ PillSurface {
                         id: extendBtn
                         anchors.verticalCenter: parent.verticalCenter
                         readonly property bool armed: root.pickingEnd
-                        width: extendLabel.implicitWidth + 18 * root.s
+                        width: extendLabel.implicitWidth + 22 * root.s
                         height: 28 * root.s
-                        radius: Motion.rSmall * root.s
-                        color: armed ? Qt.alpha(Colors.tertiary, 0.14) : Colors.surface_container_highest
-                        border.width: 1
-                        border.color: armed ? Qt.alpha(Colors.tertiary, 0.5) : Qt.alpha(Colors.outline_variant, 0.9)
+                        radius: height / 2
+                        color: armed ? Qt.alpha(Colors.tertiary, 0.18) : Colors.surface_container_highest
                         Behavior on color { ColorAnimation { duration: Motion.fast } }
-                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
                         Accessible.role: Accessible.Button
                         Accessible.name: root.pickingEnd ? "Picking end day"

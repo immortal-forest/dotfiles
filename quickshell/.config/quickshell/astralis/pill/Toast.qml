@@ -424,18 +424,17 @@ Item {
         height: 22 * chip.s
         width: chipRow.implicitWidth + 18 * chip.s
         radius: height / 2
+        // Fill only, never an outline (architecture §2b-v): the neutral chip
+        // sits one rung above the toast's own surface so it still reads, and
+        // hover folds the M3 state layer (8% of the content colour) into it.
         color: (chip.onError && chip.primary) ? (chipArea.containsMouse ? Qt.lighter(Colors.error, 1.08) : Colors.error)
-            : chip.onError ? Qt.alpha(Colors.on_error_container, chipArea.containsMouse ? 0.16 : 0.08)
+            : chip.onError ? Qt.alpha(Colors.on_error_container, chipArea.containsMouse ? 0.20 : 0.12)
             : chip.danger ? Qt.alpha(Colors.error, chipArea.containsMouse ? 0.28 : 0.18)
             : chip.primary ? Qt.alpha(Colors.primary, chipArea.containsMouse ? 0.24 : 0.14)
-            : (chipArea.containsMouse ? Colors.surface_container_highest : Colors.surface_container_high)
-        border.width: 1
-        border.color: (chip.onError && chip.primary) ? "transparent"
-            : chip.onError ? Qt.alpha(Colors.on_error_container, 0.28)
-            : chip.danger ? Qt.alpha(Colors.error, 0.6)
-            : chip.primary ? Qt.alpha(Colors.primary, 0.5) : Qt.alpha(Colors.outline_variant, 0.6)
+            : (chipArea.containsMouse
+                ? Qt.tint(Colors.surface_container_highest, Qt.alpha(Colors.on_surface, 0.08))
+                : Colors.surface_container_highest)
         Behavior on color { ColorAnimation { duration: Motion.fast } }
-        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
         Behavior on width {
             NumberAnimation { duration: Motion.glide; easing.type: Motion.easeBezier; easing.bezierCurve: Motion.expressiveFastSpatial }
         }

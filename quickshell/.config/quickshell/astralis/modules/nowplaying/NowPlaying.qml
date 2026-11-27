@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import "../../services"
@@ -52,7 +53,38 @@ Scope {
         Scope {
             id: per
             required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
+            readonly property real s: modelData ? Flags.scaleFor(modelData) : 1
+
+            readonly property var hMonitor: {
+                var mons = Hyprland.monitors.values;
+                for (var i = 0; i < mons.length; i++)
+                    if (mons[i] && mons[i].name === per.modelData.name)
+                        return mons[i];
+                return null;
+            }
+            /**
+             * This screen's desktop is covered: its active workspace holds a
+             * tiled window (tiles fill the work area; floating ones are left
+             * out). The toplevels' ipc objects are kept fresh by shell.qml's
+             * refreshToplevels on every window event. While covered the
+             * widgets fade out and their windows unmap, which also stops the
+             * lyrics' per-frame sweep and keeps their text from showing
+             * through a translucent terminal. Settings › Widgets can keep them.
+             */
+            readonly property bool covered: {
+                if (!Widgets.hideCovered)
+                    return false;
+                var ws = per.hMonitor ? per.hMonitor.activeWorkspace : null;
+                if (!ws || !ws.toplevels)
+                    return false;
+                var tl = ws.toplevels.values;
+                for (var i = 0; i < tl.length; i++) {
+                    var o = tl[i] ? tl[i].lastIpcObject : null;
+                    if (o && o.floating === false)
+                        return true;
+                }
+                return false;
+            }
 
             Loader {
                 active: Widgets.cover.on
@@ -62,6 +94,7 @@ Scope {
                     sw: per.modelData.width
                     sh: per.modelData.height
                     layer: root.layer
+                    covered: per.covered
                 }
             }
 
@@ -73,6 +106,7 @@ Scope {
                     sw: per.modelData.width
                     sh: per.modelData.height
                     layer: root.layer
+                    covered: per.covered
                 }
             }
 

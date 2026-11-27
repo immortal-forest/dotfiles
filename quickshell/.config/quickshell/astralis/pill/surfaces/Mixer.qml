@@ -44,15 +44,14 @@ PillSurface {
     readonly property var source: Pipewire.defaultAudioSource
 
     /**
-     * The header's controls are Ricelin-sized 26dp, not M3's 40dp icon button
-     * or 32dp chip. They are handed a scaled-down `s` rather than an overridden
+     * The header's icon buttons are Ricelin-sized 26dp, not M3's 40dp icon
+     * button (the codec pill beside them is 26 too). They are handed a scaled-down `s` rather than an overridden
      * `width`, because `s` is the one knob every m3/ component is built to take
      * — it carries the glyph, the corner radius, the hit-target floor and the
      * focus-ring offset down with it, where a bare width override would leave
      * all four sized for a 40dp button.
      */
     readonly property real hdrBtnS: root.s * 26 / M3.iconButtonSize
-    readonly property real hdrChipS: root.s * 26 / M3.chipHeight
 
     /**
      * Screen-reader names have to say WHICH device is being muted or routed —
@@ -446,26 +445,71 @@ PillSurface {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6 * root.s
 
-            // Bluetooth codec chip: shows the wire codec of the active bluez
-            // sink and opens the codec menu. Hidden entirely unless the
-            // default sink is Bluetooth *and* its codecs were queryable.
-            // An assist chip, not a filter one: "open the codec list" is an
-            // action, and a filter chip would slide a check glyph in to mean
-            // "menu open", which is a lie about what was selected.
-            M3Chip {
+            // Bluetooth codec pill: the wire codec of the active bluez sink,
+            // opening the codec menu. Hidden entirely unless the default sink
+            // is Bluetooth *and* its codecs were queryable.
+            //
+            // Drawn in the shell's own header-action idiom (the notification
+            // centre's "Clear all": a 26-high stadium with a soft role tint,
+            // a 13 glyph and an 11 DemiBold label), not as an M3 assist chip.
+            // The spec chip is an outlined 8dp rectangle, which made it the
+            // only rule and the only square corner in a header of borderless
+            // round buttons. It deepens while its menu is open, as the route
+            // pickers beside it light up for theirs.
+            Rectangle {
                 id: codecChip
+                readonly property bool open: root.openPicker === "codec"
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.sinkIsBluez && root.btCodecs.length > 0
-                // Mid-switch the chip goes to M3's disabled treatment rather
-                // than a hand-dimmed label: the profile swap tears the sink
-                // down, so a second click during it genuinely cannot land.
+                // Mid-switch the profile swap tears the sink down, so a second
+                // click genuinely cannot land: the label dims to M3's disabled
+                // content opacity and the pill stops answering.
                 enabled: !root.btCodecSwitching
-                s: root.hdrChipS
-                kind: "assist"
-                icon: "bluetooth"
-                text: root.btCodecChipText
-                accessibleName: "Bluetooth audio codec, " + root.btCodecChipText
-                onClicked: root.openPicker = root.openPicker === "codec" ? "" : "codec"
+                height: 26 * root.s
+                width: codecRow.implicitWidth + 22 * root.s
+                radius: height / 2
+                color: Qt.alpha(Colors.primary, open ? 0.20 : 0.10)
+                Behavior on color { ColorAnimation { duration: Motion.fast } }
+                Behavior on width { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+
+                M3StateLayer {
+                    anchors.fill: parent
+                    enabled: codecChip.enabled
+                    s: root.s
+                    radius: codecChip.radius
+                    contentColor: Colors.primary
+                    // The shell's deep dip for small text-button targets.
+                    pressScale: 0.92
+                    minTarget: 26
+                    accessibleRole: Accessible.Button
+                    accessibleName: "Bluetooth audio codec, " + root.btCodecChipText
+                    onClicked: root.openPicker = codecChip.open ? "" : "codec"
+                }
+
+                Row {
+                    id: codecRow
+                    anchors.centerIn: parent
+                    spacing: 6 * root.s
+                    opacity: codecChip.enabled ? 1 : M3.disabledContentOpacity
+                    Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+
+                    GlyphIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 13 * root.s
+                        height: 13 * root.s
+                        name: "bluetooth"
+                        stroke: 1.8
+                        color: Colors.primary
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.btCodecChipText
+                        color: Colors.primary
+                        font.family: Appearance.font.family
+                        font.pixelSize: 11 * root.s
+                        font.weight: Font.DemiBold
+                    }
+                }
             }
 
             // The route pickers and the two mutes are all toggle icon buttons:
@@ -683,8 +727,12 @@ PillSurface {
 
             // M3 Expressive slider, vertical: a thick rounded track split by
             // a thin handle bar, with a gap either side of it. Active segment
-            // below in primary, inactive above in secondary_container, and
-            // stop dots marking the top end (and 100% when it can over-amp).
+            // below in primary, inactive above in surface_container_highest,
+            // and stop dots marking the top end (and 100% when it can
+            // over-amp). The spec's secondary_container comes out a saturated
+            // dark red under a bold/vivid palette, heavier than the pale
+            // active fill, so 4% read as nearly full; the inactive side must
+            // stay the quiet one whatever the wallpaper.
             readonly property real frac: Math.max(0, Math.min(1, fader.value / fader.faderMax))
             readonly property real trackW: 18 * root.s
             readonly property real gap: 4 * root.s
@@ -711,7 +759,7 @@ PillSurface {
                 width: trackArea.trackW
                 height: Math.max(0, trackArea.handleY - trackArea.handleH / 2 - trackArea.gap)
                 visible: height > 0.5
-                color: Colors.secondary_container
+                color: Colors.surface_container_highest
                 topLeftRadius: trackArea.outerR
                 topRightRadius: trackArea.outerR
                 bottomLeftRadius: Math.min(trackArea.innerR, height / 2)
@@ -742,7 +790,7 @@ PillSurface {
                 width: 4 * root.s
                 height: width
                 radius: width / 2
-                color: Colors.on_secondary_container
+                color: Colors.on_surface_variant
                 visible: inactiveSeg.height > 12 * root.s
             }
 
@@ -756,7 +804,7 @@ PillSurface {
                 width: 4 * root.s
                 height: width
                 radius: width / 2
-                color: yC > trackArea.handleY ? Colors.on_primary : Colors.on_secondary_container
+                color: yC > trackArea.handleY ? Colors.on_primary : Colors.on_surface_variant
                 z: 1
             }
 

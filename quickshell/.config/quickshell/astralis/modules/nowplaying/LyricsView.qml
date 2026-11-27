@@ -65,7 +65,9 @@ PanelWindow {
     readonly property color litB: cfg.ink === "theme" ? Colors.tertiary : cfg.ink === "mono" ? Qt.rgba(0.92, 0.92, 0.95, 1) : TrackInfo.accent2
     readonly property color glowC: cfg.ink === "theme" ? Colors.primary : cfg.ink === "mono" ? Qt.rgba(1, 1, 1, 0.55) : TrackInfo.accentDeep
 
-    readonly property bool shown: Players.has && Lyrics.has
+    /** A tiled window covers this screen's desktop (NowPlaying.qml). */
+    property bool covered: false
+    readonly property bool shown: Players.has && Lyrics.has && !covered
     /** fill "write": lines are hidden until sung; the current line's characters
      *  then appear one by one as the singing reaches them — each wipes in from
      *  the left while fading up and settling down onto the line, on its own
