@@ -71,6 +71,24 @@ SettingsPage {
         });
     }
 
+    /**
+     * Shell size per screen (Flags.monScale via Flags.setMonScale). 100% is
+     * the laptop panel's physical size; Auto is 100% on the built-in panel
+     * and 120% on an external one (it sits further away). See Flags.scaleFor.
+     */
+    readonly property var shellSizeOptions: [
+        { label: "Auto", value: 0 },
+        { label: "90%", value: 0.9 },
+        { label: "100%", value: 1.0 },
+        { label: "115%", value: 1.15 },
+        { label: "130%", value: 1.3 },
+        { label: "150%", value: 1.5 }
+    ]
+    function shellSizeOf(name) {
+        var f = Flags.monScale ? Flags.monScale[name] : undefined;
+        return (typeof f === "number" && f > 0) ? f : 0;
+    }
+
     readonly property var transformOptions: [
         { label: "0°", value: 0 },
         { label: "90°", value: 1 },
@@ -99,6 +117,7 @@ SettingsPage {
             { item: resRow, kind: "scrub", bump: function (d) { card.bumpRes(d); } },
             { item: rateRow, kind: "scrub", bump: function (d) { card.bumpRate(d); } },
             { item: scaleRow, kind: "seg", vals: root.scaleOptions.map(function (o) { return o.value; }), get: function () { return card.pickScale; }, set: function (v) { card.pickScale = v; } },
+            { item: shellSizeRow, kind: "seg", vals: root.shellSizeOptions.map(function (o) { return o.value; }), get: function () { return root.selMon ? root.shellSizeOf(root.selMon.name) : 0; }, set: function (v) { if (root.selMon) Flags.setMonScale(root.selMon.name, v); } },
             { item: transformRow, kind: "seg", vals: root.transformOptions.map(function (o) { return o.value; }), get: function () { return card.pickTransform; }, set: function (v) { card.pickTransform = v; } }
         ];
     }
@@ -259,7 +278,7 @@ SettingsPage {
                 if (!root.monitorByName(root.selName))
                     root.selName = root.monitors.length > 0 ? root.monitors[0].name : "";
                 if (!root.quietRead)
-                    root.note = "Changes apply live, no reload. If a mode looks wrong, it reverts on its own after 12s.";
+                    root.note = "Changes apply live, no reload. If a mode looks wrong, it reverts on its own after 12s. Shell size resizes astralis on that screen only: 100% matches the laptop panel's real size, Auto is 100% there and 120% on an external monitor.";
                 root.quietRead = false;
             }
         }
@@ -568,10 +587,14 @@ SettingsPage {
                             height: Math.max(2, tile.modelData.h - 3 * root.s)
                             z: tileMA.pressed ? 10 : (tile.sel ? 5 : 0)
                             radius: 7 * root.s
-                            color: tile.sel ? Qt.alpha(Colors.primary, 0.13) : Colors.surface_container_high
+                            // The chosen output wears the primary tint (the
+                            // selection colour); a dragged-but-unapplied one the
+                            // tertiary tint. Fill only, the 6% card hairline
+                            // stays (§2b-v).
+                            color: tile.moved ? Qt.alpha(Colors.tertiary, 0.22)
+                                : (tile.sel ? Qt.alpha(Colors.primary, 0.22) : Colors.surface_container_high)
                             border.width: 1
-                            border.color: tile.moved ? Qt.alpha(Colors.tertiary, 0.7)
-                                : (tile.sel ? Colors.on_surface : Qt.alpha(Colors.on_surface, 0.06))
+                            border.color: Qt.alpha(Colors.on_surface, 0.06)
 
                             Behavior on x { enabled: !tileMA.pressed; NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                             Behavior on y { enabled: !tileMA.pressed; NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
@@ -847,6 +870,38 @@ SettingsPage {
                                     }
                                 }
 
+                                // The SHELL's size on this screen — the pill, surfaces,
+                                // lock, overview and desktop widgets. Live, no Apply:
+                                // it only resizes astralis, never the output.
+                                CardRow {
+                                    id: shellSizeRow
+                                    icon: "app-window"
+                                    accessibleName: "Shell size on this screen"
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: 8 * root.s
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 64 * root.s
+                                            text: "Shell size"
+                                            color: Qt.alpha(Colors.on_surface_variant, 0.65)
+                                            font.family: Appearance.font.family
+                                            font.pixelSize: 10.5 * root.s
+                                            font.weight: Font.Medium
+                                        }
+
+                                        SettingsSeg {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            s: root.s
+                                            options: root.shellSizeOptions
+                                            value: root.selMon ? root.shellSizeOf(root.selMon.name) : 0
+                                            onPicked: (v) => { if (root.selMon) Flags.setMonScale(root.selMon.name, v); }
+                                        }
+                                    }
+                                }
+
                                 CardRow {
                                     id: transformRow
                                     icon: "record"
@@ -894,13 +949,11 @@ SettingsPage {
                                         }
                                         width: applyLabel.implicitWidth + 28 * root.s
                                         height: 28 * root.s
-                                        radius: 9 * root.s
+                                        // Tinted stadium, no rule (architecture §2b-v).
+                                        radius: height / 2
                                         color: !card.dirty ? Qt.alpha(Colors.primary, 0.10)
                                             : (applyArea.containsMouse ? Qt.alpha(Colors.primary, 0.34) : Qt.alpha(Colors.primary, 0.20))
-                                        border.width: 1
-                                        border.color: Qt.alpha(Colors.primary, !card.dirty ? 0.22 : (applyArea.containsMouse ? 0.6 : 0.4))
                                         Behavior on color { ColorAnimation { duration: Motion.fast } }
-                                        Behavior on border.color { ColorAnimation { duration: Motion.fast } }
 
                                         // Dip only when the click would actually do something —
                                         // matches the onClicked guard below.
@@ -958,7 +1011,7 @@ SettingsPage {
                                             anchors.verticalCenter: parent.verticalCenter
                                             width: keepLabel.implicitWidth + 28 * root.s
                                             height: 28 * root.s
-                                            radius: 9 * root.s
+                                            radius: height / 2
                                             color: keepArea.containsMouse ? Colors.tertiary : Qt.alpha(Colors.tertiary, 0.75)
                                             Behavior on color { ColorAnimation { duration: Motion.fast } }
 

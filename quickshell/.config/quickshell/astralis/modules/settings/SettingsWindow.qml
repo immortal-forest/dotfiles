@@ -27,7 +27,7 @@ FloatingWindow {
     color: "transparent"
 
     // Real-window scale from its screen, same basis as the pill.
-    readonly property real s: (win.screen ? win.screen.height / 1080 : 1.48) * Flags.uiScale
+    readonly property real s: win.screen ? Flags.scaleFor(win.screen) : 1.48 * Flags.uiScale
 
     // Fixed window size (Hyprland `center` rule drops it in the middle).
     implicitWidth:  Math.round(720 * win.s)   // default

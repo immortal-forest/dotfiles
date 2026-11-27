@@ -48,6 +48,8 @@ Singleton {
     property alias paletteMode: adapter.paletteMode
     property alias base16Shell: adapter.base16Shell
     property alias uiScale: adapter.uiScale
+    /** Per-monitor shell size, {output name: factor}; missing = "Auto" (see scaleFor). */
+    property alias monScale: adapter.monScale
     /** Size of the 覧 overview board, relative to the UI scale. */
     property alias dashScale: adapter.dashScale
     property alias reduceMotion: adapter.reduceMotion
@@ -150,6 +152,54 @@ Singleton {
     }
 
     /** Pin (or unpin) a desktop entry to the NVIDIA dGPU for launcher starts. */
+    /**
+     * The shell's px scale `s` on one screen — every per-screen window
+     * (pill, lock, overview, desktop widgets, depth clock, settings) reads
+     * this, so a screen is sized in one place.
+     *
+     * It used to be `height / 1080 × uiScale`, which sizes by pixel COUNT:
+     * docked to a 27" 1440p MSI beside the 16" 1600p panel at 1.6×, the pill
+     * came out ~1.6× bigger on the monitor in physical terms. Now the base
+     * is PHYSICAL — the screen's logical px per mm, anchored so the built-in
+     * panel looks exactly as it always has — times a per-monitor factor
+     * (Settings › Display, "Shell size") times the global UI scale.
+     *
+     * "Auto" (no entry in monScale) gives an external monitor 1.2× the
+     * laptop's physical size, since a desk monitor sits further away than
+     * the panel under your hands. A screen that reports no physical size
+     * (projector, headless) falls back to the old height rule.
+     */
+    readonly property real mmUnit: 0.19566   // s-units per logical-px-per-mm: eDP-2 (1000 px tall, 4.73 px/mm) → 0.926
+    function autoScale(scr) {
+        return scr && /^(eDP|LVDS|DSI)/.test(String(scr.name)) ? 1.0 : 1.2;
+    }
+    function monFactor(scr) {
+        if (!scr)
+            return 1;
+        var f = adapter.monScale ? adapter.monScale[scr.name] : undefined;
+        return (typeof f === "number" && f > 0) ? f : root.autoScale(scr);
+    }
+    function baseScale(scr) {
+        if (!scr)
+            return 1;
+        var d = scr.physicalPixelDensity;
+        if (d > 1 && d < 40)
+            return d * root.mmUnit;
+        return scr.height / 1080;
+    }
+    function scaleFor(scr) {
+        return root.baseScale(scr) * root.monFactor(scr) * adapter.uiScale;
+    }
+    /** factor > 0 pins one monitor; 0 returns it to Auto. */
+    function setMonScale(name, factor) {
+        var m = Object.assign({}, adapter.monScale);
+        if (factor > 0)
+            m[name] = factor;
+        else
+            delete m[name];
+        adapter.monScale = m;
+    }
+
     function setGpuApp(id, on) {
         var m = Object.assign({}, adapter.gpuApps);
         if (on)
@@ -310,6 +360,7 @@ Singleton {
             property string paletteMode: "material"
             property bool base16Shell: false
             property real uiScale: 1.0
+            property var monScale: ({})
             property real dashScale: 0.8
             property bool reduceMotion: false
             property string uiFont: ""

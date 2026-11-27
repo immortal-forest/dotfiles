@@ -308,6 +308,8 @@ SettingsPage {
                     id: scaleRow
                     surface: root
                     name: "UI scale"
+                    sub: "All screens. Each screen's own size is under Display"
+                    captionOnFocus: true
                     icon: "scaling"
 
                     SettingsSeg {

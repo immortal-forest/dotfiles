@@ -51,7 +51,7 @@ Scope {
         Scope {
             id: per
             required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
+            readonly property real s: modelData ? Flags.scaleFor(modelData) : 1
 
             Loader {
                 id: clockLoader
