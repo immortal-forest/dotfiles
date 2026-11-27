@@ -121,3 +121,15 @@ output_path = "~/.config/fastfetch/config.jsonc"
 [templates.nvim]
 input_path  = "~/.config/matugen/templates/nvim.lua"
 output_path = "~/.config/nvim/lua/themes/matugen.lua"
+
+# --- btop + fzf (adopted from quartz) -----------------------------------------------
+# btop: ~/.config/btop/btop.conf has color_theme = "astralis"; a running btop picks
+# the file up on its next start. fzf: ~/.zshrc re-sources the file before each
+# prompt when it changed, so open shells follow too (Ctrl+R/Ctrl+T + fzf-tab menus).
+[templates.btop]
+input_path  = "~/.config/matugen/templates/btop.theme"
+output_path = "~/.config/btop/themes/astralis.theme"
+
+[templates.fzf]
+input_path  = "~/.config/matugen/templates/fzf.zsh"
+output_path = "~/.config/fzf/colors.zsh"

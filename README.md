@@ -15,7 +15,7 @@ Hyprland on Arch, with **astralis**: a desktop shell written in
 </div>
 
 The shell, Hyprland's borders, the terminals, Neovim, GTK and Qt apps, cava,
-Spotify and Firefox/Zen all take their colours from the wallpaper.
+btop, fzf, Spotify and Firefox/Zen all take their colours from the wallpaper.
 
 There's also **quartz**, a lighter second shell in
 [its own repo](https://github.com/immortal-forest/quartz).
@@ -163,6 +163,7 @@ wallpaper: the shell and every themed app recolour.
 
 ### By hand
 
+- **btop**: pick the `astralis` colour theme (Esc → Options → Color theme).
 - **Spotify**: put the [Sleek](https://github.com/spicetify/spicetify-themes/tree/master/Sleek)
   theme in `~/.config/spicetify/Themes/Sleek`, then run
   `spicetify config current_theme Sleek color_scheme Astralis inject_css 1 replace_colors 1`

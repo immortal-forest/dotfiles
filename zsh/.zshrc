@@ -79,6 +79,7 @@ zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 zstyle ':completion:*' menu no
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
 zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'
+zstyle ':fzf-tab:*' use-fzf-default-opts yes
 
 # Aliases
 # alias ls='ls --color'
@@ -93,6 +94,17 @@ setopt NO_BEEP
 
 # Shell integrations
 # eval "$(pyenv init - zsh)"
+# fzf colours follow the wallpaper: matugen writes the file, and every prompt
+# re-reads it if it changed, so open shells pick up a new wallpaper too.
+_fzf_colors() {
+  [[ -r ~/.config/fzf/colors.zsh ]] || return
+  local c="$(<~/.config/fzf/colors.zsh)"
+  [[ $c == "$_fzf_colors_seen" ]] && return
+  _fzf_colors_seen=$c
+  source ~/.config/fzf/colors.zsh
+}
+autoload -Uz add-zsh-hook && add-zsh-hook precmd _fzf_colors
+_fzf_colors
 eval "$(fzf --zsh)"
 eval "$(zoxide init --cmd cd zsh)"
 
