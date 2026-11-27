@@ -30,3 +30,4 @@ singleton PolkitAuth PolkitAuth.qml
 singleton PowerSaver PowerSaver.qml
 singleton Switcher Switcher.qml
 singleton Pinentry Pinentry.qml
+singleton AudioFollow AudioFollow.qml

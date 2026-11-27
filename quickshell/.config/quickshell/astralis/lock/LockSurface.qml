@@ -1589,32 +1589,19 @@ Item {
                     NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard }
                 }
 
-                // Just the name, and under it what to do. The 人 glyph that
-                // used to sit here was a second mark doing the job the Ame
-                // bead beside it was already doing — two things in one leading
-                // slot, neither of them the other's companion. Ame is the
-                // shell's own mark and it keeps the slot alone.
-                Column {
+                // Just the name (no "type to unlock" hint under it). The 人
+                // glyph that used to sit here was a second mark doing the job
+                // the Ame bead beside it was already doing — two things in one
+                // leading slot, neither of them the other's companion. Ame is
+                // the shell's own mark and it keeps the slot alone.
+                Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 3 * surface.s
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: surface.userName.length > 0 ? surface.userName : "welcome back"
-                        color: Colors.on_surface
-                        font.family: Appearance.font.family
-                        font.pixelSize: 17 * surface.s
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.6 * surface.s
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "TYPE TO UNLOCK"
-                        color: Qt.alpha(Colors.on_surface_variant, 0.75)
-                        font.family: Appearance.font.family
-                        font.pixelSize: 9 * surface.s
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 2.4 * surface.s
-                    }
+                    text: surface.userName.length > 0 ? surface.userName : "welcome back"
+                    color: Colors.on_surface
+                    font.family: Appearance.font.family
+                    font.pixelSize: 17 * surface.s
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 0.6 * surface.s
                 }
             }
 

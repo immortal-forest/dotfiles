@@ -113,7 +113,10 @@ Item {
 
     // An incoming notification morphs the pill into a toast (unless a
     // pinned/open pill already owns the expansion — `held` outranks it).
+    // Only on the focused monitor (every screen if Hyprland hasn't reported
+    // one): popups are global, so ungated every pill showed the same toast.
     readonly property bool toastActive: Services.Notifications.popups.length > 0
+        && (!Hyprland.focusedMonitor || Hyprland.focusedMonitor.name === pill.screenName)
 
     // A watched quantity changing (volume/brightness keys, a track switch, a
     // workspace hop, the charger landing) flashes the pill into the OSD face.

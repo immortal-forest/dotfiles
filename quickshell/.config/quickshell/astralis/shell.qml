@@ -50,8 +50,14 @@ ShellRoot {
     /** Full-screen music visualizer per monitor (edges picked by Flags.vizLayout). */
     property bool vizEnabled: false
 
-    /** Standalone full-screen session/power menu overlay (modules/powermenu). */
+    /** Standalone full-screen session/power menu overlay (modules/powermenu), shown on powerMon only. */
     property bool powerMenuOpen: false
+    property string powerMon: ""
+    /** Opens the session menu on `mon`, or on the focused monitor when it's empty. */
+    function openPowerMenu(mon) {
+        root.powerMon = mon || (Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "");
+        root.powerMenuOpen = true;
+    }
 
     /** Standalone floating settings window (modules/settings/SettingsWindow). */
     property bool settingsOpen: false
@@ -90,6 +96,8 @@ ShellRoot {
     readonly property var polkitAgent: PolkitAuth
     /** On battery, pause per-frame effects outside the shell (services/PowerSaver.qml). */
     readonly property var powerSaver: PowerSaver
+    /** A Bluetooth output that connects becomes the default sink (services/AudioFollow.qml). */
+    readonly property var audioFollow: AudioFollow
     /**
      * GnuPG's pinentry (services/Pinentry.qml, fed by ~/.local/bin/
      * pinentry-astralis) shares the same 認 auth surface. It says "locked"
@@ -279,8 +287,8 @@ ShellRoot {
 
     IpcHandler {
         target: "power"
-        function toggle(): void { root.powerMenuOpen = !root.powerMenuOpen; }
-        function show(): void { root.powerMenuOpen = true; }
+        function toggle(): void { if (root.powerMenuOpen) root.powerMenuOpen = false; else root.openPowerMenu(""); }
+        function show(): void { root.openPowerMenu(""); }
         function hide(): void { root.powerMenuOpen = false; }
     }
 
@@ -437,7 +445,10 @@ ShellRoot {
                 s: pmScope.s
                 // Overlay layer + it owns the Lock tile that fires the lock —
                 // force it shut while locked so it never lingers over the lock. (#3)
+                // Only on the monitor it was opened from (every screen if
+                // Hyprland hasn't reported a focused monitor).
                 open: root.powerMenuOpen && !lockScope.locked
+                    && (root.powerMon === "" || pmScope.modelData.name === root.powerMon)
                 onRequestClose: root.powerMenuOpen = false
             }
         }
@@ -730,7 +741,7 @@ ShellRoot {
                     onRequestClose: root.close()
                     // Hover-row power icon: open the standalone full-screen
                     // session menu (modules/powermenu), not a pill surface.
-                    onRequestPower: root.powerMenuOpen = true
+                    onRequestPower: root.openPowerMenu(overlay.modelData.name)
                     // Launcher "Settings" entry: open the floating settings window.
                     onRequestSettings: root.settingsOpen = true
                 }

@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Widgets
+import QtQuick.Shapes
 import "../../colors"
 import "../../services"
 import "../../config"
@@ -312,8 +313,11 @@ PanelWindow {
                         // Press dip multiplies onto the existing focus grow
                         // rather than replacing it, so these highest-stakes
                         // buttons still visibly give under a click even while
-                        // hover/keyboard focus already has them at 1.04.
-                        scale: (mouseArea.pressed ? 0.94 : 1) * (tile.kbFocus ? 1.04 : 1.0)
+                        // hover/keyboard focus already has them at 1.04. A
+                        // hold-to-confirm tile instead squeezes gradually with
+                        // the hold (pressure building), not one bouncy dip.
+                        scale: (tile.modelData.confirm ? 1 - 0.035 * tile.hold : (mouseArea.pressed ? 0.94 : 1))
+                            * (tile.kbFocus ? 1.04 : 1.0)
                         Behavior on scale {
                             NumberAnimation {
                                 duration: Motion.glide
@@ -398,20 +402,51 @@ PanelWindow {
                             // corners past the tile outline on the first beat
                             // of every hold.
                             ClippingRectangle {
+                                id: heatClip
                                 anchors.fill: parent
                                 anchors.margins: 1
                                 radius: (Appearance.rounding.large - 1) * root.s
                                 color: "transparent"
 
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.bottom: parent.bottom
-                                    height: parent.height * tile.hold
+                                // The heat rises as a liquid: one soft, even
+                                // tint with a slow wave on its surface (the old
+                                // flat edge + 60%→12% gradient read as a muddy
+                                // slab). The wave flattens at empty and full,
+                                // and the level overshoots the top a touch so
+                                // the crest clears the tile at 1.
+                                Shape {
+                                    id: liquid
+                                    anchors.fill: parent
                                     visible: tile.holding
-                                    gradient: Gradient {
-                                        GradientStop { position: 0.0; color: Qt.alpha(Colors.error, 0.6) }
-                                        GradientStop { position: 1.0; color: Qt.alpha(Colors.error, 0.12) }
+                                    preferredRendererType: Shape.CurveRenderer
+
+                                    property real phase: 0
+                                    NumberAnimation on phase {
+                                        running: tile.holding
+                                        loops: Animation.Infinite
+                                        from: 0
+                                        to: Math.PI * 2
+                                        duration: Motion.heat
+                                        easing.type: Motion.easeClock
+                                    }
+
+                                    ShapePath {
+                                        strokeWidth: -1
+                                        fillColor: Qt.alpha(Colors.error, 0.2)
+                                        PathPolyline {
+                                            path: {
+                                                const w = heatClip.width, h = heatClip.height;
+                                                const amp = 4 * root.s * Math.sin(Math.PI * Math.min(1, tile.hold * 1.15));
+                                                const level = h * (1 - tile.hold * 1.06);
+                                                const pts = [Qt.point(0, h)];
+                                                for (let i = 0; i <= 24; i++) {
+                                                    const x = w * i / 24;
+                                                    pts.push(Qt.point(x, level + amp * Math.sin(x / w * Math.PI * 3 + liquid.phase)));
+                                                }
+                                                pts.push(Qt.point(w, h));
+                                                return pts;
+                                            }
+                                        }
                                     }
                                 }
                             }
