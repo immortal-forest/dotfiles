@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""crush80 - colour the Wobkey Crush80's keys over VIA (2.4G dongle or cable).
+
+  crush80 wall          match the keys to the wallpaper (astralis Colors.json source_color)
+  crush80 hex RRGGBB    match the keys to any colour
+  crush80 get           show brightness / effect / speed / hue / sat
+  crush80 viz           pulse the whole board to the music (Ctrl+C stops, restores brightness)
+  crush80 viz toggle    start it in the background, or stop the running one
+
+setwall runs `crush80 wall` on every wallpaper change. Sets the static effect and
+saves to the keyboard. The visualizer saves only once, when it stops: plain writes
+live in the keyboard's RAM (verified by power-cycling), so streaming them is free. Static mode ignores colour writes while its Fn+Enter preset
+is the rainbow one; pick any single colour with Fn+Enter once and it works again.
+Needs /etc/udev/rules.d/60-crush80.rules (uaccess for 320f:5088 and 320f:5055).
+"""
+import colorsys, glob, json, os, select, signal, subprocess, sys, time
+
+COLORS = os.path.expanduser("~/.config/quickshell/astralis/colors/Colors.json")
+RUN = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+PIDFILE = os.path.join(RUN, "crush80-viz.pid")
+CAVA_CONF = """
+[general]
+framerate = 45
+bars = 12
+autosens = 1
+[input]
+method = pulse
+source = auto
+[output]
+method = raw
+channels = mono
+raw_target = /dev/stdout
+data_format = ascii
+ascii_max_range = 100
+bar_delimiter = 59
+frame_delimiter = 10
+[smoothing]
+noise_reduction = 15
+"""
+IDS = ("320F:5088", "320F:5055")         # 2.4G dongle, cable
+VIA_RAW = bytes.fromhex("0660ff0961")    # HID usage page 0xFF60 / usage 0x61
+CH = 3                                   # VIA channel: RGB matrix
+BRIGHT, EFFECT, SPEED, COLOR = 1, 2, 3, 4
+STATIC = 6                               # the real static effect (Wobkey's JSON names are off)
+
+
+def node():
+    for d in glob.glob("/sys/class/hidraw/hidraw*"):
+        if any(i in os.path.realpath(d + "/device").upper() for i in IDS):
+            with open(d + "/device/report_descriptor", "rb") as f:
+                if f.read(5) == VIA_RAW:
+                    return "/dev/" + os.path.basename(d)
+
+
+def xfer(fd, *payload):
+    os.write(fd, bytes([0, *payload]).ljust(33, b"\0"))   # report id 0 + 32 bytes
+    if select.select([fd], [], [], 1.0)[0]:
+        return os.read(fd, 32)
+    raise TimeoutError("keyboard did not answer")
+
+
+def led_colour(hexstr):
+    h = hexstr.strip().lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    hue, sat, _ = colorsys.rgb_to_hsv(r, g, b)
+    if sat < 0.12:
+        return 0, 0          # neutral wallpaper: white, don't invent a hue
+    # LEDs wash toward white (boost saturation) and read oranges as yellow (nudge the
+    # hue toward red). Calibrated by eye on 2026-11-26 against the real keys.
+    return round(hue * 255 - 2) % 256, round(255 - (255 - sat * 255) * 0.31)
+
+
+def viz_pid():
+    try:
+        pid = int(open(PIDFILE).read())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def viz(fd):
+    """Kicks flash the board and fade; the hue swings away from the wallpaper colour
+    as the highs take over. Silence (>1.5 s) restores the normal look."""
+    base_b = xfer(fd, 0x08, CH, BRIGHT)[3]
+    c = xfer(fd, 0x08, CH, COLOR)
+    base_h, base_s = c[3], c[4]
+
+    def wall_colour():                       # follow wallpaper changes mid-song
+        try:
+            with open(COLORS) as f:
+                return led_colour(json.load(f)["source_color"])
+        except (OSError, ValueError, KeyError):
+            return base_h, base_s
+    base_h, base_s = wall_colour()
+    wall_at = time.monotonic()
+    conf = os.path.join(RUN, "crush80-cava.conf")
+    with open(conf, "w") as f:
+        f.write(CAVA_CONF)
+    cava = subprocess.Popen(["cava", "-p", conf], stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL)
+    with open(PIDFILE, "w") as f:
+        f.write(str(os.getpid()))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    cur_b, cur_h, buf = base_b, base_h, b""
+    env = bass_avg = tilt = loud_at = col_at = 0.0
+    try:
+        while True:
+            chunk = os.read(cava.stdout.fileno(), 4096)
+            if not chunk:
+                break
+            buf += chunk
+            *frames, buf = buf.split(b"\n")
+            if not frames:
+                continue
+            # Writes take ~23 ms over the dongle, so frames pile up meanwhile: only
+            # the newest one matters, older ones would just add lag.
+            bars = [int(v) for v in frames[-1].split(b";") if v]
+            if len(bars) < 12:
+                continue
+            bass = max(bars[0:3]) / 100
+            mid = sum(bars[3:8]) / 500
+            high = sum(bars[8:12]) / 400
+            now = time.monotonic()
+            if now - wall_at > 2:
+                base_h, base_s = wall_colour()
+                wall_at = now
+            if bass + mid + high > 0.06:
+                loud_at = now
+            if now - loud_at > 1.5:                      # silence: back to normal
+                want_b, want_h, env, tilt = base_b, base_h, 0.0, 0.0
+            else:
+                kick = bass > 0.4 and bass - bass_avg > 0.18
+                bass_avg += (bass - bass_avg) * 0.15
+                env = 1.0 if kick else max(bass, env * 0.82)   # instant hit, ~0.2 s fade
+                want_b = max(1, round(9 * env ** 1.4))
+                share = high / (bass + mid + high + 1e-6)
+                tilt += (share - tilt) * 0.25
+                want_h = (base_h + round(80 * tilt)) % 256
+            if want_b != cur_b:
+                xfer(fd, 0x07, CH, BRIGHT, want_b)
+                cur_b = want_b
+            dh = min((want_h - cur_h) % 256, (cur_h - want_h) % 256)
+            if dh and (dh >= 4 or want_h == base_h) and now - col_at > 0.1:
+                xfer(fd, 0x07, CH, COLOR, want_h, base_s)
+                cur_h, col_at = want_h, now
+    except KeyboardInterrupt:
+        pass
+    finally:
+        cava.terminate()
+        try:
+            xfer(fd, 0x07, CH, BRIGHT, base_b)
+            xfer(fd, 0x07, CH, COLOR, base_h, base_s)
+            xfer(fd, 0x09, CH)       # one save per session: keeps a mid-song wallpaper colour
+        except OSError:
+            pass                                         # keyboard left (KVM switched)
+        if viz_pid() in (None, os.getpid()):
+            try:
+                os.remove(PIDFILE)
+            except OSError:
+                pass
+    return 0
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ""
+    if cmd == "viz" and argv[2:3] == ["toggle"]:
+        pid = viz_pid()
+        if pid:
+            os.kill(pid, signal.SIGTERM)
+            print("crush80: visualizer stopped")
+        else:
+            subprocess.Popen([sys.executable, os.path.abspath(argv[0]), "viz"],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+            print("crush80: visualizer started")
+        return 0
+    if cmd not in ("wall", "hex", "get", "viz"):
+        print(__doc__.strip())
+        return 0 if cmd in ("", "-h", "--help", "help") else 2
+    n = node()
+    if not n:
+        if cmd != "wall":
+            print("crush80: keyboard not connected", file=sys.stderr)
+        return 0 if cmd == "wall" else 1
+    try:
+        fd = os.open(n, os.O_RDWR)
+    except PermissionError:
+        print(f"crush80: no access to {n}; install the udev rule (see crush80 --help)", file=sys.stderr)
+        return 1
+    if cmd == "get":
+        b, e, s, c = (xfer(fd, 0x08, CH, v) for v in (BRIGHT, EFFECT, SPEED, COLOR))
+        print(f"brightness {b[3]}  effect {e[3]}  speed {s[3]}  hue {c[3]}  sat {c[4]}")
+        return 0
+    if cmd == "viz":
+        if viz_pid():
+            print("crush80: visualizer already running (crush80 viz toggle stops it)", file=sys.stderr)
+            return 1
+        return viz(fd)
+    if cmd == "wall":
+        with open(COLORS) as f:
+            colour = json.load(f)["source_color"]
+    elif len(argv) > 2:
+        colour = argv[2]
+    else:
+        print("usage: crush80 hex RRGGBB", file=sys.stderr)
+        return 2
+    try:
+        hue, sat = led_colour(colour)
+    except ValueError:
+        print(f"crush80: not a hex colour: {colour}", file=sys.stderr)
+        return 2
+    xfer(fd, 0x07, CH, EFFECT, STATIC)
+    xfer(fd, 0x07, CH, COLOR, hue, sat)
+    if not viz_pid():                    # mid-pulse, a save would store a random brightness
+        xfer(fd, 0x09, CH)               # save to the keyboard's own memory
+    print(f"crush80: {colour} -> hue {hue} sat {sat}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

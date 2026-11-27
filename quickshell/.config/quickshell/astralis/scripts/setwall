@@ -219,14 +219,21 @@ fi
 # focus steal, a no-op when the terminal isn't running. Runs in every mode
 # (normal + RETHEME_ONLY) so a live palette/boost toggle repaints open terminals
 # too. (Browser is already live via pywalfox update; GTK/Qt apply on next launch.)
-pkill -USR1 -x kitty   2>/dev/null || true
-pkill -USR2 -x ghostty 2>/dev/null || true
+# -O 2: only terminals older than 2 s. A terminal that is still starting has no
+# handler yet, and USR1/USR2 kill by default: at login the restore's retheme
+# killed Ghostty's background service 0.25 s after it started (2026-11-27).
+# A terminal that young read the fresh colours at startup anyway.
+pkill -USR1 -O 2 -x kitty   2>/dev/null || true
+pkill -USR2 -O 2 -x ghostty 2>/dev/null || true
 
 # Spotify: ONE re-theme per setwall, after every matugen pass has written the
 # final color.ini (was a matugen post_hook → 2-3 racing `spicetify apply`s →
 # blank Spotify window). Backgrounded + detached; `9>&-` so a Spotify that
 # spicetify relaunches never inherits (and holds) setwall.lock.
 ( setsid "$(dirname "$(readlink -f "$0")")/spotify-retheme" >/dev/null 2>&1 9>&- & ) || true
+
+# Crush80 keyboard: colour the keys from the final seed. No-op when it's unplugged.
+[ -x "$HOME/.local/bin/crush80" ] && "$HOME/.local/bin/crush80" wall >/dev/null 2>&1 || true
 
 if [ -z "${RETHEME_ONLY:-}" ]; then
     printf '%s\n' "$img" > "$HOME/.cache/astralis/current-wallpaper"
