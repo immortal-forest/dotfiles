@@ -231,7 +231,10 @@ Singleton {
      * generic freedesktop sound NAME ("message-new-instant", "bell", …) gets
      * ours instead of the stock beep, and any other name plays its
      * freedesktop file if one exists. suppress-sound is respected. A burst
-     * (a chat waking up) chimes once per 0.9 s; criticals always sound.
+     * chimes once: a notification only sounds if the last one arrived more
+     * than 3 s earlier, and every arrival restarts that window (the old 0.9 s
+     * limit was shorter than the 1.25 s chime, so bursts overlapped).
+     * Criticals always sound.
      */
     readonly property string soundDir: String(Qt.resolvedUrl("../sounds/")).replace(/^file:\/\//, "")
     readonly property var genericSounds: ({
@@ -239,7 +242,7 @@ Singleton {
         "dialog-information": 1, "dialog-information-symbolic": 1, "bell": 1, "bell-window-system": 1,
         "complete": 1, "window-attention": 1, "dialog-question": 1, "dialog-warning": 1, "dialog-error": 1
     })
-    property double lastChime: 0
+    property double lastArrival: 0
 
     function chimeFor(n) {
         if (n && n.urgency === NotificationUrgency.Critical)
@@ -267,9 +270,10 @@ Singleton {
         if (h["suppress-sound"]) return;
         const critical = n && n.urgency === NotificationUrgency.Critical;
         const now = Date.now();
-        if (!critical && now - root.lastChime < 900)
+        const inBurst = now - root.lastArrival < 3000;
+        root.lastArrival = now;
+        if (!critical && inBurst)
             return;
-        root.lastChime = now;
         var f = String(h["sound-file"] || "");
         if (f.indexOf("file://") === 0) f = f.substring(7);
         var nm = String(h["sound-name"] || "");

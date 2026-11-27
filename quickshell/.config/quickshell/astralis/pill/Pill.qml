@@ -583,6 +583,11 @@ Item {
          * pictogram doesn't, and it is the vocabulary the rest pill already
          * speaks (時, the media seal 奏/休, 前/次). With glyphs off it falls
          * back to the plain dot.
+         *
+         * Solid since 2026-11-27: the seal is filled with its tint and the
+         * character cut out in the surface colour, and it holds steady. The
+         * old 17px outlined seal at 20% fill was hard to read, and breathing
+         * down to 35% made a live mic look switched off half the time.
          */
         component PrivacySeal: Item {
             id: pdot
@@ -590,11 +595,11 @@ Item {
             property bool active: false
             property string glyph: ""
             property string label: ""
-            /** Breathe for as long as it's live (the recording seal); otherwise three breaths, then hold. */
+            /** Breathe for as long as it's live (the recording seal); every other seal holds steady. */
             property bool endless: false
             readonly property bool asSeal: Flags.showGlyphs && glyph.length > 0
             anchors.verticalCenter: parent.verticalCenter
-            width: (asSeal ? 17 : 8) * pill.s
+            width: (asSeal ? 20 : 8) * pill.s
             height: width
             opacity: active ? 1 : 0
             visible: opacity > 0.01
@@ -609,33 +614,29 @@ Item {
             Rectangle {
                 id: pdotFill
                 anchors.fill: parent
-                radius: pdot.asSeal ? 5 * pill.s : width / 2
-                rotation: pdot.asSeal ? -2 : 0
-                color: pdot.asSeal ? Qt.alpha(pdot.tint, 0.2) : pdot.tint
-                border.width: pdot.asSeal ? 1 : 0
-                border.color: Qt.alpha(pdot.tint, 0.65)
+                radius: pdot.asSeal ? 6 * pill.s : width / 2
+                color: pdot.tint
 
                 Text {
                     anchors.centerIn: parent
                     visible: pdot.asSeal
                     text: pdot.glyph
-                    color: pdot.tint
+                    color: Colors.surface
                     font.family: Appearance.font.jp
                     font.weight: Font.Bold
-                    font.pixelSize: 11 * pill.s
+                    font.pixelSize: 12.5 * pill.s
                 }
 
-                // Announce, then hold: three breaths when the source goes live
-                // (and again whenever the rest face comes back), then steady.
-                // NOT infinite for mic/camera/cast — a mic stays live for a
-                // whole call, and every tick repaints this full-screen overlay,
-                // which Hyprland then re-blurs: measured ~8% qs CPU plus the
-                // compositor's share, for hours. The recording seal keeps its
-                // endless breath; there it separates recording from paused.
+                // Only the recording seal breathes: there it separates
+                // recording from paused. Never for mic/camera/cast — a mic
+                // stays live for a whole call, and every tick repaints this
+                // full-screen overlay, which Hyprland then re-blurs: measured
+                // ~8% qs CPU plus the compositor's share, for hours. The floor
+                // is 0.5, so a live take never looks switched off.
                 SequentialAnimation on opacity {
-                    running: pdot.active && rest.visible && !Motion.reduceMotion
-                    loops: pdot.endless ? Animation.Infinite : 3
-                    NumberAnimation { to: 0.35; duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
+                    running: pdot.endless && pdot.active && rest.visible && !Motion.reduceMotion
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.5; duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
                     NumberAnimation { to: 1;    duration: Motion.pulse * 2; easing.type: Easing.InOutSine }
                     // Stopped mid-breath (rest face hidden, take paused) must
                     // not strand the seal half-faded.
