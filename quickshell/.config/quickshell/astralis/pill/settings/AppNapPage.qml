@@ -459,7 +459,7 @@ SettingsPage {
                     id: swapRow
                     surface: root
                     name: "Free its memory"
-                    sub: "Push a napped app's RAM to swap. Off: freeze only, so it wakes instantly"
+                    sub: "Save a napped app's RAM to disk and load it back when it wakes. Off: freeze only"
                     captionOnFocus: true
                     icon: "chip"
 

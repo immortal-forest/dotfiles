@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""appnap — "suspend" one app: hide it on special:minimized, freeze it, push its RAM to swap.
+"""appnap — "suspend" one app: hide it on special:minimized, freeze it, save its RAM to disk.
 
   appnap                    toggle the focused window's app: nap it, or restore it if napped
   appnap --address 0x..     same, for a given window
@@ -13,15 +13,26 @@
   appnap watch              (internal, auto-started) thaws an app when its window leaves
                             special:minimized (tray chip, Super+Shift+M, anything) or closes
 
+Save to disk / load back: a nap writes the app's RAM to the swap partition, bypassing zswap
+(which would keep a compressed copy in RAM) by setting the scope's memory.zswap.max to 0
+until it wakes. Waking reads all of it back in at once (appnap-mem in: MADV_WILLNEED, a few
+hundred MB in a fraction of a second) right after the thaw, so the app doesn't stutter
+faulting pages in one by one. Skipped when it wouldn't fit in MemAvailable minus 1 GB.
+
 How an app is frozen depends on where it was started:
   own scope     launcher apps and binds wrapped in systemd-run: the scope is frozen with
-                `systemctl --user freeze` and all of its RAM is pushed to swap.
+                `systemctl --user freeze` and all of its RAM is written to disk.
   shared scope  started from a terminal, or opened by another app (a link out of Discord):
                 its processes move into a new scope, which is frozen. cgroup v2 keeps its RAM
                 charged to the old scope, so about the app's footprint is reclaimed from there.
   session       started by Hyprland itself (a bare exec bind): SIGSTOP/SIGCONT. That scope is
-                root's, so nothing is pushed to swap up front; the kernel swaps the idle pages
-                out when memory gets tight.
+                root's, so appnap-mem pages the app's own memory out per process instead; its
+                zswap can't be bypassed, so part of it may sit compressed in RAM until zswap
+                writes it back. Without appnap-mem: frozen only.
+
+appnap-mem (system/appnap-mem in the dotfiles) needs CAP_SYS_NICE to advise another
+process; install it once as its header says. Without it, naps work as before (the scope
+kinds still save to disk) and waking pages memory back in on demand.
 
 State: $XDG_RUNTIME_DIR/appnap.json (gone on logout, like the frozen apps). The astralis
 pill mirrors it (services/AppNap.qml) to mark napped chips in the minimized tray.
@@ -40,6 +51,8 @@ FLAG_DEFAULTS = {"napSwap": True, "napNotify": True, "napSkipAudio": True, "napN
 CG = "/sys/fs/cgroup"
 UID = os.getuid()
 STEP = 128 << 20
+HELPER = "/usr/local/bin/appnap-mem"
+LOAD_HEADROOM = 1 << 30  # load back only what leaves this much MemAvailable
 # Never freeze the desktop itself (an astralis FloatingWindow is a Hyprland client, owned by qs).
 DESKTOP = {"Hyprland", "qs", "quickshell", ".quickshell-wra", "hyprland-dialog"}
 
@@ -192,15 +205,96 @@ def new_scope(pids, cls):
     return None
 
 
+def idle_priority():
+    """Swap writes at idle CPU/IO priority (inherited by appnap-mem), so they don't stall
+    the desktop."""
+    os.nice(19)
+    subprocess.run(["ionice", "-c3", "-p", str(os.getpid())], capture_output=True)
+
+
+def vmstat(key):
+    for line in read("/proc/vmstat").splitlines():
+        k, _, v = line.partition(" ")
+        if k == key:
+            return int(v)
+    return 0
+
+
+def meminfo(key):
+    for line in read("/proc/meminfo").splitlines():
+        if line.startswith(key + ":"):
+            return int(line.split()[1]) * 1024
+    return 0
+
+
+def zswap_off(cg):
+    """Make a cgroup's reclaimed pages go straight to the swap partition: zswap would keep
+    them compressed in RAM (measured: a 500 MB app freed 121 MB that way, 504 MB without).
+    Returns the old limit to put back on wake, or None if it can't be set."""
+    path = f"{CG}{cg}/memory.zswap.max"
+    old = read(path).strip() or "max"
+    try:
+        with open(path, "w") as f:
+            f.write("0")
+    except OSError:
+        return None
+    return old
+
+
+def zswap_restore(n, naps):
+    """Put a woken app's zswap limit back, unless another nap still shares its cgroup."""
+    cg = n.get("zswap_cg")
+    if cg and not any(o.get("zswap_cg") == cg for o in naps.values()):
+        with contextlib.suppress(OSError), open(f"{CG}{cg}/memory.zswap.max", "w") as f:
+            f.write(n.get("zswap_old") or "max")
+
+
+def page_out(pids):
+    """Write these processes' own memory to swap (appnap-mem out). False if the helper is
+    missing or lacks its capability."""
+    if not os.access(HELPER, os.X_OK):
+        return False
+    return subprocess.run([HELPER, "out", *map(str, pids)], capture_output=True).returncode == 0
+
+
+def swapped(pid):
+    for line in read(f"/proc/{pid}/status").splitlines():
+        if line.startswith("VmSwap:"):
+            return int(line.split()[1]) * 1024
+    return 0
+
+
+_budget = None
+
+
+def load_back(pids):
+    """Read a woken app's swapped memory back into RAM now, in the background (appnap-mem
+    in), instead of letting it fault in page by page. Only what fits in MemAvailable minus
+    LOAD_HEADROOM, shared across the apps one command wakes (wake-all)."""
+    global _budget
+    if not os.access(HELPER, os.X_OK):
+        return
+    if _budget is None:
+        _budget = meminfo("MemAvailable") - LOAD_HEADROOM
+    take = []
+    for p in pids:
+        s = swapped(p)
+        if s and s <= _budget:
+            take.append(p)
+            _budget -= s
+    if take:
+        subprocess.Popen([HELPER, "in", *map(str, take)], start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+
+
 def push_to_swap(cg, cap=None):
-    """Reclaim a cgroup's RAM in 128 MB steps at idle priority with a breather between steps,
-    so the burst of swap writes doesn't stall the desktop. Uncapped: until the kernel says
-    nothing more can go (EAGAIN). Capped: about `cap` bytes. Returns bytes freed."""
+    """Reclaim a cgroup's RAM in 128 MB steps with a breather between steps, so the burst of
+    swap writes doesn't stall the desktop. Uncapped: until the kernel says nothing more can
+    go (EAGAIN). Capped: about `cap` bytes. Returns bytes freed."""
     path = CG + cg + "/memory.reclaim"
     if not os.access(path, os.W_OK):
         return 0
-    os.nice(19)
-    subprocess.run(["ionice", "-c3", "-p", str(os.getpid())], capture_output=True)
     before = read_int(CG + cg + "/memory.current")
     steps = 8192 if cap is None else max(1, -(-cap // STEP))
     for _ in range(steps):
@@ -245,9 +339,13 @@ def nap_for(addr):
 
 # ---- freeze / thaw -----------------------------------------------------------------------
 
-def thaw(key, move_back=True):
+def thaw(key, move_back=True, read_back=True):
+    """Wake a napped app. `read_back`: also load its memory back from disk (not when it's
+    closing or the session is ending). Thawed first, so a slow load never keeps it frozen."""
     with state() as naps:
         n = naps.pop(key, None)
+        if n:
+            zswap_restore(n, naps)
     if not n:
         return
     if n["unit"]:
@@ -258,6 +356,8 @@ def thaw(key, move_back=True):
                 os.kill(p, signal.SIGCONT)
             except OSError:
                 pass
+    if read_back:
+        load_back(n["pids"])
     if move_back:  # the other windows of a multi-window app go back where they came from
         where = {c["address"]: c["workspace"]["name"] for c in hypr("clients") or []}
         for addr, ws in n["windows"].items():
@@ -310,29 +410,54 @@ def nap(win, clients, auto=False):
             except OSError:
                 pass
 
+    # Save to disk: our own scopes skip zswap (the old limit goes back on wake).
+    zswap_old = zswap_off(charge_cg) if charge_cg and prefs["napSwap"] else None
     key = unit[:-6] if unit else f"pid-{pid}"
     with state() as naps:
         naps[key] = {"class": cls, "kind": kind, "unit": unit, "pids": app, "windows": windows,
-                     "since": int(time.time()), "freed": 0}
+                     "since": int(time.time()), "freed": 0, "disk": 0,
+                     "zswap_cg": charge_cg if zswap_old else None, "zswap_old": zswap_old}
     start_watcher()
 
-    freed = push_to_swap(charge_cg, cap) if charge_cg and prefs["napSwap"] else 0
-    if freed:
+    freed = disk = 0
+    paged = False
+    if prefs["napSwap"]:
+        idle_priority()
+        disk0 = vmstat("pswpout")
+        if charge_cg:
+            freed = push_to_swap(charge_cg, cap)
+        else:
+            # Session scope: page the app's own memory out per process. Its pages can't skip
+            # zswap here, so count only what really left RAM: the app's drop, less what zswap
+            # and the swap cache (written, not yet dropped) grew by meanwhile.
+            before = footprint(app), meminfo("Zswap"), meminfo("SwapCached")
+            paged = page_out(app)
+            if paged:
+                time.sleep(0.5)  # let the last writes land before measuring
+                freed = max(0, before[0] - footprint(app) - (meminfo("Zswap") - before[1])
+                            - (meminfo("SwapCached") - before[2]))
+        disk = (vmstat("pswpout") - disk0) * os.sysconf("SC_PAGE_SIZE")
+    if freed or disk:
         with state() as naps:
             if key in naps:
-                naps[key]["freed"] = freed
+                naps[key]["freed"], naps[key]["disk"] = freed, disk
 
     if not prefs["napNotify"]:
         return
     title = f"{'Auto-napped' if auto else 'Napped'} {cls}"
-    if freed:
-        notify(title, f"Frozen, {freed / 2**20:.0f} MB of RAM freed")
-    elif not prefs["napSwap"]:
+    mb = lambda b: f"{b / 2**20:.0f} MB"
+    if not prefs["napSwap"]:
         notify(title, "Frozen. Its memory stays in RAM, so it wakes instantly")
-    elif kind == "session":
+    elif charge_cg and freed:
+        notify(title, f"Frozen, {mb(freed)} of RAM saved to disk")
+    elif paged and (freed or disk):
+        notify(title, f"Frozen, {mb(freed)} of RAM freed, {mb(disk)} written to disk. Started by "
+               "a Hyprland bind, so part of it may stay compressed in RAM (zswap) for now")
+    elif kind == "session" and not paged:
         notify(f"{title} (frozen only)",
                "It was started by a Hyprland bind, outside its own app scope, so its RAM "
-               "can't be pushed to swap up front. The kernel swaps it out when memory gets tight.")
+               "can't be saved to disk without appnap-mem. The kernel swaps it out when "
+               "memory gets tight.")
     else:
         notify(title, "Frozen")
 
@@ -398,7 +523,7 @@ def handle(line):
     elif ev == "closewindow":
         key, _ = nap_for("0x" + data)
         if key:
-            thaw(key, move_back=False)  # let it finish closing
+            thaw(key, move_back=False, read_back=False)  # let it finish closing
     elif ev == "openwindow":
         suppress_anr()
 
@@ -416,7 +541,7 @@ def watch():
         chunk = sock.recv(65536)
         if not chunk:  # Hyprland went away: its windows are gone, let the apps run and exit
             for key in list(load()):
-                thaw(key, move_back=False)
+                thaw(key, move_back=False, read_back=False)
             return
         buf += chunk
         *lines, buf = buf.split(b"\n")
@@ -465,7 +590,8 @@ def main():
             print(json.dumps(naps))
         else:
             for key, n in naps.items():
-                print(f"{n['class']:<22} {n['kind']:<8} {n['freed'] / 2**20:>6.0f} MB freed  "
+                print(f"{n['class']:<22} {n['kind']:<8} {n['freed'] / 2**20:>6.0f} MB freed "
+                      f"{n.get('disk', 0) / 2**20:>6.0f} MB to disk  "
                       f"{key}  windows: {', '.join(n['windows'])}")
     else:
         print(__doc__.strip())
