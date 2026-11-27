@@ -7,7 +7,8 @@
  *                           parallel, so a woken app doesn't fault them in one at a time.
  *
  * Used by ~/.local/bin/appnap. Advising another process needs CAP_SYS_NICE
- * (process_madvise), so the helper is installed once with that capability:
+ * (process_madvise), so the helper is installed with that capability. setup.sh compiles
+ * and installs it on the machine; by hand:
  *
  *   gcc -O2 -Wall -o /tmp/appnap-mem appnap-mem.c
  *   sudo install -m755 /tmp/appnap-mem /usr/local/bin/appnap-mem

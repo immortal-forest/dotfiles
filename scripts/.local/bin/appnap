@@ -31,7 +31,7 @@ How an app is frozen depends on where it was started:
                 writes it back. Without appnap-mem: frozen only.
 
 appnap-mem (system/appnap-mem in the dotfiles) needs CAP_SYS_NICE to advise another
-process; install it once as its header says. Without it, naps work as before (the scope
+process; setup.sh compiles and installs it (or by hand, as its header says). Without it, naps work as before (the scope
 kinds still save to disk) and waking pages memory back in on demand.
 
 State: $XDG_RUNTIME_DIR/appnap.json (gone on logout, like the frozen apps). The astralis
@@ -346,6 +346,7 @@ def thaw(key, move_back=True, read_back=True):
         n = naps.pop(key, None)
         if n:
             zswap_restore(n, naps)
+        last = not naps
     if not n:
         return
     if n["unit"]:
@@ -363,6 +364,8 @@ def thaw(key, move_back=True, read_back=True):
         for addr, ws in n["windows"].items():
             if ws is not None and where.get(addr) == SPECIAL:
                 move(addr, ws)
+    if last:  # nothing frozen any more: real hangs get the dialog again
+        anr_restore()
 
 
 def nap(win, clients, auto=False):
@@ -400,6 +403,7 @@ def nap(win, clients, auto=False):
         if ws is not None:
             move(a, SPECIAL)
 
+    anr_off()  # before the freeze, so Hyprland never counts a missed ping against it
     if unit and subprocess.run(["systemctl", "--user", "freeze", unit],
                                capture_output=True).returncode:
         unit = None
@@ -494,6 +498,39 @@ def start_watcher():
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+ANR_FILE = os.path.join(RUN, "appnap.anr")
+
+
+def set_anr(on):
+    subprocess.run(["hyprctl", "eval", "hl.config({ misc = { enable_anr_dialog = %s } })"
+                    % ("true" if on else "false")], capture_output=True)
+
+
+def anr_off():
+    """Hyprland's "not responding" dialog is switched off while anything is napped: a frozen
+    app can't answer pings, so the dialog popped up on every nap and flashed away a moment
+    later when suppress_anr() closed it. The setting from before the first nap is kept in
+    ANR_FILE and put back after the last wake."""
+    if not os.path.exists(ANR_FILE):
+        try:
+            out = subprocess.run(["hyprctl", "getoption", "misc:enable_anr_dialog", "-j"],
+                                 capture_output=True, text=True).stdout
+            was = bool(json.loads(out).get("bool", True))
+        except (OSError, ValueError):
+            was = True
+        with open(ANR_FILE, "w") as f:
+            f.write("1" if was else "0")
+    set_anr(False)
+
+
+def anr_restore():
+    was = read(ANR_FILE).strip()
+    if was:
+        set_anr(was == "1")
+        with contextlib.suppress(OSError):
+            os.remove(ANR_FILE)
+
+
 def suppress_anr():
     """Close Hyprland's "not responding" dialog when it's about a napped window: a frozen app
     can't answer pings, and the dialog's Terminate button would kill it. Other apps' real
@@ -526,6 +563,8 @@ def handle(line):
             thaw(key, move_back=False, read_back=False)  # let it finish closing
     elif ev == "openwindow":
         suppress_anr()
+    elif ev == "configreloaded" and load():
+        set_anr(False)  # a reload (wallpaper change, config edit) put the dialog back on
 
 
 def watch():

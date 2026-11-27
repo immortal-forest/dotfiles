@@ -3,8 +3,9 @@
 #
 # Installs the packages they use (only what's missing, it never upgrades
 # anything) and our own builds from the GitHub release (the patched skwd-wall,
-# Obel Mono Lig), fetches the Outfit font, links every package into $HOME with
-# GNU stow and clones the tmux plugin manager. Anything already in the way is
+# Obel Mono Lig), compiles appnap's memory helper on this machine, fetches
+# the Outfit font, links every package into $HOME with GNU stow and clones the
+# tmux plugin manager. Anything already in the way is
 # moved to ~/.dotfiles-backup/<time>/ first, so nothing is lost.
 # Safe to run again after a `git pull`.
 #
@@ -210,6 +211,28 @@ install_built() {
     rm -rf "$tmp"
 }
 
+# appnap-mem (system/appnap-mem): the small C helper appnap uses to write a
+# napped app's memory to disk and read it back in one go on wake. Compiled here
+# on this machine and installed to /usr/local/bin with CAP_SYS_NICE, which it
+# needs to advise another process (reinstalling drops the capability, so it's
+# set on every install). appnap still works without it, it just wakes slower.
+install_appnap_mem() {
+    local src="$repo/system/appnap-mem/appnap-mem.c" dst=/usr/local/bin/appnap-mem tmp
+    command -v gcc >/dev/null || { warn "gcc isn't installed (base-devel), skipping appnap-mem"; return; }
+    tmp=$(mktemp -d)
+    if ! gcc -O2 -Wall -o "$tmp/appnap-mem" "$src"; then
+        warn "appnap-mem didn't compile"
+    elif cmp -s "$tmp/appnap-mem" "$dst" && getcap "$dst" 2>/dev/null | grep cap_sys_nice >/dev/null; then
+        info "appnap-mem: up to date"
+    else
+        run sudo install -m755 "$tmp/appnap-mem" "$dst" &&
+            run sudo setcap cap_sys_nice=ep "$dst" &&
+            { [ $dry -eq 1 ] || info "appnap-mem compiled and installed"; } ||
+            warn "couldn't install appnap-mem"
+    fi
+    rm -rf "$tmp"
+}
+
 # --- fonts that aren't packaged --------------------------------------------
 
 # Outfit: the shell's UI font (OFL), straight from the Google Fonts repo.
@@ -375,6 +398,7 @@ if [ $do_packages -eq 1 ]; then
     step "Packages"
     install_packages
     install_built
+    install_appnap_mem
 fi
 if [ $do_fonts -eq 1 ]; then
     step "Fonts"
