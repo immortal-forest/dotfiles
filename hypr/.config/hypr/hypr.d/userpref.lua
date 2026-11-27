@@ -1,5 +1,5 @@
 -- Cursor (re-applies on config reload to survive theme resets)
-hl.exec_cmd("hyprctl setcursor 'Google.Violet' 24")
+hl.exec_cmd("hyprctl setcursor 'GoogleDot-Violet' 24")  -- manifest name (see env.lua)
 hl.exec_cmd("gsettings set org.gnome.desktop.interface cursor-theme 'Google.Violet'")
 hl.exec_cmd("gsettings set org.gnome.desktop.interface cursor-size 24")
 
