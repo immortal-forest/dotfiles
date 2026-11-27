@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Widgets
 import "../colors"
 import "../services"
@@ -43,10 +44,18 @@ Item {
     property string screenName: ""
 
     /**
-     * The auth panel lands on one deterministic monitor: the first screen
-     * Quickshell reports (Ricelin's isMain rule — no hardcoded output name).
+     * The capsule, media strip and Ame live on the screen you are looking at:
+     * the focused monitor (it follows the pointer across screens while
+     * locked, and every screen's input is live, so typing never stalls).
+     * It used to be the first screen Quickshell reports, which with an
+     * external monitor docked meant the password went to the laptop panel
+     * while you were facing the big screen. Falls back to that rule when
+     * Hyprland reports no focus.
      */
     readonly property bool isMain: {
+        var fm = Hyprland.focusedMonitor;
+        if (fm && fm.name)
+            return surface.screenName === fm.name;
         var scr = Quickshell.screens;
         if (scr.length === 0)
             return true;
@@ -98,7 +107,32 @@ Item {
      * any password anyone types, and the twenty-dot ceiling simply packs
      * tighter past that.
      */
-    readonly property real authWidth: 320 * surface.s
+    readonly property real authWidth: Math.max(250 * surface.s,
+        Math.min(480 * surface.s, dots.naturalRun + 2 * surface.authPad))
+    /** Room each side of the shape run: the 開 key on the right, air on the left. */
+    readonly property real authPad: 62 * surface.s
+
+    /**
+     * How many shapes the capsule shows. Not just the typed length: on a
+     * failed attempt Lock.qml clears the buffer BEFORE it emits failed(), so
+     * the shapes would simply fade. Instead they are held for a beat, turn
+     * the error colour, and then drop out of the capsule — the attempt is
+     * visibly rejected rather than silently wiped.
+     */
+    property int dotLen: 0
+    /** PAM said yes: the run merges into one bar for the beat before the unlock. */
+    property bool accepted: false
+    Timer {
+        id: failHold
+        interval: Math.round(420 * Motion.mult)
+        onTriggered: surface.dotLen = 0
+    }
+    // The clear arrives one call before failed(); look again next tick.
+    Timer {
+        id: clearDefer
+        interval: 1
+        onTriggered: if (!failHold.running && input.text.length === 0) surface.dotLen = 0
+    }
 
     /** Subtle greeting above the capsule; ctx (lock scope) carries the user. */
     readonly property string userName: (ctx && ctx.currentUser) ? ctx.currentUser : ""
@@ -112,10 +146,12 @@ Item {
         enabled: surface.ctx !== null
         function onFailed() {
             surface.showError = true;
+            failHold.restart();
             shake.restart();
         }
         function onSucceeded() {
             surface.showError = false;
+            surface.accepted = true;   // the accent sweeps the run before Lock.qml unlocks
         }
     }
 
@@ -1394,10 +1430,20 @@ Item {
             // become one column the instant the screen is about the password.
             // At rest it shrinks to its own content, with a floor so a
             // one-letter username still reads as a capsule and not a chip.
+            // While typing it follows the run of shapes: each keystroke grows
+            // the island by one pitch, on the same morph, so the capsule is
+            // never a long empty tube around a short password.
             width: surface.authMode
                 ? surface.authWidth
-                : Math.max(216 * surface.s, restRow.implicitWidth + 76 * surface.s)
-            height: 66 * surface.s
+                : Math.max(272 * surface.s, restRow.implicitWidth + 2 * surface.authPad)
+            height: 72 * surface.s
+
+            // A rejected attempt stains the material itself, not just its rim:
+            // the error tint washes in with the shake and drains as soon as
+            // the next character is typed.
+            readonly property real errAmt: surface.showError ? 1 : 0
+            topColor: Qt.tint(Colors.surface_container_high, Qt.alpha(Colors.error, 0.26 * capsule.errAmt))
+            bottomColor: Qt.tint(Colors.surface_container, Qt.alpha(Colors.error, 0.16 * capsule.errAmt))
             // The pill's morph curve and duration, deliberately: this IS the
             // pill's morph, at lock-screen scale.
             Behavior on width {
@@ -1420,8 +1466,10 @@ Item {
             shadowOpacity: 0.55
             shadowOffset: 6 * surface.s
 
-            opacity: surface.isMain ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+            // On EVERY screen: Hyprland focus follows the pointer, so with the
+            // cursor parked on the laptop a focused-only capsule vanished from
+            // the monitor you were facing. Typing is mirrored through passBuf.
+            opacity: 1
 
             transform: [
                 Translate { id: capsuleShift },
@@ -1481,6 +1529,7 @@ Item {
                 focus: true
                 enabled: !surface.busy
                 cursorVisible: false
+                cursorDelegate: Item {}
 
                 // Infer Caps-Lock from the produced character: a letter that
                 // comes out uppercase without Shift (or lowercase with Shift)
@@ -1496,8 +1545,14 @@ Item {
                 }
 
                 onTextChanged: {
-                    if (text.length > 0)
+                    if (text.length > 0) {
                         surface.showError = false;
+                        surface.accepted = false;
+                        failHold.stop();
+                        surface.dotLen = text.length;
+                    } else {
+                        clearDefer.restart();
+                    }
                     if (surface.ctx && surface.ctx.passBuf !== text)
                         surface.ctx.passBuf = text;
                 }
@@ -1527,129 +1582,83 @@ Item {
             Row {
                 id: restRow
                 anchors.centerIn: parent
+                // the leading slot is the bead's
+                anchors.horizontalCenterOffset: 10 * surface.s
                 opacity: surface.authMode ? 0 : 1
                 Behavior on opacity {
                     NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard }
                 }
 
-                // Just the name. The 人 glyph that used to sit here was a
-                // second mark doing the job the Ame bead beside it was
-                // already doing — two things in one leading slot, neither of
-                // them the other's companion. Ame is the shell's own mark and
-                // it keeps the slot alone.
-                Text {
+                // Just the name, and under it what to do. The 人 glyph that
+                // used to sit here was a second mark doing the job the Ame
+                // bead beside it was already doing — two things in one leading
+                // slot, neither of them the other's companion. Ame is the
+                // shell's own mark and it keeps the slot alone.
+                Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: surface.userName.length > 0 ? surface.userName : "welcome back"
-                    color: Colors.on_surface
-                    font.family: Appearance.font.family
-                    font.pixelSize: 14.5 * surface.s
-                    font.weight: Font.Medium
-                    font.letterSpacing: 1.6 * surface.s
+                    spacing: 3 * surface.s
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: surface.userName.length > 0 ? surface.userName : "welcome back"
+                        color: Colors.on_surface
+                        font.family: Appearance.font.family
+                        font.pixelSize: 17 * surface.s
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 0.6 * surface.s
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "TYPE TO UNLOCK"
+                        color: Qt.alpha(Colors.on_surface_variant, 0.75)
+                        font.family: Appearance.font.family
+                        font.pixelSize: 9 * surface.s
+                        font.weight: Font.DemiBold
+                        font.letterSpacing: 2.4 * surface.s
+                    }
                 }
             }
 
-            // AUTH content — the obscured password. A CONSTANT pool of 20
-            // dots, built once and never rebuilt (any change to a
-            // Repeater/ListView model COUNT re-creates every delegate — that
-            // was the reload/blink). Each dot is driven by whether its index
-            // is within the typed length, so a keypress flips exactly ONE
-            // dot's `shown`; only that one animates in, the rest just glide
-            // (Behavior on x) to keep the group centred.
-            Item {
-                id: dotField
+            // AUTH content — the obscured password as a run of expressive
+            // shapes (pill/PassDots.qml, shared with the polkit and GnuPG
+            // prompts). Its field is the capsule's widest measure, centred, so
+            // the run only compresses once the island has stopped growing.
+            PassDots {
+                id: dots
+                readonly property real naturalRun: dots.naturalWidth(surface.dotLen)
                 anchors.centerIn: parent
-                width: parent.width
-                height: 10 * surface.s
-                visible: opacity > 0.01
-                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
-
-                // While PAM is thinking the dots stand down and breathe.
-                // Ame's ring is the loud half of that state and it lives up in
-                // the date row now, so the capsule answers quietly, in place,
-                // instead of gaining a spinner of its own.
-                opacity: input.text.length > 0 ? (surface.busy ? 0.45 : 1) : 0
-                SequentialAnimation on scale {
-                    running: surface.busy && surface.animate
-                    loops: Animation.Infinite
-                    alwaysRunToEnd: true
-                    NumberAnimation { to: 0.94; duration: Math.round(560 * Motion.mult); easing.type: Easing.InOutSine }
-                    NumberAnimation { to: 1.0;  duration: Math.round(560 * Motion.mult); easing.type: Easing.InOutSine }
-                }
-
-                readonly property int count: Math.min(input.text.length, 20)
-                readonly property real pitch: 13 * surface.s
-
-                Repeater {
-                    model: 20   // constant — never re-instantiates the delegates
-                    delegate: Item {
-                        id: dot
-                        required property int index
-                        width: 8 * surface.s
-                        height: 8 * surface.s
-                        visible: dot.a > 0.001
-
-                        // this dot is part of the password iff its index is within
-                        // the typed length; typing/deleting flips exactly one.
-                        readonly property bool shown: dot.index < dotField.count
-
-                        // Centred slot; when `count` changes each remaining dot's
-                        // slot shifts, so its x re-targets and glides — the group
-                        // re-centres smoothly, no jump.
-                        readonly property real slot: dot.index - (dotField.count - 1) / 2
-                        x: dotField.width / 2 + slot * dotField.pitch - width / 2
-                        y: (dotField.height - height) / 2
-                        Behavior on x {
-                            NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard }
-                        }
-
-                        // a: 0→1 appear. The scale runs PAST 1 on the way in —
-                        // a keystroke is the one moment on this screen where
-                        // the machine is confirming it heard you, and a dot
-                        // that swells a little before settling is that
-                        // confirmation. Backspace just fades; undoing does not
-                        // deserve a flourish.
-                        property real a: 0
-                        opacity: Math.min(1, a)
-                        scale: 0.4 + 0.6 * a
-                        Component.onCompleted: if (dot.shown) dot.a = 1
-                        onShownChanged: {
-                            if (dot.shown) {
-                                if (Flags.reduceMotion) dot.a = 1;
-                                else appearAnim.restart();
-                            } else {
-                                appearAnim.stop();
-                                fadeAnim.restart();
-                            }
-                        }
-                        NumberAnimation {
-                            id: appearAnim
-                            target: dot; property: "a"; from: 0; to: 1
-                            duration: Motion.expressiveFastSpatialDur
-                            easing.type: Motion.easeBezier
-                            easing.bezierCurve: Motion.expressiveFastSpatial
-                        }
-                        NumberAnimation {
-                            id: fadeAnim
-                            target: dot; property: "a"; to: 0; duration: Motion.fast
-                            easing.type: Motion.easeStandard
-                        }
-
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: width / 2
-                            color: Qt.alpha(Colors.on_surface, 0.9)
-                        }
-                    }
-                }
+                width: 480 * surface.s - 2 * surface.authPad
+                s: surface.s
+                dot: 20 * surface.s
+                gap: 7 * surface.s
+                count: surface.dotLen
+                busy: surface.busy
+                error: surface.showError
+                success: surface.accepted
+                // every screen shows the capsule now, and typing motion is transient
+                animate: !Flags.reduceMotion
             }
 
             // Failure message, in the capsule's centre where the dots were —
             // the field it is about, not a caption somewhere near it.
             Text {
+                id: errText
                 anchors.centerIn: parent
-                opacity: (surface.showError && input.text.length === 0 && !surface.busy) ? 1 : 0
+                // Waits for the rejected run to finish falling out, then rises
+                // into the slot the dots left.
+                readonly property bool up: surface.showError && surface.dotLen === 0 && !surface.busy
+                opacity: up ? 1 : 0
                 visible: opacity > 0.01
-                Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
+                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                transform: Translate {
+                    y: errText.up ? 0 : 7 * surface.s
+                    Behavior on y {
+                        NumberAnimation {
+                            duration: Motion.expressiveFastSpatialDur
+                            easing.type: Motion.easeBezier
+                            easing.bezierCurve: Motion.expressiveFastSpatial
+                        }
+                    }
+                }
                 text: {
                     var msg = surface.ctx ? surface.ctx.lastError : "";
                     return msg.length > 0 ? msg.toLowerCase() : "wrong password";
@@ -1679,9 +1688,9 @@ Item {
                 id: enterCap
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.right: parent.right
-                anchors.rightMargin: 16 * surface.s
-                width: 28 * surface.s
-                height: 26 * surface.s
+                anchors.rightMargin: 18 * surface.s
+                width: 30 * surface.s
+                height: 28 * surface.s
                 // Bare glyph: no cap fill or border, the kanji stands alone.
                 color: "transparent"
 
@@ -1706,9 +1715,9 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: "開"
-                    color: Colors.on_surface_variant
+                    color: Colors.primary
                     font.family: Appearance.font.jp
-                    font.pixelSize: 15 * surface.s
+                    font.pixelSize: 17 * surface.s
                     font.weight: Font.DemiBold
                 }
             }
@@ -1728,10 +1737,13 @@ Item {
          * when the capsule resizes under it. Same form/point logic as
          * before — it still flares to a ring while PAM is thinking.
          */
+        // Inside the island now, in its leading slot — bead · password · 開,
+        // one complete object. Beside it, 34 px out in the void, it read as
+        // a stray dot on the wallpaper (user screenshot, 2026-11-27).
         Ame {
             id: capsuleAme
-            anchors.right: capsule.left
-            anchors.rightMargin: 34 * surface.s
+            anchors.horizontalCenter: capsule.left
+            anchors.horizontalCenterOffset: 31 * surface.s + capsuleShift.x
             anchors.verticalCenter: capsule.verticalCenter
             width: 92 * surface.s
             height: 92 * surface.s
@@ -1746,6 +1758,21 @@ Item {
             // Rides the capsule's own entrance rise so the two stay level.
             transform: Enter { delay: 180 }
         }
+        // Other screens: the bead's resting colour as a still dot (a live bead
+        // repaints at 12 fps; one is enough).
+        Rectangle {
+            visible: !surface.isMain
+            anchors.horizontalCenter: capsule.left
+            anchors.horizontalCenterOffset: 31 * surface.s + capsuleShift.x
+            anchors.verticalCenter: capsule.verticalCenter
+            width: 7 * surface.s
+            height: 7 * surface.s
+            radius: width / 2
+            color: Colors.tertiary
+            opacity: surface.ready ? 0.9 : 0
+            Behavior on opacity { NumberAnimation { duration: Motion.largeDur; easing.type: Motion.easeStandard } }
+            transform: Enter { delay: 180 }
+        }
 
         // ── Caps-Lock warning, under the capsule ────────────────────────────
         // Below rather than above: everything above the capsule is now the
@@ -1757,14 +1784,14 @@ Item {
             anchors.top: capsule.bottom
             anchors.topMargin: 20 * surface.s
             spacing: 7 * surface.s
-            opacity: (surface.isMain && surface.capsLock) ? 1 : 0
+            opacity: surface.capsLock ? 1 : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: Motion.fast; easing.type: Motion.easeStandard } }
 
             // Drops in from behind the capsule rather than appearing beneath
             // it, so it reads as the capsule having something to add.
             transform: Translate {
-                y: (surface.isMain && surface.capsLock) ? 0 : -8 * surface.s
+                y: surface.capsLock ? 0 : -8 * surface.s
                 Behavior on y {
                     NumberAnimation {
                         duration: Motion.expressiveFastSpatialDur

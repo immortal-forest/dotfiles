@@ -5,8 +5,8 @@ hl.on("hyprland.start", function()
 	hl.exec_cmd("dbus-update-activation-environment --systemd --all")
 	hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP")
 
-	-- Polkit agent
-	hl.exec_cmd("systemctl --user start hyprpolkitagent")
+	-- Polkit agent: astralis (services/PolkitAuth.qml) asks in the pill, so
+	-- no hyprpolkitagent here (the package is no longer needed).
 
 	-- Wallpaper: skwd-paper (standalone daemon) is the render backend; its CLI
 	-- auto-spawns the daemon on first `apply`. This restore script displays the

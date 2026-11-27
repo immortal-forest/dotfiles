@@ -148,6 +148,8 @@ var glyphs = ({
     "minus": { d: "M5 12h14", fill: false },
     "plus": { d: "M12 5v14 M5 12h14", fill: false },
     "arrow-down": { d: "M12 5v14 M6 13l6 6 6-6", fill: false },
+    // GnuPG's pinentry (鍵 surface): a bow ring and a toothed shaft.
+    "key": { d: "M10.5 12a3.5 3.5 0 1 1-7 0a3.5 3.5 0 1 1 7 0z M10.5 12h10 M17.2 12v3.2 M20.5 12v2.4", fill: false },
     "caps-lock": { d: "M12 4l7 7h-4v3h-6v-3H5l7-7z M9 18h6", fill: false },
     // The last two Material Symbols call sites in the shell (the wallpaper
     // picker's favourite hearts and its empty-state mark) resolve here now, so

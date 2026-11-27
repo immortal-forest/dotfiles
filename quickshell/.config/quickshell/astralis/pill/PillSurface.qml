@@ -59,7 +59,19 @@ Item {
      */
     property bool settled: false
     onOpenChanged: if (!open) settled = false
-    onMorphClosenessChanged: if (open && morphCloseness > 0.92) settled = true
+    onMorphClosenessChanged: if (open && born && morphCloseness > 0.92) settled = true
+
+    /**
+     * False for the tick the surface is created in. A surface's Loader is
+     * activated from inside the pill's targetSize evaluation, so on that tick
+     * morphCloseness still measures the pill against its OLD target — reads
+     * ~1 — and the surface latched `settled` and painted its content at full
+     * opacity over the still-resting pill for the whole first-open morph
+     * (seen frame by frame on the 認 prompt, 2026-11-27). Held at 0 until the
+     * next tick, the content fades in with the morph like every later open.
+     */
+    property bool born: false
+    Component.onCompleted: Qt.callLater(() => surface.born = true)
 
     anchors.fill: parent
     anchors.topMargin: mTop * s
@@ -68,7 +80,7 @@ Item {
     anchors.bottomMargin: mBottom * s
 
     enabled: open
-    opacity: open ? (settled ? 1 : Math.pow(morphCloseness, 1.3)) : 0
+    opacity: open && born ? (settled ? 1 : Math.pow(morphCloseness, 1.3)) : 0
     visible: opacity > 0.01
 
     // Eases in with the open morph; clears fast on close so content is gone

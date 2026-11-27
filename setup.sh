@@ -73,7 +73,7 @@ confirm() { # question: yes unless the answer starts with n
 
 repo_pkgs=(
     # compositor and shell
-    base-devel hyprland quickshell hypridle hyprpolkitagent xdg-desktop-portal-hyprland
+    base-devel hyprland quickshell hypridle xdg-desktop-portal-hyprland
     # colours from the wallpaper, and the Qt apps that follow them
     matugen qt5ct qt6ct
     # what astralis runs: clipboard, screenshots, recording, audio, network, media

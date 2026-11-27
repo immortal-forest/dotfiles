@@ -81,7 +81,6 @@ CORE=(
 APPS=(
   hypridle-git
   hyprpicker-git
-  hyprpolkitagent-git              # needs hyprtoolkit
   hyprshot-git
 )
 

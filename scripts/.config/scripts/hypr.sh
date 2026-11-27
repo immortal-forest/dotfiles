@@ -25,7 +25,6 @@ ECOSYSTEM_PACKAGES=(
   hypridle-git
   hyprshot-git
   hyprpicker-git
-  hyprpolkitagent-git
 )
 
 echo "=== Step 1: Installing dependencies in order ==="

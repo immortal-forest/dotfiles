@@ -26,3 +26,7 @@ singleton DiskCache DiskCache.qml
 singleton ClipHistory ClipHistory.qml
 singleton RetroactRain RetroactRain.qml
 singleton AppNap AppNap.qml
+singleton PolkitAuth PolkitAuth.qml
+singleton PowerSaver PowerSaver.qml
+singleton Switcher Switcher.qml
+singleton Pinentry Pinentry.qml

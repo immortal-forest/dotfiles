@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""pinentry-astralis — GnuPG's pinentry, drawn by the astralis shell.
+
+gpg-agent talks Assuan to this program on stdin/stdout. Each GETPIN, CONFIRM
+or MESSAGE becomes `qs -c astralis ipc call pinentry ask <json>`: the pill
+opens its auth surface and sends the answer back down a unix socket that this
+script listens on, in a private (0700) directory under $XDG_RUNTIME_DIR. The
+passphrase never goes on a command line or to disk.
+
+When the shell can't take the prompt (not running, locked, already asking),
+the same request is replayed to /usr/bin/pinentry-qt instead, so gpg always
+gets an answer.
+
+Use it with `pinentry-program /home/<you>/.local/bin/pinentry-astralis` in
+~/.gnupg/gpg-agent.conf, then `gpgconf --reload gpg-agent`.
+"""
+
+import glob
+import json
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+from urllib.parse import unquote
+
+FALLBACK = os.environ.get("PINENTRY_ASTRALIS_FALLBACK", "/usr/bin/pinentry-qt")
+QS = os.environ.get("PINENTRY_ASTRALIS_QS") or shutil.which("qs") or "/usr/bin/qs"
+# gpg error codes with the pinentry error source (5 << 24)
+ERR_CANCELED = "ERR 83886179 Operation cancelled <Pinentry>"
+ERR_NOT_CONFIRMED = "ERR 83886194 Not confirmed <Pinentry>"
+ERR_UNKNOWN_CMD = "ERR 83886355 Unknown IPC command <Pinentry>"
+ERR_TIMEOUT = "ERR 83886142 Timeout <Pinentry>"
+
+out = sys.stdout
+
+
+def send(line):
+    out.write(line + "\n")
+    out.flush()
+
+
+def qs_call(*args, timeout=4):
+    try:
+        r = subprocess.run([QS, "-c", "astralis", "ipc", "call", "pinentry", *args],
+                           capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def shell_ready():
+    if not os.environ.get("XDG_RUNTIME_DIR"):
+        return False
+    return qs_call("ready", timeout=3) == "ok"
+
+
+class State:
+    def __init__(self):
+        self.reset()
+        self.options = []
+
+    def reset(self):
+        self.title = ""
+        self.desc = ""
+        self.prompt = ""
+        self.error = ""
+        self.ok = ""
+        self.cancel = ""
+        self.notok = ""
+        self.repeat = None
+        self.repeat_error = ""
+        self.timeout = 0
+        self.setters = []   # raw SET* lines, replayed to the fallback
+
+
+def ask_shell(st, mode):
+    """Show one request in the pill. Returns the reply line, or None if the shell couldn't."""
+    rundir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    d = tempfile.mkdtemp(prefix="pinentry-astralis.", dir=rundir)
+    path = os.path.join(d, "s")
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        srv.bind(path)
+        os.chmod(path, 0o600)
+        srv.listen(1)
+        req = {
+            "sock": path, "mode": mode, "title": st.title, "desc": st.desc,
+            "prompt": st.prompt, "error": st.error, "ok": st.ok,
+            "cancel": st.cancel, "notok": st.notok,
+            "repeat": st.repeat is not None, "repeatPrompt": st.repeat or "",
+            "repeatError": st.repeat_error,
+        }
+        if qs_call("ask", json.dumps(req)) != "ok":
+            return None
+        srv.settimeout(8)
+        try:
+            conn, _ = srv.accept()
+        except socket.timeout:
+            return None
+        # The user has as long as gpg-agent gives the pinentry (SETTIMEOUT), else 10 min.
+        conn.settimeout(st.timeout if st.timeout > 0 else 600)
+        buf = b""
+        try:
+            while b"\n" not in buf:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+        except socket.timeout:
+            conn.close()
+            return "TIMEOUT"
+        conn.close()
+        line = buf.split(b"\n", 1)[0].decode("utf-8", "replace")
+        return line or "CANCEL"
+    finally:
+        srv.close()
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        os.rmdir(d)
+
+
+def ask_fallback(st, command):
+    """Replay the request to pinentry-qt and relay its answer verbatim."""
+    try:
+        p = subprocess.Popen([FALLBACK] + sys.argv[1:], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, text=True, bufsize=1)
+    except OSError:
+        send(ERR_CANCELED)
+        return
+
+    def read_until_end():
+        lines = []
+        while True:
+            ln = p.stdout.readline()
+            if not ln:
+                return lines
+            ln = ln.rstrip("\n")
+            lines.append(ln)
+            if ln.startswith("OK") or ln.startswith("ERR"):
+                return lines
+
+    read_until_end()  # greeting
+    for raw in st.options + st.setters:
+        p.stdin.write(raw + "\n")
+        p.stdin.flush()
+        read_until_end()
+    p.stdin.write(command + "\n")
+    p.stdin.flush()
+    for ln in read_until_end():
+        send(ln)
+    try:
+        p.stdin.write("BYE\n")
+        p.stdin.flush()
+        p.wait(timeout=2)
+    except (OSError, subprocess.TimeoutExpired):
+        p.kill()
+
+
+def sweep_stale(rundir):
+    """Socket dirs left by a pinentry that was SIGKILLed (nothing listening any more)."""
+    for d in glob.glob(os.path.join(rundir, "pinentry-astralis.*")):
+        path = os.path.join(d, "s")
+        try:
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            probe.settimeout(0.2)
+            probe.connect(path)
+            probe.close()
+            continue  # someone is still waiting on it
+        except OSError:
+            pass
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+            os.rmdir(d)
+        except OSError:
+            pass
+
+
+def main():
+    # gpg-agent ends a pinentry with SIGTERM/SIGHUP (its timeout, gpg killed):
+    # leave through the finally blocks so the socket dir is removed and the
+    # shell sees the hang-up and clears the prompt.
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda *_: sys.exit(1))
+    if os.environ.get("XDG_RUNTIME_DIR"):
+        sweep_stale(os.environ["XDG_RUNTIME_DIR"])
+    if not shell_ready():
+        os.execv(FALLBACK, [FALLBACK] + sys.argv[1:])
+
+    st = State()
+    send("OK Pleased to meet you, process %d" % os.getpid())
+    for raw in sys.stdin:
+        raw = raw.rstrip("\r\n")
+        if not raw or raw.startswith("#"):
+            continue
+        cmd, _, arg = raw.partition(" ")
+        cmd = cmd.upper()
+        val = unquote(arg)
+
+        if cmd == "BYE":
+            send("OK closing connection")
+            return
+        if cmd == "OPTION":
+            st.options.append(raw)
+            send("OK")
+        elif cmd == "RESET":
+            st.reset()
+            send("OK")
+        elif cmd in ("NOP", "CLEARPASSPHRASE", "SETQUALITYBAR", "SETQUALITYBAR_TT",
+                     "SETGENPIN", "SETGENPIN_TT", "SETKEYINFO", "SETCONSTRAINTS"):
+            st.setters.append(raw)
+            send("OK")
+        elif cmd.startswith("SET"):
+            st.setters.append(raw)
+            if cmd == "SETTITLE":
+                st.title = val
+            elif cmd == "SETDESC":
+                st.desc = val
+            elif cmd == "SETPROMPT":
+                st.prompt = val
+            elif cmd == "SETERROR":
+                st.error = val
+            elif cmd == "SETOK":
+                st.ok = val
+            elif cmd == "SETCANCEL":
+                st.cancel = val
+            elif cmd == "SETNOTOK":
+                st.notok = val
+            elif cmd == "SETREPEAT":
+                st.repeat = val or "Repeat"
+            elif cmd == "SETREPEATERROR":
+                st.repeat_error = val
+            elif cmd == "SETTIMEOUT":
+                try:
+                    st.timeout = int(val)
+                except ValueError:
+                    pass
+            send("OK")
+        elif cmd == "GETINFO":
+            what = arg.strip().lower()
+            if what == "pid":
+                send("D %d" % os.getpid())
+            elif what == "version":
+                send("D 1.3.1")
+            elif what == "flavor":
+                send("D astralis")
+            elif what == "ttyinfo":
+                send("D - - - - - - -")
+            else:
+                send(ERR_UNKNOWN_CMD)
+                continue
+            send("OK")
+        elif cmd in ("GETPIN", "CONFIRM", "MESSAGE"):
+            one_button = "--one-button" in arg
+            mode = "pin" if cmd == "GETPIN" else ("message" if cmd == "MESSAGE" or one_button else "confirm")
+            reply = ask_shell(st, mode)
+            if reply is None:
+                ask_fallback(st, raw)
+            elif reply == "TIMEOUT":
+                send(ERR_TIMEOUT)
+            elif reply.startswith("PIN "):
+                if cmd == "GETPIN":
+                    if st.repeat is not None:
+                        send("S PIN_REPEATED")
+                    pin = reply[4:]
+                    if pin:
+                        send("D " + pin)
+                    send("OK")
+                else:
+                    send("OK")
+            elif reply == "OK":
+                send("OK" if cmd != "GETPIN" else ERR_CANCELED)
+            elif reply == "NOTOK":
+                send(ERR_NOT_CONFIRMED)
+            else:
+                send(ERR_CANCELED)
+            # SETERROR applies to one prompt only
+            st.error = ""
+        else:
+            send(ERR_UNKNOWN_CMD)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (BrokenPipeError, KeyboardInterrupt):
+        pass

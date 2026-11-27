@@ -67,12 +67,20 @@ Scope {
         user: root.currentUser
         onSucceeded: {
             root.succeeded();
-            root.unlock();
+            // One beat for the capsule's "accepted" sweep (PassDots.success),
+            // then open. PAM has already said yes; this only delays the reveal.
+            unlockBeat.restart();
         }
         onFailed: {
             root.passBuf = "";
             root.failed();
         }
+    }
+
+    Timer {
+        id: unlockBeat
+        interval: Math.round(340 * Motion.mult)
+        onTriggered: root.unlock()
     }
 
     WlSessionLock {
@@ -87,7 +95,7 @@ Scope {
             LockSurface {
                 anchors.fill: parent
                 ctx: root
-                s: (lockWindow.screen ? lockWindow.screen.height / 1080 : 1) * Flags.uiScale
+                s: lockWindow.screen ? Flags.scaleFor(lockWindow.screen) : Flags.uiScale
                 screenName: lockWindow.screen ? lockWindow.screen.name : ""
             }
         }

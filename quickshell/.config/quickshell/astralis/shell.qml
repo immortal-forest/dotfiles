@@ -82,6 +82,47 @@ ShellRoot {
     readonly property var idleDaemon: Hypridle
 
     /**
+     * The session's polkit agent (services/PolkitAuth.qml), force-loaded so it
+     * registers at startup. A request opens the pill's 認 auth surface on the
+     * focused screen; it closes when the request completes or is cancelled.
+     * The dashboard and power menu sit above the pill, so they step aside.
+     */
+    readonly property var polkitAgent: PolkitAuth
+    /** On battery, pause per-frame effects outside the shell (services/PowerSaver.qml). */
+    readonly property var powerSaver: PowerSaver
+    /**
+     * GnuPG's pinentry (services/Pinentry.qml, fed by ~/.local/bin/
+     * pinentry-astralis) shares the same 認 auth surface. It says "locked"
+     * to the script while the session is locked — the pill is hidden then —
+     * so gpg falls back to pinentry-qt instead of waiting on nothing.
+     */
+    readonly property var pinentry: Pinentry
+    Binding { target: Pinentry; property: "locked"; value: lockScope.locked }
+
+    function syncAuthSurface() {
+        if (PolkitAuth.active || PolkitAuth.accepted || Pinentry.active || Pinentry.lingering) {
+            if (root.openSurface === "auth")
+                return;
+            root.dashboardOpen = false;
+            root.powerMenuOpen = false;
+            root.openMon = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
+            root.openSurface = "auth";
+        } else if (root.openSurface === "auth") {
+            root.close();
+        }
+    }
+    Connections {
+        target: PolkitAuth
+        function onActiveChanged() { root.syncAuthSurface(); }
+        function onAcceptedChanged() { root.syncAuthSurface(); }
+    }
+    Connections {
+        target: Pinentry
+        function onActiveChanged() { root.syncAuthSurface(); }
+        function onLingeringChanged() { root.syncAuthSurface(); }
+    }
+
+    /**
      * Force-load the Wallpaper singleton at startup. It hosts the Connections on
      * Flags (paletteMode / wallReseed / base16Shell) that fire retheme() →
      * `setwall RETHEME_ONLY`, so a settings-driven recolour only works while it
@@ -324,6 +365,24 @@ ShellRoot {
     GlobalShortcut { appid: "quickshell"; name: "mediaNext";   onPressed: Players.next() }
     GlobalShortcut { appid: "quickshell"; name: "mediaPrev";   onPressed: Players.previous() }
 
+    // ── Alt+Tab: the pill's 窓 window switcher (services/Switcher.qml) ───────
+    // keybinds.lua: Alt+Tab / Alt+Shift+Tab → next/prev, Alt release → commit.
+    GlobalShortcut { appid: "quickshell"; name: "switcherNext";   onPressed: Switcher.next() }
+    GlobalShortcut { appid: "quickshell"; name: "switcherPrev";   onPressed: Switcher.prev() }
+    GlobalShortcut { appid: "quickshell"; name: "switcherCommit"; onPressed: Switcher.commit() }
+    Connections {
+        target: Switcher
+        function onShownChanged() {
+            if (Switcher.shown) {
+                root.dashboardOpen = false;
+                root.openMon = Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : "";
+                root.openSurface = "windows";
+            } else if (root.openSurface === "windows") {
+                root.close();
+            }
+        }
+    }
+
     // ── visualizer: edge waves (layout = Flags.vizLayout), created only while enabled ─
     Variants {
         model: Quickshell.screens
@@ -331,7 +390,7 @@ ShellRoot {
         Scope {
             id: vizScope
             required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
+            readonly property real s: modelData ? Flags.scaleFor(modelData) : 1
 
             Loader {
                 id: vizLoader
@@ -371,7 +430,7 @@ ShellRoot {
         Scope {
             id: pmScope
             required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
+            readonly property real s: modelData ? Flags.scaleFor(modelData) : 1
 
             PowerMenu {
                 screen: pmScope.modelData
@@ -391,7 +450,7 @@ ShellRoot {
         Scope {
             id: dashScope
             required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
+            readonly property real s: modelData ? Flags.scaleFor(modelData) : 1
 
             Dashboard {
                 screen: dashScope.modelData
@@ -445,9 +504,9 @@ ShellRoot {
         PanelWindow {
             id: reserve
             required property var modelData
-            // 1080-relative screen scale × the user's UI-scale preference
-            // (Settings → Appearance → Scale, persisted in Flags.uiScale).
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
+            // Physical-size screen scale × this screen's Shell size (Settings →
+            // Display) × the global UI scale (Appearance) — see Flags.scaleFor.
+            readonly property real s: modelData ? Flags.scaleFor(modelData) : 1
             readonly property real topGap: 8 * s
             readonly property real restHeight: 38 * s
 
@@ -478,7 +537,7 @@ ShellRoot {
         PanelWindow {
             id: overlay
             required property var modelData
-            readonly property real s: modelData ? (modelData.height / 1080) * Flags.uiScale : 1
+            readonly property real s: modelData ? Flags.scaleFor(modelData) : 1
             readonly property real topGap: 8 * s
 
             readonly property string surface: root.openMon === modelData.name ? root.openSurface : ""
@@ -511,8 +570,17 @@ ShellRoot {
                 return ws ? !!ws.hasFullscreen : false;
             }
 
+            /**
+             * The pill retracts over a fullscreen window, except while it holds
+             * something that must be answered or seen: a polkit password prompt
+             * (hidden, it would stall whatever asked) or the Alt+Tab switcher.
+             */
+            readonly property bool urgentSurface: root.openMon === modelData.name
+                && (root.openSurface === "auth" || root.openSurface === "windows")
+            readonly property bool retracted: monFullscreen && !urgentSurface
+
             onMonFullscreenChanged: if (monFullscreen) {
-                if (root.openMon === modelData.name) root.close();
+                if (root.openMon === modelData.name && !urgentSurface) root.close();
                 pill.pinned = false;
             }
 
@@ -536,7 +604,7 @@ ShellRoot {
              * The mask is the crux: collapsed pill clicks through, expanded /
              * modal catches clicks, fullscreen hides entirely.
              */
-            mask: monFullscreen ? hiddenRegion : (modal ? fullRegion : pillRegion)
+            mask: retracted ? hiddenRegion : (modal ? fullRegion : pillRegion)
             Region { id: hiddenRegion }
             // Track the pill's *current* (animating) geometry, not the target.
             // Using Math.max(width, targetW) inflated the input region to the
@@ -639,7 +707,7 @@ ShellRoot {
                     // active workspace; the mask is already hiddenRegion so
                     // the layer is click-through while retracted.
                     transform: Translate {
-                        y: overlay.monFullscreen ? -(pill.height + overlay.topGap) : 0
+                        y: overlay.retracted ? -(pill.height + overlay.topGap) : 0
                         Behavior on y {
                             NumberAnimation {
                                 duration: Motion.morph
@@ -649,7 +717,7 @@ ShellRoot {
                         }
                     }
 
-                    opacity: overlay.monFullscreen ? 0 : 1
+                    opacity: overlay.retracted ? 0 : 1
                     Behavior on opacity {
                         NumberAnimation {
                             duration: Motion.morph

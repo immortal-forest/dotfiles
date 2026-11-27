@@ -25,7 +25,13 @@ Singleton {
 
     // ── the single reduce-motion knob ───────────────────────────────────────
     property bool reduceMotion: false
-    readonly property real mult: reduceMotion ? 0.4 : 1
+    /**
+     * Dev only: a harness sets this (e.g. 6) to run every token-timed
+     * animation in slow motion and grab real frames of it. Never set in the
+     * shell itself.
+     */
+    property real slowmo: 1
+    readonly property real mult: (reduceMotion ? 0.4 : 1) * slowmo
 
     // ── Ricelin pill durations (ms, ×mult) — port verbatim ──────────────────
     readonly property int fast:       Math.round(140  * mult)
