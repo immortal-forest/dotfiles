@@ -242,6 +242,13 @@ Singleton {
     property bool airplaneReady: false
 
     /**
+     * The persisted values have landed (or there was no file). Until then
+     * every property holds its QML default — a consumer that acts on them at
+     * startup (Hypridle writing hypridle.conf) must wait for this.
+     */
+    property bool loaded: false
+
+    /**
      * Airplane mode: one rfkill sweep per USER flag edge — on blocks every radio
      * (wifi + bluetooth), off unblocks them all. Guarded by `command -v rfkill`
      * so a machine without the tool degrades to a silent no-op. The load-time
@@ -317,6 +324,7 @@ Singleton {
                     + "Fix or delete it to resume saving settings.");
             root.writable = ok;
             root.airplaneReady = true;
+            root.loaded = true;
         }
         onLoadFailed: function (error) {
             // Defer the first-run default write until mkdir has created the cache
@@ -330,6 +338,7 @@ Singleton {
                     writeAdapter();
             }
             root.airplaneReady = true;
+            root.loaded = true;
         }
 
         JsonAdapter {

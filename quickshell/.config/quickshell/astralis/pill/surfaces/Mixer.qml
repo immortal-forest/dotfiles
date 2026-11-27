@@ -405,6 +405,57 @@ PillSurface {
             .filter(Boolean)
     }
 
+    /** Output/input route picker in the header: device glyph + chevron. */
+    component RouteChip: Rectangle {
+        id: chip
+        property string glyph: ""
+        property string kind: ""
+        property string accessibleName: ""
+        readonly property bool open: root.openPicker === chip.kind
+        anchors.verticalCenter: parent.verticalCenter
+        height: 26 * root.s
+        width: chipRow.implicitWidth + 18 * root.s
+        radius: height / 2
+        color: chip.open ? Qt.alpha(Colors.primary, 0.20) : Colors.surface_container_highest
+        Behavior on color { ColorAnimation { duration: Motion.fast } }
+
+        M3StateLayer {
+            anchors.fill: parent
+            s: root.s
+            radius: chip.radius
+            contentColor: chip.open ? Colors.primary : Colors.on_surface
+            pressScale: 0.92
+            minTarget: 26
+            accessibleRole: Accessible.Button
+            accessibleName: chip.accessibleName
+            onClicked: root.openPicker = chip.open ? "" : chip.kind
+        }
+
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 3 * root.s
+            GlyphIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 14 * root.s
+                height: 14 * root.s
+                name: chip.glyph
+                stroke: 1.8
+                color: chip.open ? Colors.primary : Colors.on_surface_variant
+            }
+            GlyphIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 11 * root.s
+                height: 11 * root.s
+                name: "chevron-down"
+                stroke: 2
+                color: chip.open ? Colors.primary : Colors.on_surface_variant
+                rotation: chip.open ? 180 : 0
+                Behavior on rotation { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+            }
+        }
+    }
+
     // ── header: 調 MIXER + route/mute chips ─────────────────────────────────
     Item {
         id: header
@@ -512,36 +563,30 @@ PillSurface {
                 }
             }
 
-            // The route pickers and the two mutes are all toggle icon buttons:
-            // "standard" is the only variant whose off-state stays transparent
-            // (the header was designed to read quiet) while its on-state is
-            // still unambiguous — the accent glyph, exactly the tint the
-            // hand-rolled chips used. "outlined" was the closer visual match
-            // but M3IconButton renders a *selected* outlined button as a
-            // transparent border over a transparent container, so the active
-            // picker would lose its container instead of gaining one.
-            M3IconButton {
+            // Route pickers are dropdown chips — device glyph + chevron, the
+            // codec chip's stadium in the neutral fill, primary while their
+            // menu is open — so they can't be mistaken for the two mutes
+            // after them. As four look-alike icon buttons the header read
+            // "speaker, mic, speaker, mic": the same glyph did two jobs.
+            RouteChip {
                 id: outBtn
-                anchors.verticalCenter: parent.verticalCenter
-                s: root.hdrBtnS
-                icon: "speaker"
-                toggle: true
-                checked: root.openPicker === "out"
-                accessibleName: "Output device"
-                accessibleDescription: root.sinkName
-                onClicked: root.openPicker = root.openPicker === "out" ? "" : "out"
+                glyph: "speaker"
+                kind: "out"
+                accessibleName: "Output device, " + root.sinkName
             }
-            M3IconButton {
+            RouteChip {
                 id: inBtn
-                anchors.verticalCenter: parent.verticalCenter
-                s: root.hdrBtnS
-                icon: "mic"
-                toggle: true
-                checked: root.openPicker === "in"
-                accessibleName: "Input device"
-                accessibleDescription: root.sourceName
-                onClicked: root.openPicker = root.openPicker === "in" ? "" : "in"
+                glyph: "mic"
+                kind: "in"
+                accessibleName: "Input device, " + root.sourceName
             }
+
+            // The mutes stay bare toggle icon buttons: "standard" is the only
+            // variant whose off-state stays transparent (the header reads
+            // quiet) while its on-state is still unambiguous — the accent
+            // glyph. A wider gap than the chips' own sets them apart.
+            Item { width: 2 * root.s; height: 1 }
+
             M3IconButton {
                 anchors.verticalCenter: parent.verticalCenter
                 s: root.hdrBtnS

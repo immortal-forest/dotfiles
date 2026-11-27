@@ -142,9 +142,13 @@ Singleton {
         var d = Math.floor(sec / 86400);
         var h = Math.floor((sec % 86400) / 3600);
         var m = Math.floor((sec % 3600) / 60);
-        var hh = h < 10 ? "0" + h : "" + h;
-        var mm = m < 10 ? "0" + m : "" + m;
-        return "UP " + d + "D " + hh + ":" + mm;
+        // Units, not a clock: "UP 0D 11:58" sat in the header where a time
+        // reads, and the zero day was noise. Two units at most.
+        if (d > 0)
+            return "UP " + d + "D " + h + "H";
+        if (h > 0)
+            return "UP " + h + "H " + m + "M";
+        return "UP " + m + "M";
     }
 
     Component.onCompleted: detectProc.running = true

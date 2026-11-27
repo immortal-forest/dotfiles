@@ -13,10 +13,12 @@ VENV="$DATA/venv"
 
 mkdir -p "$DATA"
 
-if ! "$VENV/bin/python" -c "import numpy, onnxruntime, PIL" 2>/dev/null; then
+if ! "$VENV/bin/python" -I -c "import numpy, onnxruntime, PIL.Image" 2>/dev/null; then
     if command -v uv >/dev/null; then
+        # Copies, whatever UV_LINK_MODE says: symlinks into uv's cache break
+        # the venv on the next `uv cache clean`.
         uv venv -q --clear "$VENV"
-        uv pip install -q --python "$VENV/bin/python" numpy onnxruntime pillow
+        uv pip install -q --link-mode copy --python "$VENV/bin/python" numpy onnxruntime pillow
     else
         python3 -m venv --clear "$VENV"
         "$VENV/bin/pip" install -q --disable-pip-version-check numpy onnxruntime pillow

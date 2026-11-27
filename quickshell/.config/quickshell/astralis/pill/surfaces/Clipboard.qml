@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import ".."
 import "../../colors"
 import "../../services"
@@ -368,6 +369,21 @@ PillSurface {
     }
 
     // ── history list ────────────────────────────────────────────────────────
+    Item {
+        id: listFade
+        anchors.fill: list
+        visible: false
+        layer.enabled: true
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                GradientStop { position: 0; color: "white" }
+                GradientStop { position: Math.max(0, 1 - 22 * root.s / Math.max(1, listFade.height)); color: "white" }
+                GradientStop { position: 1; color: "transparent" }
+            }
+        }
+    }
+
     ListView {
         id: list
         anchors.top: divider.bottom
@@ -378,6 +394,18 @@ PillSurface {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         model: rows
+
+        // Rows are 28 or 44 tall, so the clip line lands mid-row and sliced
+        // the last one's text in half against the pill's edge. While more
+        // waits below, the last 22 dissolve instead; at the end (or when
+        // everything fits) the layer is off and nothing is masked.
+        layer.enabled: !list.atYEnd && list.contentHeight > list.height
+        layer.effect: MultiEffect {
+            maskEnabled: true
+            maskSource: listFade
+            maskThresholdMin: 0.5
+            maskSpreadAtMin: 1.0
+        }
 
         displaced: Transition {
             enabled: slideTimer.armed

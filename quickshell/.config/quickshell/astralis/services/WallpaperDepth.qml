@@ -133,11 +133,15 @@ Singleton {
         }
     }
 
-    // Already installed? (venv python + model on disk) — skip setup if so.
+    // Already installed? (venv imports cleanly + model on disk) — skip setup
+    // if so. An existing python alone isn't enough: a venv uv built with
+    // UV_LINK_MODE=symlink points into uv's cache, and a cache clean left
+    // every package a dangling link (PIL "unknown location") while this
+    // probe still said ready, so depth.py failed on every wallpaper.
     Process {
         id: probe
         running: true
-        command: ["sh", "-c", 'test -x "$1/venv/bin/python" && test -s "$1/model.onnx"', "_", root.dataDir]
+        command: ["sh", "-c", 'test -s "$1/model.onnx" && "$1/venv/bin/python" -I -c "import numpy, onnxruntime, PIL.Image"', "_", root.dataDir]
         onExited: function (code) {
             root.ready = code === 0;
             root.pump();

@@ -82,18 +82,44 @@ Singleton {
     }
 
     // One shell command writes the conf then restarts hypridle, so the file is
-    // guaranteed on disk before the daemon reads it. Falls back to a bare
-    // (re)spawn if the systemd user unit isn't available. Idempotent: if the
-    // conf on disk already matches AND hypridle is running, it exits without a
-    // restart — so a hot-reload (which re-runs Component.onCompleted) does not
-    // needlessly restart the unit and re-arm the idle timers.
+    // guaranteed on disk before the daemon reads it. Idempotent: if the conf on
+    // disk already matches and the unit's hypridle is the only one running, it
+    // exits without a restart — so a hot reload (or a `qs -p` check, which
+    // loads this too) doesn't re-arm the idle timers.
+    //
+    // Exactly ONE hypridle, the unit's. Only one process can own
+    // org.freedesktop.ScreenSaver, which is where Firefox says "video playing,
+    // don't dim". This used to fall back to a bare `setsid hypridle` whenever
+    // `systemctl restart` failed — and it failed with start-limit-hit after a
+    // burst of reloads (each load restarted twice, see below). The stray kept
+    // the name, the unit's copy logged "Another service is already providing
+    // org.freedesktop.ScreenSaver", never heard the inhibit, and dimmed both
+    // screens 3 min into a fullscreen video (2026-11-27). So: strays are
+    // killed, the failure counter is reset before a restart, and the bare
+    // spawn is only for a machine with no hypridle unit at all.
     function apply() {
+        if (!Flags.loaded)
+            return;
         Quickshell.execDetached(["sh", "-c",
-            "mkdir -p \"$HOME/.config/hypr\"; f=\"$HOME/.config/hypr/hypridle.conf\"; "
-            + "if [ \"$(cat \"$f\" 2>/dev/null)\" = \"$(printf '%s' \"$1\")\" ] && pgrep -x hypridle >/dev/null 2>&1; then exit 0; fi; "
-            + "printf '%s' \"$1\" > \"$f\"; "
-            + "systemctl --user restart hypridle 2>/dev/null || { pkill -x hypridle 2>/dev/null; setsid hypridle >/dev/null 2>&1 & }",
-            "astralis-hypridle", root.buildConf()]);
+            "mkdir -p \"$HOME/.config/hypr\"; f=\"$HOME/.config/hypr/hypridle.conf\"; same=; "
+            // The script path, resolved: the daemon reaches the tree through
+            // the ~/.config/quickshell symlink and a `qs -p` run through
+            // ~/dotfiles, so each saw the other's conf as changed and restarted.
+            + "d=$(readlink -f \"$2\" 2>/dev/null) || d=\"$2\"; want=$(printf '%s' \"$1\" | sed \"s|$2|$d|g\"); "
+            + "[ \"$(cat \"$f\" 2>/dev/null)\" = \"$want\" ] && same=1; "
+            + "if ! systemctl --user cat hypridle.service >/dev/null 2>&1; then "
+            + "  [ -n \"$same\" ] && pgrep -x hypridle >/dev/null 2>&1 && exit 0; "
+            + "  printf '%s\\n' \"$want\" > \"$f\"; pkill -x hypridle; setsid hypridle >/dev/null 2>&1 & exit 0; "
+            + "fi; "
+            + "main=$(systemctl --user show -p MainPID --value hypridle.service); stray=; "
+            + "for p in $(pgrep -x hypridle); do [ \"$p\" = \"$main\" ] || { kill \"$p\"; stray=1; }; done; "
+            + "[ -n \"$same\" ] && [ -z \"$stray\" ] && systemctl --user is-active --quiet hypridle.service && exit 0; "
+            // let a killed stray drop the bus name before the unit asks for it
+            + "i=0; while [ -n \"$stray\" ] && [ $i -lt 20 ] && pgrep -x hypridle | grep -qvx \"$main\"; do sleep 0.1; i=$((i+1)); done; "
+            + "printf '%s\\n' \"$want\" > \"$f\"; "
+            + "systemctl --user reset-failed hypridle.service 2>/dev/null; "
+            + "systemctl --user restart hypridle.service",
+            "astralis-hypridle", root.buildConf(), root.idleDim]);
     }
 
     Timer { id: debounce; interval: 400; onTriggered: root.apply() }
@@ -107,8 +133,13 @@ Singleton {
         function onLockBeforeSleepChanged() { debounce.restart(); }
     }
 
-    // Write the initial conf + start the daemon on login. Flags' JSON may still
-    // be loading (defaults for one tick); the Connections above re-apply once
-    // the persisted values land.
-    Component.onCompleted: root.apply()
+    // Write the conf + start the daemon on login — once Flags has loaded.
+    // Applying at Component.onCompleted ran on QML DEFAULTS (no dim, lock at
+    // 5 min): every shell start or hot reload wrote that conf, restarted
+    // hypridle, then wrote the real one and restarted it again.
+    Component.onCompleted: if (Flags.loaded) debounce.restart()
+    Connections {
+        target: Flags
+        function onLoadedChanged() { if (Flags.loaded) debounce.restart(); }
+    }
 }

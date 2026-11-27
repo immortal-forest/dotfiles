@@ -937,24 +937,14 @@ Singleton {
         var hooked = Object.assign({}, root.hookedIds);
         hooked[n.id] = true;
         root.hookedIds = hooked;
+        // A sender can rewrite a notification in place (replaces_id:
+        // progress, "3 new messages"); the live set is unchanged, so save on
+        // the text itself or a restart brings back the old wording.
+        n.summaryChanged.connect(root, root.markHistoryDirty);
+        n.bodyChanged.connect(root, root.markHistoryDirty);
         n.closed.connect(root, function(reason) {
             if (!root.userDismissed[n.id])
-                root.history = [{
-                    app: root.sourceLabel(n),
-                    label: root.sourceLabel(n),
-                    kind: root.kindOf(n),
-                    img: root.localImage(n),
-                    file: root.fileOf(n),
-                    appName: n.appName,
-                    summary: n.summary,
-                    body: n.body,
-                    appIcon: n.appIcon,
-                    desktopEntry: n.desktopEntry,
-                    image: n.image,
-                    urgency: n.urgency,
-                    ts: root.arrivalMs[n.id] || Date.now(),
-                    id: "h" + n.id + "-" + Date.now()
-                }].concat(root.history).slice(0, 50);
+                root.history = [root.snapshot(n)].concat(root.history).slice(0, 50);
             else {
                 var du = Object.assign({}, root.userDismissed);
                 delete du[n.id];
@@ -973,7 +963,31 @@ Singleton {
         });
     }
 
-    /** "now" / "12m" / "3h" — refreshed by the 30s tick. */
+    /**
+     * A notification as plain data — what the centre keeps once the live
+     * object is gone (closed, or a shell restart). Carries the kind/label/
+     * files precomputed, so every view reads it like a live one.
+     */
+    function snapshot(n) {
+        return {
+            app: root.sourceLabel(n),
+            label: root.sourceLabel(n),
+            kind: root.kindOf(n),
+            img: root.localImage(n),
+            file: root.fileOf(n),
+            appName: n.appName,
+            summary: n.summary,
+            body: n.body,
+            appIcon: n.appIcon,
+            desktopEntry: n.desktopEntry,
+            image: n.image,
+            urgency: n.urgency,
+            ts: root.arrivalMs[n.id] || Date.now(),
+            id: "h" + n.id + "-" + Date.now()
+        };
+    }
+
+    /** "now" / "12m" / "3h" / "2d" — refreshed by the 30s tick. */
     function ageLabel(n) {
         void root.tick;
         var t = arrivalMs[n.id] || n.ts;
@@ -981,7 +995,8 @@ Singleton {
         var m = Math.floor((Date.now() - t) / 60000);
         if (m < 1) return "now";
         if (m < 60) return m + "m";
-        return Math.floor(m / 60) + "h";
+        if (m < 1440) return Math.floor(m / 60) + "h";
+        return Math.floor(m / 1440) + "d";
     }
 
     Timer {
@@ -1001,7 +1016,133 @@ Singleton {
         id: persist
         reloadableId: "astralis-notifications"
         property int lastId: 0
+        /** Stamped once per qs process: tells a hot reload from a restart. */
+        property string boot: ""
+        // After the reload stage, so a restored `boot` is already in place.
+        onLoaded: {
+            if (!boot.length)
+                boot = String(Date.now()) + "-" + Math.floor(Math.random() * 1e9);
+            root.bootReady = true;
+        }
     }
+
+    // ── the centre on disk ──────────────────────────────────────────────────
+    //
+    // `history` lives in this singleton, so a hot reload or a shell restart
+    // used to empty the centre. Every change (debounced) writes the centre as
+    // plain snapshots — live notifications included, marked with `liveId` —
+    // and a fresh singleton reads it back. After a RESTART the live ones are
+    // gone from the server (their senders' actions with them), so they come
+    // back as history rows. After a HOT RELOAD (same `boot`) the server still
+    // tracks them, so their snapshots are skipped.
+    // State, not cache — and private: bodies carry messages and one-time
+    // codes. ~/.local/state is 0700; writes are atomic (a new file each
+    // time), so the privacy has to come from the directory, not a chmod.
+    readonly property string historyDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/astralis"
+    readonly property string historyPath: root.historyDir + "/notif-history.json"
+    readonly property int historyCap: 50
+    property bool historyReady: false
+    property bool bootReady: false
+
+    /** Inline image data (image://qsimage/…) dies with the process; theme icons and paths don't. */
+    function portableImage(img) {
+        img = String(img || "");
+        return img.indexOf("image://") === 0 && img.indexOf("image://icon/") !== 0 ? "" : img;
+    }
+
+    function restoreHistory(text) {
+        var o = null;
+        try { o = JSON.parse(String(text || "")); } catch (err) { o = null; }
+        if (!o || !Array.isArray(o.entries))
+            return;
+        var sameBoot = o.boot === persist.boot;
+        var kept = o.entries.filter(function(h) {
+            return h && typeof h === "object" && h.id && !(sameBoot && h.liveId !== undefined);
+        }).map(function(h) {
+            var c = Object.assign({}, h);
+            delete c.liveId;
+            return c;
+        });
+        var have = {};
+        for (var i = 0; i < root.history.length; i++) have[root.history[i].id] = true;
+        kept = kept.filter(function(h) { return !have[h.id]; });
+        root.restoring = true;
+        root.history = root.history.concat(kept)
+            .sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); })
+            .slice(0, root.historyCap);
+        root.restoring = false;
+    }
+
+    function writeHistory() {
+        if (!root.historyReady || !root.historyDirty)
+            return;
+        root.historyDirty = false;
+        var live = root.tracked.map(function(n) {
+            var h = root.snapshot(n);
+            h.liveId = n.id;
+            return h;
+        });
+        var all = live.concat(root.history).map(function(h) {
+            var c = Object.assign({}, h);
+            c.image = root.portableImage(c.image);
+            return c;
+        }).sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, root.historyCap);
+        historyFile.setText(JSON.stringify({ boot: persist.boot, entries: all }));
+    }
+
+    // Only a real change writes — never the restore itself. A second qs
+    // instance (a `qs -p` check, a harness) reads the file too, can't own the
+    // notification server, and must not rewrite it under its own boot.
+    property bool restoring: false
+    property bool historyDirty: false
+    function markHistoryDirty() {
+        // Not before the file is read: `history`'s own `[]` initialiser emits
+        // a change the first time anything reads it. Anything real that
+        // lands before then is merged by restoreHistory and goes out with
+        // the next write.
+        if (root.restoring || !root.historyReady)
+            return;
+        root.historyDirty = true;
+        historySave.restart();
+    }
+    onHistoryChanged: markHistoryDirty()
+    // `tracked` re-emits on startup with nothing in it (a second instance
+    // never owns the server): only a different set of live ids is a change.
+    property string trackedSig: ""
+    onTrackedChanged: {
+        var sig = root.tracked.map(function(n) { return n.id; }).join(",");
+        if (sig === root.trackedSig)
+            return;
+        root.trackedSig = sig;
+        markHistoryDirty();
+    }
+
+    Timer {
+        id: historySave
+        interval: 1500
+        onTriggered: root.writeHistory()
+    }
+
+    FileView {
+        id: historyFile
+        // Not read until `boot` is settled: restoreHistory compares against it.
+        path: root.bootReady ? root.historyPath : ""
+        printErrors: false
+        onLoaded: {
+            root.restoreHistory(text());
+            root.historyReady = true;
+            if (root.historyDirty)
+                historySave.restart();
+        }
+        onLoadFailed: function (error) {
+            if (error === FileViewError.FileNotFound)
+                Quickshell.execDetached(["mkdir", "-p", "-m", "700", root.historyDir]);
+            root.historyReady = true;
+            if (root.historyDirty)
+                historySave.restart();
+        }
+    }
+
 
     NotificationServer {
         id: server

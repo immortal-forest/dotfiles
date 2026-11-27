@@ -699,7 +699,9 @@ Item {
                     const wdt = (2.5 + 6 * (1 - fadeIn)) * S;
                     ctx.globalAlpha = blink;
                     ctx.beginPath();
-                    ctx.roundedRect(bx - wdt / 2, by - hgt / 2, wdt, Math.max(2 * S, hgt), Math.min(wdt, hgt) / 2, Math.min(wdt, hgt) / 2);
+                    // Centred on the cursor x the 2.5·S stroke bit 1.25·S into
+                    // the last glyph ("fire" read as "fir|e"); sit just past it.
+                    ctx.roundedRect(bx + 1.5 * S - wdt / 2, by - hgt / 2, wdt, Math.max(2 * S, hgt), Math.min(wdt, hgt) / 2, Math.min(wdt, hgt) / 2);
                     ctx.fillStyle = root.beadCore;
                     ctx.fill();
                     ctx.globalAlpha = 1;

@@ -154,7 +154,8 @@ PillSurface {
      * A capture toggle (desktop audio / mic / cursor) as one of three equal
      * tiles. The state is spelled out under the label, because a struck-through
      * glyph alone read as "disabled" rather than "off". On fills
-     * primary_container and squares its corners; off is the bare stadium.
+     * primary_container and squares its corners; off is the bare stadium —
+     * the same on-tile as the dashboard's quick settings.
      */
     component CaptureTile: Rectangle {
         id: ct
@@ -528,7 +529,10 @@ PillSurface {
                     width: sourceRow.segW
                     height: sourceRow.height - 2 * sourceRow.inset
                     radius: height / 2
-                    color: Colors.secondary_container
+                    // The tile tint every icon choice in the shell uses
+                    // (switcher, media picker, Display): primary, not
+                    // secondary_container.
+                    color: Qt.tint(Colors.surface_container_high, Qt.alpha(Colors.primary, 0.22))
                     Behavior on x {
                         NumberAnimation {
                             duration: Motion.glide
@@ -545,7 +549,7 @@ PillSurface {
                         required property var modelData
                         required property int index
                         readonly property bool selected: sourceRow.current === seg.index
-                        readonly property color ink: seg.selected ? Colors.on_secondary_container
+                        readonly property color ink: seg.selected ? Colors.primary
                             : (segArea.containsMouse ? Colors.on_surface : Colors.on_surface_variant)
                         x: sourceRow.inset + seg.index * sourceRow.segW
                         y: sourceRow.inset

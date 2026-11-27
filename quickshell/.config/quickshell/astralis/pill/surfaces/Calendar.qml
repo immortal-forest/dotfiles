@@ -87,8 +87,15 @@ PillSurface {
     readonly property int offset: firstWeekdayOffset(viewYear, viewMonth)
     readonly property int monthLen: daysInMonth(viewYear, viewMonth)
 
-    readonly property real cellH: 24 * s
-    readonly property real rowGap: 2 * s
+    /**
+     * Rows share the pane's height instead of a fixed 24: at 24 + 2 the grid
+     * was 40 wide × 26 tall per day, ended two-thirds down the column, and the
+     * focus ring (≈31 across) overlapped the rows above and below. 16 stays
+     * free under the grid for the "click the end day" hint.
+     */
+    readonly property real cellH: Math.max(24 * s, Math.min(30 * s,
+        (gridPane.height - grid.y - 16 * s) / 6 - rowGap))
+    readonly property real rowGap: 3 * s
 
     readonly property real gridW: 282 * s
     readonly property real weatherW: 152 * s
@@ -341,84 +348,13 @@ PillSurface {
     amePoint: focused ? Qt.point(focusX, focusY) : soulPoint
 
     /**
-     * Mini-segmented choice control (Ricelin SettingsSeg, inlined — astralis
-     * has no shared seg widget yet and this surface is its only taker).
-     * `options` is a list of `{ label, value }`; the pill whose value equals
-     * `value` lights with an ember tint. Picking a pill emits `picked(value)`.
+     * The agenda's choice rows are the shell's one segmented control, so a
+     * chosen "All day" lights the same `primary` as the recorder's frame rate
+     * and every settings row. The inlined copy this replaced said it with a
+     * 16% tertiary wash on 8-radius squares — a second selection language.
      */
-    component Seg: Rectangle {
-        id: seg
-
-        property var options: []
-        property var value
-        signal picked(var value)
-
-        readonly property real pad: 1
-
-        width: segPills.implicitWidth + 2 * pad
-        height: segPills.implicitHeight + 2 * pad
-        radius: 9 * root.s
-        color: "transparent"
-
-        Row {
-            id: segPills
-            anchors.centerIn: parent
-            spacing: 2 * root.s
-
-            Repeater {
-                model: seg.options
-
-                Rectangle {
-                    id: opt
-                    required property var modelData
-                    readonly property bool current: seg.value === modelData.value
-
-                    width: optLabel.implicitWidth + 18 * root.s
-                    height: optLabel.implicitHeight + 12 * root.s
-                    radius: 8 * root.s
-                    color: opt.current ? Qt.alpha(Colors.tertiary, 0.16)
-                        : (optArea.containsMouse ? Colors.surface_container_highest : "transparent")
-                    Behavior on color { ColorAnimation { duration: Motion.fast } }
-
-                    // One choice among the segment's options (SettingsSeg idiom).
-                    Accessible.role: Accessible.RadioButton
-                    Accessible.name: String(opt.modelData.label)
-                    Accessible.checkable: true
-                    Accessible.checked: opt.current
-                    Accessible.focusable: true
-                    Accessible.onPressAction: seg.picked(opt.modelData.value)
-
-                    scale: optArea.pressed ? 0.92 : 1
-                    Behavior on scale {
-                        NumberAnimation {
-                            duration: Motion.glide
-                            easing.type: Motion.easeBezier
-                            easing.bezierCurve: Motion.expressiveFastSpatial
-                        }
-                    }
-
-                    Text {
-                        id: optLabel
-                        anchors.centerIn: parent
-                        text: opt.modelData.label
-                        color: opt.current ? Colors.on_surface : Colors.on_surface_variant
-                        font.family: Appearance.font.family
-                        font.pixelSize: 10.5 * root.s
-                        font.weight: Font.Bold
-                        font.letterSpacing: 0.3 * root.s
-                        Behavior on color { ColorAnimation { duration: Motion.fast } }
-                    }
-
-                    MouseArea {
-                        id: optArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: seg.picked(opt.modelData.value)
-                    }
-                }
-            }
-        }
+    component Seg: SettingsSeg {
+        s: root.s
     }
 
     // ── weather glance (Ricelin Calendar.qml weather panel) ─────────────────
@@ -736,7 +672,9 @@ PillSurface {
                         id: dayName
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 34 * root.s
+                        // "TODAY" at 9 DemiBold caps is ~34 wide on its own;
+                        // at 34 it ran straight into the glyph.
+                        width: 38 * root.s
                         text: day.today ? "Today" : day.modelData.day
                         color: day.today ? Colors.on_surface_variant : root.wxFaint
                         font.family: Appearance.font.family
@@ -1095,10 +1033,15 @@ PillSurface {
                     }
 
                     Rectangle {
+                        // A lone day (today, or a single picked day) is a disc,
+                        // so the focus ring (also round) sits concentric round
+                        // it; a span's days stay rounded squares so a range
+                        // still reads as one run.
+                        readonly property bool disc: (cell.current || cell.sel) && root.rangeLo === root.rangeHi
                         anchors.centerIn: parent
                         width: 24 * root.s
                         height: 24 * root.s
-                        radius: Motion.rSmall * root.s
+                        radius: disc ? width / 2 : Motion.rSmall * root.s
                         // Faded, not flipped. Kept on the short hover duration
                         // rather than the slower state cross-fade because while
                         // a span is being armed this repaints under the moving
@@ -1107,7 +1050,9 @@ PillSurface {
                         visible: opacity > 0.01
                         color: cell.sel && !cell.current
                             ? Qt.alpha(Colors.tertiary, 0.12) : Qt.alpha(Colors.primary, 0.14)
-                        border.width: 1
+                        // No edge of its own while the bead's ring is round it:
+                        // a ring round a ring read as a target.
+                        border.width: disc && root.focused && root.focusDay === cell.dayNum ? 0 : 1
                         border.color: cell.selEdge ? Qt.alpha(Colors.tertiary, 0.55)
                             : (cell.sel ? Qt.alpha(Colors.tertiary, 0.22) : Colors.primary)
                         Behavior on opacity { NumberAnimation { duration: Motion.fast ; easing.type: Motion.easeStandard } }
@@ -1590,7 +1535,8 @@ PillSurface {
                             anchors.fill: parent
                             background: null
                             padding: 0
-                            leftPadding: 2 * root.s
+                            leftPadding: 10 * root.s
+                            rightPadding: 8 * root.s
                             verticalAlignment: TextInput.AlignVCenter
                             color: Colors.on_surface
                             font.family: Appearance.font.family
@@ -1603,14 +1549,16 @@ PillSurface {
                             onTextChanged: { editor.titleVal = text; editor.autoRecur(); }
                             Keys.onReturnPressed: editor.commit()
                         }
+                        // The shell's field: filled, 9 radius, a 6% edge that lights on
+                        // focus (SearchField). An underline here was a third field style.
                         Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            height: 1
-                            color: root.wxFaint
-                            opacity: titleField.activeFocus ? 0.7 : 0.2
-                            Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                            z: -1
+                            anchors.fill: parent
+                            radius: 9 * root.s
+                            color: Colors.surface_container_high
+                            border.width: 1.2 * root.s
+                            border.color: titleField.activeFocus ? Qt.alpha(Colors.primary, 0.55) : Qt.alpha(Colors.on_surface, 0.06)
+                            Behavior on border.color { ColorAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                         }
                     }
 
@@ -1713,7 +1661,8 @@ PillSurface {
                                 anchors.fill: parent
                                 background: null
                                 padding: 0
-                                leftPadding: 2 * root.s
+                                leftPadding: 10 * root.s
+                                rightPadding: 8 * root.s
                                 verticalAlignment: TextInput.AlignVCenter
                                 color: Colors.on_surface
                                 font.family: Appearance.font.family
@@ -1728,14 +1677,16 @@ PillSurface {
                                 onTextChanged: editor.startVal = text
                                 Keys.onReturnPressed: editor.commit()
                             }
+                            // The shell's field: filled, 9 radius, a 6% edge that lights on
+                            // focus (SearchField). An underline here was a third field style.
                             Rectangle {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: 1
-                                color: root.wxFaint
-                                opacity: startField.activeFocus ? 0.7 : 0.2
-                                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                                z: -1
+                                anchors.fill: parent
+                                radius: 9 * root.s
+                                color: Colors.surface_container_high
+                                border.width: 1.2 * root.s
+                                border.color: startField.activeFocus ? Qt.alpha(Colors.primary, 0.55) : Qt.alpha(Colors.on_surface, 0.06)
+                                Behavior on border.color { ColorAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                             }
                         }
 
@@ -1748,7 +1699,8 @@ PillSurface {
                                 anchors.fill: parent
                                 background: null
                                 padding: 0
-                                leftPadding: 2 * root.s
+                                leftPadding: 10 * root.s
+                                rightPadding: 8 * root.s
                                 verticalAlignment: TextInput.AlignVCenter
                                 color: Colors.on_surface
                                 font.family: Appearance.font.family
@@ -1763,14 +1715,16 @@ PillSurface {
                                 onTextChanged: editor.endVal = text
                                 Keys.onReturnPressed: editor.commit()
                             }
+                            // The shell's field: filled, 9 radius, a 6% edge that lights on
+                            // focus (SearchField). An underline here was a third field style.
                             Rectangle {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                height: 1
-                                color: root.wxFaint
-                                opacity: endField.activeFocus ? 0.7 : 0.2
-                                Behavior on opacity { NumberAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
+                                z: -1
+                                anchors.fill: parent
+                                radius: 9 * root.s
+                                color: Colors.surface_container_high
+                                border.width: 1.2 * root.s
+                                border.color: endField.activeFocus ? Qt.alpha(Colors.primary, 0.55) : Qt.alpha(Colors.on_surface, 0.06)
+                                Behavior on border.color { ColorAnimation { duration: Motion.standard; easing.type: Motion.easeStandard } }
                             }
                         }
                     }

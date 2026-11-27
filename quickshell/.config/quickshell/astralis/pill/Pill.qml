@@ -524,6 +524,11 @@ Item {
     Ame {
         id: ame
         anchors.fill: parent
+        // As the text caret (launcher, clipboard) the bead sits INSIDE the
+        // search field, which is an opaque box in surfaceHost — declared after
+        // this, so it painted over the caret and the field showed none. Every
+        // other form docks on the bare pill body and stays underneath.
+        z: form === "caret" ? 1 : 0
         s: pill.s
         heat: 0
         wake: pill.wakePoint
