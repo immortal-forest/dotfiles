@@ -476,7 +476,12 @@ SettingsPage {
                         s: root.s
                         on: Flags.notifSound
                         accessibleName: "Notification sound"
-                        onToggled: Flags.notifSound = !Flags.notifSound
+                        onToggled: {
+                            Flags.notifSound = !Flags.notifSound;
+                            // hear what you just turned on
+                            if (Flags.notifSound)
+                                Services.Notifications.previewChime();
+                        }
                     }
                 }
             }

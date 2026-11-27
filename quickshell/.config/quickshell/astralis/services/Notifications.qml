@@ -222,21 +222,67 @@ Singleton {
         root.knownApps = m;
     }
 
-    /** Freedesktop chime via PipeWire (PulseAudio fallback); honours suppress-sound / sound-file / sound-name. */
+    /**
+     * The chime, via PipeWire (PulseAudio fallback). astralis's own sounds
+     * (sounds/*.oga, made by sounds/make-sounds.py): a 風鈴 glass chime for
+     * ordinary notifications, one soft strike for low-urgency ones and the
+     * shell's own notices (screenshots, recordings, system), a rounder
+     * double pair for criticals. An app's own sound FILE is honoured; a
+     * generic freedesktop sound NAME ("message-new-instant", "bell", …) gets
+     * ours instead of the stock beep, and any other name plays its
+     * freedesktop file if one exists. suppress-sound is respected. A burst
+     * (a chat waking up) chimes once per 0.9 s; criticals always sound.
+     */
+    readonly property string soundDir: String(Qt.resolvedUrl("../sounds/")).replace(/^file:\/\//, "")
+    readonly property var genericSounds: ({
+        "message": 1, "message-new-instant": 1, "message-new-email": 1, "message-sent-instant": 1,
+        "dialog-information": 1, "dialog-information-symbolic": 1, "bell": 1, "bell-window-system": 1,
+        "complete": 1, "window-attention": 1, "dialog-question": 1, "dialog-warning": 1, "dialog-error": 1
+    })
+    property double lastChime: 0
+
+    function chimeFor(n) {
+        if (n && n.urgency === NotificationUrgency.Critical)
+            return "urgent";
+        if (n && n.urgency === NotificationUrgency.Low)
+            return "soft";
+        const k = n ? root.kindOf(n) : "message";
+        return (k === "screenshot" || k === "recording" || k === "shell" || k === "system") ? "soft" : "chime";
+    }
+
+    function playSound(name) {
+        Quickshell.execDetached(["sh", "-c",
+            "command -v pw-play >/dev/null 2>&1 && exec pw-play \"$1\"; exec paplay \"$1\"",
+            "sh", root.soundDir + name + ".oga"]);
+    }
+
+    /** Settings › Notifications plays this when the chime is switched on. */
+    function previewChime() {
+        root.playSound("chime");
+    }
+
     function chime(n) {
         if (!root.sound) return;
         var h = (n && n.hints) || {};
         if (h["suppress-sound"]) return;
-        var dir = "/usr/share/sounds/freedesktop/stereo/";
+        const critical = n && n.urgency === NotificationUrgency.Critical;
+        const now = Date.now();
+        if (!critical && now - root.lastChime < 900)
+            return;
+        root.lastChime = now;
         var f = String(h["sound-file"] || "");
         if (f.indexOf("file://") === 0) f = f.substring(7);
         var nm = String(h["sound-name"] || "");
-        var fallback = dir + (n.urgency === NotificationUrgency.Critical ? "dialog-warning.oga" : "message.oga");
-        var named = /^[\w.-]+$/.test(nm) ? dir + nm + ".oga" : "";
+        var own = root.soundDir + root.chimeFor(n) + ".oga";
+        if (f.indexOf("/") !== 0 && (nm.length === 0 || root.genericSounds[nm])) {
+            root.playSound(root.chimeFor(n));
+            return;
+        }
+        var named = /^[\w.-]+$/.test(nm) ? "/usr/share/sounds/freedesktop/stereo/" + nm + ".oga" : "";
         Quickshell.execDetached(["sh", "-c",
             "f=\"$1\"; [ -f \"$f\" ] || f=\"$2\"; [ -f \"$f\" ] || f=\"$3\"; "
             + "command -v pw-play >/dev/null 2>&1 && exec pw-play \"$f\"; exec paplay \"$f\"",
-            "sh", f.indexOf("/") === 0 ? f : "", named, fallback]);
+            "sh", f.indexOf("/") === 0 ? f : "", named, own]);
     }
 
     /** The toast on top is critical: the pill body takes the error material while it shows. */
