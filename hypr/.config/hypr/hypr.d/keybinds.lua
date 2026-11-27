@@ -109,7 +109,14 @@ hl.bind(mainMod .. " + left",  hl.dsp.focus({ direction = "left" }))
 hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
 hl.bind(mainMod .. " + up",    hl.dsp.focus({ direction = "up" }))
 hl.bind(mainMod .. " + down",  hl.dsp.focus({ direction = "down" }))
-hl.bind("ALT + Tab",            hl.dsp.focus({ direction = "down" }))
+-- Alt+Tab: astralis's 窓 window switcher (quickshell services/Switcher.qml).
+-- Tab / Shift+Tab cycle while Alt is held; releasing Alt switches. A quick tap
+-- jumps to the last window without drawing anything. The release binds are
+-- non-consuming so apps still see Alt go up (no stuck modifier).
+hl.bind("ALT + Tab",         hl.dsp.global("quickshell:switcherNext"))
+hl.bind("ALT + SHIFT + Tab", hl.dsp.global("quickshell:switcherPrev"))
+hl.bind("ALT + Alt_L",         hl.dsp.global("quickshell:switcherCommit"), { release = true, non_consuming = true })
+hl.bind("ALT + SHIFT + Alt_L", hl.dsp.global("quickshell:switcherCommit"), { release = true, non_consuming = true })
 
 -- Workspaces 1–10 on current monitor (r~N = workspace slot N on this monitor)
 for i = 1, 10 do

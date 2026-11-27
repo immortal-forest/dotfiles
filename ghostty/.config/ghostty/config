@@ -24,3 +24,7 @@ window-save-state = always
 
 shell-integration-features = no-cursor,sudo,title
 shell-integration = detect
+
+# astralis power saving (services/PowerSaver.qml): on battery the cursor shader
+# stops animating every frame. Optional, last so it wins.
+config-file = ?~/.cache/astralis/ghostty-power.conf

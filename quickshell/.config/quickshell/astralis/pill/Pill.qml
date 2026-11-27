@@ -209,7 +209,18 @@ Item {
         // Header 24 + 14 + state panel 80 + 12 + settings card 134 + 10 +
         // chip row 34 + 8 + output 36 = 352 content ⇒ 380 fixed; 430 wide fits
         // the frame-rate and quality strips on one line each.
-        recorder:  { size: () => fitSize(ldRecorder, 430, 400), ame: () => surfaceItem(ldRecorder) }
+        recorder:  { size: () => fitSize(ldRecorder, 430, 400), ame: () => surfaceItem(ldRecorder) },
+        // 認 polkit password prompt (services/PolkitAuth); height follows the message.
+        // GnuPG's key descriptions run to four lines, hence the taller cap.
+        auth:      { size: () => fitSize(ldAuth, 392, 430), ame: () => surfaceItem(ldAuth) },
+        // 窓 Alt+Tab switcher (services/Switcher); width follows the window count (4–8 tiles).
+        windows:   { size: () => {
+                         var it = surfaceItem(ldWindows);
+                         if (!it)
+                             return Qt.size(360 * s, 190 * s);
+                         return Qt.size(it.contentW + (it.mLeft + it.mRight) * s,
+                                        Math.min(240 * s, it.desiredH + (it.mTop + it.mBottom) * s));
+                     }, ame: () => surfaceItem(ldWindows) }
     })
 
     // Mode ladder (Ricelin Pill.qml:224–231; game/quickChoose/quickCount rungs
@@ -1411,6 +1422,31 @@ Item {
             sourceComponent: Surfaces.Notifications {
                 s: pill.s
                 open: pill.mode === "notifications"
+                morphCloseness: pill.morphCloseness
+                onRequestClose: pill.requestClose()
+            }
+        }
+
+        Loader {
+            id: ldWindows
+            active: false
+            anchors.fill: parent
+            sourceComponent: Windows {
+                s: pill.s
+                open: pill.mode === "windows"
+                morphCloseness: pill.morphCloseness
+                onRequestClose: pill.requestClose()
+            }
+        }
+
+        Loader {
+            id: ldAuth
+            active: false
+            anchors.fill: parent
+            // Qualified: lock/Auth.qml is the lock screen's PAM helper.
+            sourceComponent: Surfaces.Auth {
+                s: pill.s
+                open: pill.mode === "auth"
                 morphCloseness: pill.morphCloseness
                 onRequestClose: pill.requestClose()
             }

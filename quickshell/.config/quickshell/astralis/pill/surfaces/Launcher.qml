@@ -10,6 +10,7 @@ import "../../services"
 import "../../config"
 import "../lib/Fuzzy.js" as Fuzzy
 import "../lib/calc.js" as Calc
+import "../lib/emoji.js" as Emoji
 
 /**
  * astralis — app launcher surface (Ricelin Launcher.qml layout). The 探
@@ -59,6 +60,28 @@ PillSurface {
      * genericName, icon) plus an `action` marker `activate()` branches on. Spliced
      * into `results` on a "settings" query — never fed through Fuzzy.rank.
      */
+    /** Synthetic row: pick a colour off the screen (hyprpicker), hex to the clipboard. */
+    readonly property var colourEntry: ({
+        name: "Pick a colour",
+        genericName: "Hex to the clipboard",
+        glyph: "palette",
+        action: "colourpick"
+    })
+
+    /** Synthetic row: points at the ":" emoji mode for anyone typing "emoji". */
+    readonly property var emojiHintEntry: ({
+        name: "Emoji",
+        genericName: "Type : and a name, Enter copies it",
+        emoji: "😀",
+        action: "emojihint"
+    })
+
+    /**
+     * ":" mode: emoji by Unicode name (lib/emoji.js), Enter copies the glyph.
+     * Rows are synthetic entries carrying `emoji`, drawn in the icon tile.
+     */
+    readonly property bool emojiMode: query.charAt(0) === ":"
+
     readonly property var settingsEntry: ({
         name: "Settings",
         genericName: "astralis shell",
@@ -120,6 +143,18 @@ PillSurface {
     }
 
     readonly property var results: {
+        if (root.emojiMode) {
+            var hits = Emoji.search(query.slice(1), 60);
+            var rows = [];
+            for (var e = 0; e < hits.length; e++)
+                rows.push({
+                    name: hits[e][1].charAt(0).toUpperCase() + hits[e][1].slice(1),
+                    genericName: "Copy",
+                    emoji: hits[e][0],
+                    action: "emoji"
+                });
+            return rows;
+        }
         var base = Fuzzy.rank(allEntries, query, usage);
         // Surface synthetic rows (Settings, Wallpaper) when the query reads
         // toward their name (never in calc mode, never on an empty query — keeps
@@ -130,6 +165,9 @@ PillSurface {
         var pre = [];
         if ("settings".indexOf(q) !== -1)  pre.push(root.settingsEntry);
         if ("wallpaper".indexOf(q) !== -1) pre.push(root.wallpaperEntry);
+        if ("colour".indexOf(q) !== -1 || "color".indexOf(q) !== -1 || "picker".indexOf(q) !== -1)
+            pre.push(root.colourEntry);
+        if ("emoji".indexOf(q) !== -1) pre.push(root.emojiHintEntry);
         return pre.length ? pre.concat(base) : base;
     }
 
@@ -224,6 +262,24 @@ PillSurface {
                 root.requestClose();
                 return;
             }
+            if (entry.action === "emoji") {
+                Quickshell.execDetached(["sh", "-c", "printf '%s' \"$1\" | wl-copy", "_", entry.emoji]);
+                root.requestClose();
+                return;
+            }
+            if (entry.action === "emojihint") {
+                search.text = ":";
+                return;
+            }
+            if (entry.action === "colourpick") {
+                root.requestClose();
+                // After the pill has shrunk away, so the picker's frozen frame
+                // doesn't hold it; -a copies the hex itself.
+                Quickshell.execDetached(["sh", "-c",
+                    "sleep 0.35; c=$(hyprpicker -a -f hex) && [ -n \"$c\" ] && "
+                    + "notify-send -a 'Colour picker' -i color-select \"$c\" 'Copied to the clipboard'"]);
+                return;
+            }
             if (entry.id) {
                 root.usage[entry.id] = (root.usage[entry.id] || 0) + 1;
                 root.saveUsage();
@@ -299,9 +355,9 @@ PillSurface {
         anchors.right: parent.right
         s: root.s
         kanji: "探"
-        placeholder: "Search apps"
+        placeholder: "Search apps, or : for emoji"
         count: root.results.length
-        total: root.allEntries.length
+        total: root.emojiMode ? Emoji.list.length : root.allEntries.length
         onTextChanged: {
             root.query = text;
             root.selectedIndex = 0;
@@ -594,6 +650,23 @@ PillSurface {
                     radius: 5 * root.s
                     color: Qt.alpha(Colors.on_surface, 0.05)
                     visible: !(icon.status === Image.Ready && icon.source != "")
+                }
+                // Synthetic rows draw an emoji or a shell glyph in the tile.
+                Text {
+                    anchors.centerIn: iconBg
+                    visible: !!(appRow.entry && appRow.entry.emoji)
+                    text: visible ? appRow.entry.emoji : ""
+                    font.family: "Noto Color Emoji"
+                    font.pixelSize: 15 * root.s
+                }
+                GlyphIcon {
+                    anchors.centerIn: iconBg
+                    visible: !!(appRow.entry && appRow.entry.glyph)
+                    width: 15 * root.s
+                    height: 15 * root.s
+                    name: visible ? appRow.entry.glyph : ""
+                    color: Colors.primary
+                    stroke: 1.8
                 }
                 Image {
                     id: icon
