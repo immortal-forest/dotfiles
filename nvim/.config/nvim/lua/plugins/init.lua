@@ -1,24 +1,15 @@
 return {
-
   {
     "christoomey/vim-tmux-navigator",
     lazy = false,
   },
+
   {
     "catgoose/nvim-colorizer.lua",
-    event = "User FilePost",
+    event = { "BufReadPre", "BufNewFile" },
     opts = {
-      user_default_options = {
-        names = false, -- disable color names like "red"
-      },
+      user_default_options = { names = false },
     },
-    config = function(_, opts)
-      require("colorizer").setup(opts)
-      -- attach to current buffer on load
-      vim.defer_fn(function()
-        require("colorizer").attach_to_buffer(0)
-      end, 0)
-    end,
   },
 
   {
@@ -34,31 +25,30 @@ return {
   {
     "nvim-mini/mini.icons",
     version = false,
-    config = function()
-      require("mini.icons").setup()
-    end,
+    opts = {},
   },
 
   {
     "folke/trouble.nvim",
-    opts = {},
     cmd = "Trouble",
+    opts = {},
   },
 
   {
     "folke/todo-comments.nvim",
+    event = { "BufReadPost", "BufWritePost", "BufNewFile" },
     dependencies = { "nvim-lua/plenary.nvim" },
     opts = {},
-    event = { "BufReadPost", "BufWritePost", "BufNewFile" },
   },
 
   {
     "MeanderingProgrammer/render-markdown.nvim",
     ft = { "markdown", "quarto" },
     dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-mini/mini.icons" },
-    config = function()
-      require "configs.markdown"
-    end,
+    opts = {
+      render_modes = true,
+      latex = { enabled = false },
+    },
   },
 
   {
@@ -79,19 +69,17 @@ return {
 
   {
     "mfussenegger/nvim-lint",
-    enabled = true,
     event = "VeryLazy",
     config = function()
-      require "configs.lint"
+      -- clangd and lua_ls lint their own languages
+      require("lint").linters_by_ft = { sh = { "bash" } }
     end,
   },
 
   {
     "michaelrommel/nvim-silicon",
-    lazy = true,
     cmd = "Silicon",
     opts = {
-      -- background is set from the current theme's accent on each shot (mappings.lua)
       font = "Obel Mono Lig=34;Noto Color Emoji=34",
       num_separator = "\u{258f} ",
       theme = "Coldark-Dark",
@@ -101,11 +89,10 @@ return {
     },
   },
 
-  -- nvim-treesitter is on the `main` branch now (NvChad v2.5): parsers are only
-  -- installed via :TSInstallAll (also run on build) and need the tree-sitter CLI.
   {
     "nvim-treesitter/nvim-treesitter",
     opts = {
+      -- installed with :TSInstallAll
       ensure_installed = {
         "lua",
         "luadoc",
@@ -120,6 +107,7 @@ return {
         "qmljs",
         "markdown",
         "markdown_inline",
+        "html",
         "json",
         "yaml",
         "toml",

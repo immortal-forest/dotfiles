@@ -1,45 +1,32 @@
--- This file needs to have same structure as nvconfig.lua
--- https://github.com/NvChad/ui/blob/v3.0/lua/nvconfig.lua
--- Please read that file to know all available options :(
+-- Options: https://github.com/NvChad/ui/blob/v3.0/lua/nvconfig.lua
 
 ---@type ChadrcConfig
 local M = {}
 
 M.base46 = {
-  -- "matugen" = lua/themes/matugen.lua, written by matugen on every wallpaper
-  -- change (see matugen/.config/matugen/templates/nvim*.lua) and hot-reloaded
-  -- by the watcher in autocmds.lua.
+  -- written by matugen on every wallpaper change
   theme = "matugen",
+  theme_toggle = { "matugen", "yoru" },
   integrations = { "trouble", "todo", "render-markdown" },
-
   hl_override = {
     Comment = { italic = true },
     ["@comment"] = { italic = true },
   },
-  theme_toggle = { "matugen", "yoru" },
 }
 
--- Fresh machine where matugen hasn't run yet: fall back to a stock theme.
-if M.base46.theme == "matugen" and not vim.uv.fs_stat(vim.fn.stdpath "config" .. "/lua/themes/matugen.lua") then
+if not vim.uv.fs_stat(vim.fn.stdpath "config" .. "/lua/themes/matugen.lua") then
   M.base46.theme = "yoru"
 end
 
-M.lsp = {
-  signature = true,
-}
-
--- :MasonInstallAll installs every server/formatter/linter the config uses.
--- ty has no NvChad name mapping, so it's listed here; clangd, clang-format and
--- qmlls come from the system packages.
 M.mason = {
   pkgs = { "ty", "shellcheck" },
-  skip = { "clangd", "clang-format" },
 }
+
+-- nvim-colorizer already highlights colours
+M.colorify = { enabled = false }
 
 M.ui = {
   cmp = {
-    icons = true,
-    lspkind_text = true,
     style = "atom_colored",
   },
   telescope = {
@@ -50,14 +37,14 @@ M.ui = {
     separator_style = "round",
     order = { "mode", "file", "git", "f", "lsp_msg", "f", "linters", "diagnostics", "lsp", "cwd", "cursor" },
     modules = {
+      f = "%=",
       linters = function()
         local linters = require("lint").get_running()
         if #linters == 0 then
-          return "󰦕 " .. " "
+          return "󰦕  "
         end
         return "󱉶 " .. table.concat(linters, ", ") .. " "
       end,
-      f = "%=",
       lsp = function()
         local buf = vim.api.nvim_win_get_buf(vim.g.statusline_winid or 0)
         local client = vim.lsp.get_clients({ bufnr = buf })[1]

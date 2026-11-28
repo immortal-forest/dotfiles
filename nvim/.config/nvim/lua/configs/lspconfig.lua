@@ -18,8 +18,7 @@ local servers = {
   },
   ruff = {},
   ty = {},
-  -- Arch ships qmlls as qmlls6. Import paths (Quickshell etc.) come from the
-  -- .qmlls.ini Quickshell writes into the shell root on every reload.
+  -- import paths come from the .qmlls.ini Quickshell writes
   qmlls = { cmd = { "qmlls6" } },
   bashls = {},
   jsonls = {},
@@ -30,13 +29,17 @@ for name, opts in pairs(servers) do
   vim.lsp.enable(name)
 end
 
--- Go-to keys. Defined after NvChad's LspAttach, so these buffer maps win.
--- Trouble's lsp_* modes jump straight there when there's one result and open
--- a list when there are several.
 vim.api.nvim_create_autocmd("LspAttach", {
-  group = vim.api.nvim_create_augroup("user_lsp_goto", { clear = true }),
+  group = vim.api.nvim_create_augroup("user_lsp_attach", { clear = true }),
   callback = function(args)
     local buf = args.buf
+    local client = vim.lsp.get_client_by_id(args.data.client_id)
+
+    -- ty does hover for Python
+    if client and client.name == "ruff" then
+      client.server_capabilities.hoverProvider = false
+    end
+
     local function map(lhs, rhs, desc)
       vim.keymap.set("n", lhs, rhs, { buffer = buf, desc = "LSP " .. desc })
     end
@@ -55,12 +58,10 @@ vim.api.nvim_create_autocmd("LspAttach", {
     map("grn", require "nvchad.lsp.renamer", "Rename")
     map("gl", vim.diagnostic.open_float, "Line diagnostics")
 
-    -- now covered by grt / Trouble
     pcall(vim.keymap.del, "n", "<leader>D", { buffer = buf })
   end,
 })
 
--- ]d / [d show the diagnostic float after jumping; ]e / [e jump errors only
 vim.diagnostic.config {
   jump = {
     on_jump = function(_, bufnr)

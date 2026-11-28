@@ -3,33 +3,16 @@ require "nvchad.autocmds"
 local autocmd = vim.api.nvim_create_autocmd
 local usercmd = vim.api.nvim_create_user_command
 
+vim.lsp.inlay_hint.enable(true)
+
 autocmd({ "BufWritePost", "BufReadPost" }, {
   group = vim.api.nvim_create_augroup("user_lint", { clear = true }),
   callback = function(args)
-    -- real files only: not help, Trouble, nvdash, terminals...
     if vim.bo[args.buf].buftype == "" then
       require("lint").try_lint()
     end
   end,
 })
-
-autocmd("LspAttach", {
-  group = vim.api.nvim_create_augroup("lsp_attach_disable_ruff_hover", { clear = true }),
-  callback = function(args)
-    local client = vim.lsp.get_client_by_id(args.data.client_id)
-    if client == nil then
-      return
-    end
-    if client.name == "ruff" then
-      -- Disable hover in favor of ty
-      client.server_capabilities.hoverProvider = false
-    end
-  end,
-  desc = "LSP: Disable hover capability from Ruff",
-})
-
--- Inlay hints on by default (globally, so <leader>uh toggles every buffer)
-vim.lsp.inlay_hint.enable(true)
 
 autocmd("BufDelete", {
   callback = function()
@@ -40,30 +23,20 @@ autocmd("BufDelete", {
   end,
 })
 
--- Enable/Disable formatter
 usercmd("FormatDisable", function(args)
   if args.bang then
-    -- :FormatDisable! disables autoformat for this buffer only
     vim.b.disable_autoformat = true
   else
-    -- :FormatDisable disables autoformat globally
     vim.g.disable_autoformat = true
   end
-end, {
-  desc = "Disable autoformat-on-save",
-  bang = true, -- allows the ! variant
-})
+end, { desc = "Disable format on save (! for this buffer)", bang = true })
 
 usercmd("FormatEnable", function()
   vim.b.disable_autoformat = false
   vim.g.disable_autoformat = false
-end, {
-  desc = "Re-enable autoformat-on-save",
-})
+end, { desc = "Re-enable format on save" })
 
--- Live wallpaper theme: matugen rewrites lua/themes/matugen.lua on every
--- wallpaper change (several times per setwall run, hence the debounce); when
--- that's the active theme, recompile base46 so open nvims recolour in place.
+-- recolour open nvims when matugen rewrites the theme
 do
   local dir = vim.fn.stdpath "config" .. "/lua/themes"
   local watcher, debounce = vim.uv.new_fs_event(), vim.uv.new_timer()
@@ -86,10 +59,7 @@ do
   end
 end
 
--- Obel Mono masks keys (font-feature ss01) only when it sees a name and its
--- value as one stretch of same-coloured text, on one line. Highlighting colours
--- KEY and =value differently and wrapping splits long keys, which both show the
--- key. So .env files get no highlighting and no wrapping.
+-- Obel Mono masks KEY=value only as one unwrapped, single-colour run
 autocmd({ "BufWinEnter", "FileType" }, {
   group = vim.api.nvim_create_augroup("obel_mask_env", { clear = true }),
   pattern = { ".env", ".env.*", "*.env", "env", "sh", "conf", "dotenv" },
