@@ -108,8 +108,9 @@ links into `$HOME`:
 | `git` | `~/.gitconfig` | my name and signing key, so skip it if you're not me |
 
 `system/` isn't linked. It holds the PKGBUILDs for our own builds (see
-[Built packages](#built-packages)), the source of `appnap-mem` (compiled by
-`setup.sh`) and a udev rule (see [Extras](#extras)).
+[Built packages](#built-packages)), the sources of `appnap-mem` and
+`astralis-keyring-prompter` (both compiled by `setup.sh`) and a udev rule
+(see [Extras](#extras)).
 
 ## Install
 
@@ -131,7 +132,9 @@ cd ~/dotfiles
    the patched skwd-wall and Obel Mono Lig. Each download has to match the
    sha256 pinned in `setup.sh`. It also compiles `appnap-mem`, the small
    helper that lets `appnap` save a napped app's memory to disk and load it
-   back fast, and installs it to `/usr/local/bin`.
+   back fast, and installs it to `/usr/local/bin`. And it compiles
+   `astralis-keyring-prompter` into `~/.local/bin`, so gnome-keyring's
+   password prompts open in the shell instead of a GTK dialog.
 3. downloads Outfit, the shell's UI font
 4. links every package. Anything in the way is moved to
    `~/.dotfiles-backup/<time>/`. An existing `~/.gitconfig` of yours is kept.

@@ -32,6 +32,12 @@ Singleton {
     property bool active: false
     /** "pin" (a passphrase), "confirm" (OK / Cancel [/ Not OK]) or "message" (OK). */
     property string mode: "pin"
+    /**
+     * Who is asking: "gnupg" (gpg-agent) or "keyring" (gnome-keyring, through
+     * ~/.local/bin/astralis-keyring-prompter, which sends its message and
+     * description as the two parts of `desc`, split at the first newline).
+     */
+    property string source: "gnupg"
     property string title: ""
     property string desc: ""
     property string prompt: ""
@@ -143,6 +149,7 @@ Singleton {
         if (sock.connected)
             sock.connected = false;
         root.mode = r.mode === "confirm" || r.mode === "message" ? r.mode : "pin";
+        root.source = r.source === "keyring" ? "keyring" : "gnupg";
         root.title = String(r.title || "");
         root.desc = String(r.desc || "");
         root.prompt = String(r.prompt || "");

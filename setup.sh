@@ -233,6 +233,39 @@ install_appnap_mem() {
     rm -rf "$tmp"
 }
 
+# astralis-keyring-prompter (system/keyring-prompter): shows gnome-keyring's
+# password prompts in the shell's pill instead of gcr-prompter's GTK dialog.
+# Compiled into ~/.local/bin; a D-Bus service file in ~/.local/share/dbus-1
+# makes the bus start it instead of gcr-prompter (yours wins over the system
+# one). If it isn't built, gnome-keyring keeps its own dialog.
+install_keyring_prompter() {
+    local src="$repo/system/keyring-prompter/astralis-keyring-prompter.c"
+    local dst="$HOME/.local/bin/astralis-keyring-prompter"
+    local svc="$HOME/.local/share/dbus-1/services/org.gnome.keyring.SystemPrompter.service"
+    local want tmp
+    command -v gcc >/dev/null || { warn "gcc isn't installed (base-devel), skipping the keyring prompter"; return; }
+    pkg-config --exists gcr-base-3 2>/dev/null || { warn "gcr isn't installed, skipping the keyring prompter"; return; }
+    tmp=$(mktemp -d)
+    # shellcheck disable=SC2046 # pkg-config's flags are meant to split
+    if ! gcc -O2 -Wall -o "$tmp/prompter" "$src" $(pkg-config --cflags --libs gcr-base-3); then
+        warn "astralis-keyring-prompter didn't compile"
+        rm -rf "$tmp"
+        return
+    fi
+    want=$(printf '[D-BUS Service]\nName=org.gnome.keyring.SystemPrompter\nExec=%s\n' "$dst")
+    if cmp -s "$tmp/prompter" "$dst" && [ "$(cat "$svc" 2>/dev/null)" = "$want" ]; then
+        info "keyring prompter: up to date"
+    elif [ $dry -eq 1 ]; then
+        info "would install $dst and $svc"
+    else
+        install -Dm755 "$tmp/prompter" "$dst" && mkdir -p "$(dirname "$svc")" && printf '%s\n' "$want" >"$svc" &&
+            info "keyring prompter compiled and installed" || warn "couldn't install the keyring prompter"
+        # pick the service file up now (it's read at login anyway)
+        busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus ReloadConfig >/dev/null 2>&1 || true
+    fi
+    rm -rf "$tmp"
+}
+
 # --- fonts that aren't packaged --------------------------------------------
 
 # Outfit: the shell's UI font (OFL), straight from the Google Fonts repo.
@@ -399,6 +432,7 @@ if [ $do_packages -eq 1 ]; then
     install_packages
     install_built
     install_appnap_mem
+    install_keyring_prompter
 fi
 if [ $do_fonts -eq 1 ]; then
     step "Fonts"

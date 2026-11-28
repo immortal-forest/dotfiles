@@ -14,6 +14,9 @@ import "../../config"
  *  - polkit (services/PolkitAuth.qml): pkexec, systemd, package managers.
  *  - GnuPG (services/Pinentry.qml ← ~/.local/bin/pinentry-astralis): key
  *    passphrases, plus pinentry's CONFIRM / MESSAGE dialogs. Shown as 鍵.
+ *  - gnome-keyring, through the same pinentry (fed by
+ *    ~/.local/bin/astralis-keyring-prompter, system/keyring-prompter):
+ *    keyring unlock / new-password prompts. 鍵 too, KEYRING as the meta.
  *
  * shell.qml opens this surface on the focused screen while either has a
  * request, and closes it when the request completes. Enter answers, Esc (or
@@ -61,6 +64,8 @@ PillSurface {
     onPolkitLiveChanged: if (polkitLive) kind = "polkit"
     onGpgLiveChanged: if (gpgLive && !polkitLive) kind = "gpg"
     readonly property bool isGpg: kind === "gpg"
+    /** A gnome-keyring prompt, carried by the pinentry service. */
+    readonly property bool isKeyring: isGpg && Pinentry.source === "keyring"
     /** "pin" | "confirm" | "message" */
     readonly property string mode: isGpg ? Pinentry.mode : "pin"
     readonly property bool wantsPin: mode === "pin"
@@ -80,7 +85,27 @@ PillSurface {
         return d.length ? d.split(/\n+/).map(l => l.trim()).filter(l => l.length) : [];
     }
 
+    // gnome-keyring: desc is "message\ndescription". The message is often
+    // just "Authentication required"; then the title ("Unlock Keyring") is
+    // the better headline, in sentence case.
+    readonly property string keyringHead: {
+        const d = String(Pinentry.desc || "");
+        const i = d.indexOf("\n");
+        const head = (i < 0 ? d : d.slice(0, i)).trim().replace(/\.$/, "");
+        if (head.length && !/^authentication required$/i.test(head))
+            return head;
+        const t = String(Pinentry.title || "").trim();
+        return t.length ? t.charAt(0) + t.slice(1).toLowerCase() : "Unlock keyring";
+    }
+    readonly property string keyringBody: {
+        const d = String(Pinentry.desc || "");
+        const i = d.indexOf("\n");
+        return i < 0 ? "" : d.slice(i + 1).replace(/\s*\n\s*/g, " ").trim().replace(/\.$/, "");
+    }
+
     readonly property string message: {
+        if (root.isKeyring)
+            return root.keyringHead;
         if (root.isGpg) {
             if (root.descLines.length === 0)
                 return root.mode === "pin" ? "Enter the passphrase" : "GnuPG needs an answer";
@@ -100,9 +125,11 @@ PillSurface {
     }
 
     /** GnuPG: the key's user id, unquoted — the thing you'd recognise. */
-    readonly property string detailLead: root.isGpg && root.descLines.length > 1
+    readonly property string detailLead: root.isGpg && !root.isKeyring && root.descLines.length > 1
         ? root.descLines[1].replace(/^"(.*)"$/, "$1") : ""
     readonly property string detail: {
+        if (root.isKeyring)
+            return root.keyringBody;
         if (root.isGpg)
             return root.descLines.slice(2).join(" ");
         // Who you are proving to be. The action id is for logs, not people.
@@ -326,7 +353,8 @@ PillSurface {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: !root.isGpg ? "AUTHENTICATE"
-                        : (root.mode === "pin" ? (root.repeating ? "CONFIRM PASSPHRASE" : "PASSPHRASE") : "CONFIRM")
+                        : root.mode !== "pin" ? "CONFIRM"
+                        : (root.repeating ? "CONFIRM " : "") + (root.isKeyring ? "PASSWORD" : "PASSPHRASE")
                     color: Colors.on_surface_variant
                     font.family: Appearance.font.family
                     font.pixelSize: 10 * root.s
@@ -338,7 +366,7 @@ PillSurface {
             Text {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.isGpg ? "GNUPG" : "POLKIT"
+                text: root.isKeyring ? "KEYRING" : root.isGpg ? "GNUPG" : "POLKIT"
                 color: Qt.alpha(Colors.on_surface_variant, 0.6)
                 font.family: Appearance.font.family
                 font.pixelSize: 9.5 * root.s
@@ -676,7 +704,8 @@ PillSurface {
                 if (!root.wantsPin)
                     return "enter to confirm  ·  esc to cancel";
                 return root.repeating ? "type it once more  ·  esc to cancel"
-                    : "enter to " + (root.isGpg ? "unlock" : "authenticate") + "  ·  esc to cancel";
+                    : "enter to " + (!root.isGpg ? "authenticate" : (Pinentry.repeat ? "continue" : "unlock"))
+                        + "  ·  esc to cancel";
             }
 
             Row {

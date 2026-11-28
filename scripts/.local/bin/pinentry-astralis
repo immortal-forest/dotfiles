@@ -92,6 +92,8 @@ def ask_shell(st, mode):
             "cancel": st.cancel, "notok": st.notok,
             "repeat": st.repeat is not None, "repeatPrompt": st.repeat or "",
             "repeatError": st.repeat_error,
+            # who's asking: gpg-agent, or astralis-keyring-prompter (gnome-keyring)
+            "source": os.environ.get("PINENTRY_ASTRALIS_SOURCE", "gnupg"),
         }
         if qs_call("ask", json.dumps(req)) != "ok":
             return None
